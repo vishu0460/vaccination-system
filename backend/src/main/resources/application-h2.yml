@@ -1,0 +1,51 @@
+spring:
+  main:
+    allow-circular-references: true
+  datasource:
+    url: jdbc:h2:mem:vaccination_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: true
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: never
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Kolkata
+
+server:
+  port: 8080
+
+logging:
+  level:
+    root: INFO
+    com.vaccine: DEBUG
+    org.springframework.security: DEBUG
+
+app:
+  jwt:
+    secret: dGhpc2lzYXZlcmxvbmdzZWNyZXRrZXlmb3Jqd3R0b2tlbmdlbmVyYXRpb24
+    expiration: 86400000
+    refresh-expiration: 604800000
+  mail:
+    username: dev@vaccinationsystem.com
+    password: devpassword
+    host: smtp.gmail.com
+    port: 587
+  frontend-url: http://localhost:5173
+  backend-url: http://localhost:8080

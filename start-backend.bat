@@ -1,0 +1,6 @@
+@echo off
+echo Starting Vaccination System Backend...
+cd /d "%~dp0backend"
+echo Starting Spring Boot application on port 8080 with H2 database...
+set SPRING_PROFILES_ACTIVE=h2
+mvn spring-boot:run -Dspring-boot.run.arguments="--spring.profiles.active=h2"

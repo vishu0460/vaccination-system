@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: vaccination-system
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:h2}
+  main:
+    allow-circular-references: true
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Kolkata
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    com.vaccine: DEBUG
+    org.springframework.security: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/vaccination-system.log
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dGhpc2lzYXZlcmxvbmdzZWNyZXRrZXlmb3Jqd3R0b2tlbmdlbmVyYXRpb24}
+    expiration: ${JWT_EXPIRATION:86400000}
+    refresh-expiration: ${JWT_REFRESH_EXPIRATION:604800000}
+  mail:
+    username: ${MAIL_USERNAME:noreply@vaccinationsystem.com}
+    password: ${MAIL_PASSWORD:password}
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+  upload:
+    path: ${UPLOAD_PATH:uploads/}
+    max-size: ${MAX_FILE_SIZE:10485760}
+  rate-limit:
+    requests-per-minute: 60
+    lockout-duration: 300000
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
