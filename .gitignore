@@ -84,3 +84,8 @@ dist-ssr/
 *.pem
 *.key
 keystore.jks
+
+# Helper scripts
+*.ps1
+temp_*.txt
+!package.json
