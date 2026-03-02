@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Form, Spinner, Alert, InputGroup, Button } from 'react-bootstrap';
 import { publicAPI } from '../api/axios';
+import { useToast } from '../components/Toast';
+import { SkeletonCard } from '../components/Skeleton';
 
 const Centers = () => {
+  const toast = useToast();
   const [centers, setCenters] = useState([]);
   const [filteredCenters, setFilteredCenters] = useState([]);
   const [cityFilter, setCityFilter] = useState('');
@@ -29,9 +32,9 @@ const Centers = () => {
   useEffect(() => {
     if (cityFilter) {
       setFilteredCenters(centers.filter(c => 
-        c.city.toLowerCase().includes(cityFilter.toLowerCase()) ||
-        c.name.toLowerCase().includes(cityFilter.toLowerCase()) ||
-        c.state.toLowerCase().includes(cityFilter.toLowerCase())
+        (c.city || '').toLowerCase().includes(cityFilter.toLowerCase()) ||
+        (c.name || '').toLowerCase().includes(cityFilter.toLowerCase()) ||
+        (c.state || '').toLowerCase().includes(cityFilter.toLowerCase())
       ));
     } else {
       setFilteredCenters(centers);
@@ -40,17 +43,24 @@ const Centers = () => {
 
   if (loading) {
     return (
-      <div className="loading-spinner">
-        <Spinner animation="border" role="status" variant="primary">
-          <span className="visually-hidden">Loading...</span>
-        </Spinner>
+      <div className="centers-page fade-in">
+        <h2 className="mb-4">🏥 Vaccination Centers</h2>
+        <Row>
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <Col md={6} lg={4} key={i} className="mb-4">
+              <SkeletonCard height="250px" />
+            </Col>
+          ))}
+        </Row>
       </div>
     );
   }
 
   return (
-    <div className="centers-page">
-      <h2 className="mb-4">🏥 Vaccination Centers</h2>
+    <div className="centers-page fade-in">
+      <div className="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+        <h2 className="mb-0">🏥 Vaccination Centers</h2>
+      </div>
       
       {error && (
         <Alert variant="danger" className="mb-4">
@@ -87,25 +97,25 @@ const Centers = () => {
       ) : (
         <Row>
           {filteredCenters.map((center, index) => (
-            <Col md={6} lg={4} key={center.id} className="mb-4" style={{ animationDelay: `${index * 0.1}s` }}>
-              <Card className="h-100 center-card">
+            <Col md={6} lg={4} key={center.id} className="mb-4" style={{ animationDelay: `${index * 0.05}s` }}>
+              <Card className="h-100 center-card hover-lift">
                 <Card.Header className="d-flex justify-content-between align-items-center">
                   <span className="badge bg-success">Active</span>
-                  <small className="text-muted">{center.city}, {center.state}</small>
+                  <small className="text-muted">{center.city}, {center.state || 'N/A'}</small>
                 </Card.Header>
                 <Card.Body>
                   <Card.Title>{center.name}</Card.Title>
                   <Card.Text>
                     <p className="mb-2">📍 {center.address}</p>
-                    <p className="mb-2">📞 {center.phone}</p>
-                    <p className="mb-2">📧 {center.email}</p>
-                    <p className="mb-0">📌 {center.state} - {center.pincode}</p>
+                    <p className="mb-2">📞 {center.phone || 'N/A'}</p>
+                    <p className="mb-2">📧 {center.email || 'N/A'}</p>
+                    <p className="mb-0">📌 {center.state || 'N/A'} - {center.pincode || 'N/A'}</p>
                   </Card.Text>
                 </Card.Body>
                 <Card.Footer>
                   <div className="d-flex justify-content-between align-items-center">
                     <span className="text-info fw-bold">
-                      Capacity: {center.capacityPerDay}/day
+                      Capacity: {center.dailyCapacity || center.capacityPerDay || 100}/day
                     </span>
                   </div>
                 </Card.Footer>

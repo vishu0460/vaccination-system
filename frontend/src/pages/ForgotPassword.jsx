@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Form, Button, Card, Alert, Spinner } from 'react-bootstrap';
 import { authAPI } from '../api/axios';
+import { useToast } from '../components/Toast';
 
 const ForgotPassword = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -13,6 +15,7 @@ const ForgotPassword = () => {
   const [token, setToken] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
@@ -21,9 +24,12 @@ const ForgotPassword = () => {
     try {
       await authAPI.forgotPassword({ email });
       setSuccess('Password reset link has been sent to your email');
+      toast.success('Password reset link sent! Check your email.');
       setStep(2);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send reset link');
+      const errorMsg = err.response?.data?.message || 'Failed to send reset link';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -34,12 +40,16 @@ const ForgotPassword = () => {
     setError('');
     
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match');
+      const msg = 'Passwords do not match';
+      setError(msg);
+      toast.error(msg);
       return;
     }
     
     if (newPassword.length < 6) {
-      setError('Password must be at least 6 characters');
+      const msg = 'Password must be at least 6 characters';
+      setError(msg);
+      toast.error(msg);
       return;
     }
     
@@ -47,20 +57,23 @@ const ForgotPassword = () => {
     try {
       await authAPI.resetPassword({ token, newPassword });
       setSuccess('Password reset successful! Redirecting to login...');
+      toast.success('Password reset successful!');
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reset password');
+      const errorMsg = err.response?.data?.message || 'Failed to reset password';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="d-flex justify-content-center align-items-center min-vh-75">
-      <Card className="forgot-password-card" style={{ width: '450px', maxWidth: '100%' }}>
+    <div className="d-flex justify-content-center align-items-center min-vh-75 py-4 fade-in">
+      <Card className="forgot-password-card shadow-lg" style={{ width: '450px', maxWidth: '100%' }}>
         <Card.Body className="p-4">
           <div className="text-center mb-4">
-            <span style={{ fontSize: '3rem' }}>🔐</span>
+            <span style={{ fontSize: '3rem' }} role="img" aria-label="forgot-password">🔐</span>
             <h2 className="mt-3 mb-1">
               {step === 1 ? 'Forgot Password?' : 'Reset Password'}
             </h2>
@@ -97,6 +110,7 @@ const ForgotPassword = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    aria-required="true"
                   />
                 </div>
               </Form.Group>
@@ -129,6 +143,7 @@ const ForgotPassword = () => {
                     value={token}
                     onChange={(e) => setToken(e.target.value)}
                     required
+                    aria-required="true"
                   />
                 </div>
               </Form.Group>
@@ -138,13 +153,24 @@ const ForgotPassword = () => {
                 <div className="input-group">
                   <span className="input-group-text">🔒</span>
                   <Form.Control
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     placeholder="Enter new password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
+                    aria-required="true"
                   />
+                  <Button 
+                    variant="outline-secondary"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? '🙈' : '👁️'}
+                  </Button>
                 </div>
+                <Form.Text className="text-muted">
+                  Must be at least 6 characters
+                </Form.Text>
               </Form.Group>
               
               <Form.Group className="mb-4">
@@ -152,12 +178,17 @@ const ForgotPassword = () => {
                 <div className="input-group">
                   <span className="input-group-text">🔒</span>
                   <Form.Control
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     placeholder="Confirm new password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
+                    aria-required="true"
+                    isInvalid={confirmPassword && newPassword !== confirmPassword}
                   />
+                  <Form.Control.Feedback type="invalid">
+                    Passwords do not match
+                  </Form.Control.Feedback>
                 </div>
               </Form.Group>
               
@@ -182,7 +213,7 @@ const ForgotPassword = () => {
           <div className="text-center mt-4">
             <p className="mb-0">
               Remember your password?{' '}
-              <Link to="/login" className="text-decoration-none">
+              <Link to="/login" className="text-decoration-none fw-bold">
                 Sign in
               </Link>
             </p>
