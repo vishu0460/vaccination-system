@@ -42,7 +42,7 @@
 - [ ] 4.4 Add rate limiting
 
 ## Task 5: GitHub & Dev Setup
-- [ ] 5.1 Update README.md
-- [ ] 5.2 Add .env.example
+- [x] 5.1 Update README.md
+- [x] 5.2 Add .env.example
 - [ ] 5.3 Update .gitignore
 - [ ] 5.4 Add testing documentation
