@@ -1,0 +1,1648 @@
+import React, { useState, useEffect } from 'react';
+import { Container, Row, Col, Card, Table, Badge, Button, Spinner, Modal, Form, Alert, Tab, Tabs } from 'react-bootstrap';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
+import { Bar, Doughnut } from 'react-chartjs-2';
+import { adminAPI, publicAPI, newsAPI, certificateAPI, contactAPI } from '../api/client';
+import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaSearch, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaDownload, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+
+export default function AdminDashboardPage() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [bookings, setBookings] = useState([]);
+  const [centers, setCenters] = useState([]);
+  const [drives, setDrives] = useState([]);
+  const [news, setNews] = useState([]);
+  const [certificates, setCertificates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  
+  // Modal states
+  const [showNewsModal, setShowNewsModal] = useState(false);
+  const [showEditNewsModal, setShowEditNewsModal] = useState(false);
+  const [editingNews, setEditingNews] = useState(null);
+  const [editingNewsForm, setEditingNewsForm] = useState({});
+
+  const [showCenterModal, setShowCenterModal] = useState(false);
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [showSlotModal, setShowSlotModal] = useState(false);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [showEditBookingModal, setShowEditBookingModal] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedDrive, setSelectedDrive] = useState(null);
+  
+  // Form states
+  const [newsForm, setNewsForm] = useState({ title: '', content: '', category: 'GENERAL' });
+  const [editNewsForm, setEditNewsForm] = useState({ title: '', content: '', category: 'GENERAL' });
+
+  const [centerForm, setCenterForm] = useState({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
+  const [driveForm, setDriveForm] = useState({ title: '', description: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, active: true });
+  const [slotForm, setSlotForm] = useState({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+  const [certificateForm, setCertificateForm] = useState({ bookingId: '', vaccineName: '', doseNumber: 1 });
+  
+  // Feedback and Contact states
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
+  const [selectedFeedback, setSelectedFeedback] = useState(null);
+  const [selectedContact, setSelectedContact] = useState(null);
+  const [responseText, setResponseText] = useState('');
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'users') loadUsers();
+    if (activeTab === 'bookings') loadBookings();
+    if (activeTab === 'centers') loadCenters();
+    if (activeTab === 'drives') loadDrives();
+    if (activeTab === 'news') loadNews();
+    if (activeTab === 'certificates') loadCertificates();
+    if (activeTab === 'feedback') loadFeedbacks();
+    if (activeTab === 'contacts') loadContacts();
+  }, [activeTab]);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const statsRes = await adminAPI.getDashboardStats();
+      setStats(statsRes.data);
+    } catch (err) {
+      console.error('Error loading dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllUsers();
+      setUsers(response.data);
+      setTotalPages(Math.ceil(response.data.length / 10));
+    } catch (err) {
+      setError('Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadBookings = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllBookings();
+      setBookings(response.data);
+    } catch (err) {
+      setError('Failed to load bookings');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCenters = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllCenters();
+      setCenters(response.data);
+    } catch (err) {
+      setError('Failed to load centers');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadDrives = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllDrives();
+      setDrives(response.data);
+    } catch (err) {
+      setError('Failed to load drives');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadNews = async () => {
+    try {
+      setLoading(true);
+      const response = await newsAPI.getAllNews(0, 100);
+      const payload = response.data;
+      setNews(Array.isArray(payload) ? payload : (payload?.content || []));
+    } catch (err) {
+      setNews([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadCertificates = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllCertificates();
+      setCertificates(response.data || []);
+    } catch (err) {
+      setCertificates([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Form handlers
+  const handleCreateNews = async (e) => {
+    e.preventDefault();
+    try {
+      await newsAPI.createNews(newsForm);
+      setShowNewsModal(false);
+      setNewsForm({ title: '', content: '', category: 'GENERAL' });
+      setSuccess('News posted successfully!');
+      loadNews();
+    } catch (err) {
+      setError('Failed to create news');
+    }
+  };
+
+  const handleEditNews = (newsItem) => {
+    setEditingNews(newsItem);
+    setEditNewsForm({
+      title: newsItem.title,
+      content: newsItem.content,
+      category: newsItem.category || 'GENERAL'
+    });
+    setShowEditNewsModal(true);
+  };
+
+  const handleUpdateNews = async (e) => {
+    e.preventDefault();
+    try {
+      await newsAPI.updateNews(editingNews.id, editNewsForm);
+      setShowEditNewsModal(false);
+      setEditingNews(null);
+      setEditNewsForm({ title: '', content: '', category: 'GENERAL' });
+      setSuccess('News updated successfully!');
+      loadNews();
+    } catch (err) {
+      setError('Failed to update news');
+    }
+  };
+
+  const handleDeleteNews = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this news?')) return;
+    try {
+      await newsAPI.deleteNews(id);
+      setSuccess('News deleted successfully!');
+      loadNews();
+    } catch (err) {
+      setError('Failed to delete news');
+    }
+  };
+
+
+  const handleCreateCenter = async (e) => {
+    e.preventDefault();
+    try {
+      await adminAPI.createCenter(centerForm);
+      setShowCenterModal(false);
+      setCenterForm({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
+      setSuccess('Center created successfully!');
+      loadCenters();
+    } catch (err) {
+      setError('Failed to create center');
+    }
+  };
+
+  // Ensure centers are loaded when opening drive modal
+  const handleOpenDriveModal = async () => {
+    if (centers.length === 0) {
+      await loadCenters();
+    }
+    setShowDriveModal(true);
+  };
+
+  const handleCreateDrive = async (e) => {
+    e.preventDefault();
+    try {
+      await adminAPI.createDrive(driveForm);
+      setShowDriveModal(false);
+      setDriveForm({ title: '', description: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, active: true });
+      setSuccess('Drive created successfully!');
+      loadDrives();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create drive');
+    }
+  };
+
+  // Open slot modal and ensure drives are loaded
+  const handleOpenSlotModal = async (drive) => {
+    setSelectedDrive(drive);
+    setSlotForm({ driveId: drive.id, startTime: '', endTime: '', capacity: 50 });
+    setShowSlotModal(true);
+  };
+
+  const handleCreateSlot = async (e) => {
+    e.preventDefault();
+    try {
+      // Format the datetime for the backend
+      const drive = drives.find(d => d.id === slotForm.driveId);
+      const slotData = {
+        driveId: slotForm.driveId,
+        startTime: slotForm.startTime,
+        endTime: slotForm.endTime,
+        capacity: slotForm.capacity
+      };
+      await adminAPI.createSlot(slotData);
+      setShowSlotModal(false);
+      setSlotForm({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+      setSuccess('Slot created successfully!');
+      loadDrives();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create slot');
+    }
+  };
+
+  const handleGenerateCertificate = async (e) => {
+    e.preventDefault();
+    try {
+      await certificateAPI.generateCertificate(certificateForm);
+      setShowCertificateModal(false);
+      setCertificateForm({ bookingId: '', vaccineName: '', doseNumber: 1 });
+      setSuccess('Certificate generated successfully!');
+      loadCertificates();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to generate certificate');
+    }
+  };
+
+  const handleToggleUser = async (userId, enabled) => {
+    try {
+      if (enabled) {
+        await adminAPI.disableUser(userId);
+      } else {
+        await adminAPI.enableUser(userId);
+      }
+      setSuccess(`User ${enabled ? 'disabled' : 'enabled'} successfully!`);
+      loadUsers();
+    } catch (err) {
+      setError('Failed to update user status');
+    }
+  };
+
+  const handleUpdateBookingStatus = async (bookingId, status) => {
+    try {
+      await adminAPI.updateBookingStatus(bookingId, status);
+      setSuccess(`Booking ${status} successfully!`);
+      setShowEditBookingModal(false);
+      loadBookings();
+    } catch (err) {
+      setError('Failed to update booking status');
+    }
+  };
+
+  const handleDeleteCenter = async (centerId) => {
+    if (!window.confirm('Are you sure you want to delete this center?')) return;
+    try {
+      await adminAPI.deleteCenter(centerId);
+      setSuccess('Center deleted successfully!');
+      loadCenters();
+    } catch (err) {
+      setError('Failed to delete center');
+    }
+  };
+
+  const handleDeleteDrive = async (driveId) => {
+    if (!window.confirm('Are you sure you want to delete this drive?')) return;
+    try {
+      await adminAPI.deleteDrive(driveId);
+      setSuccess('Drive deleted successfully!');
+      loadDrives();
+    } catch (err) {
+      setError('Failed to delete drive');
+    }
+  };
+
+  const openEditBooking = (booking) => {
+    setSelectedBooking(booking);
+    setShowEditBookingModal(true);
+  };
+
+  // Chart data
+  const chartData = stats ? {
+    labels: ['Total Users', 'Total Bookings', 'Active Drives', 'Centers'],
+    datasets: [{
+      label: 'System Statistics',
+      data: [stats.totalUsers || 0, stats.totalBookings || 0, stats.activeDrives || 0, stats.totalCenters || 0],
+      backgroundColor: ['#0ea5e9', '#10b981', '#ef4444', '#f59e0b'],
+      borderRadius: 8
+    }]
+  } : null;
+
+  const bookingsByStatus = {
+    labels: ['Pending', 'Confirmed', 'Completed', 'Cancelled'],
+    datasets: [{
+      data: [
+        bookings.filter(b => b.status === 'PENDING').length,
+        bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'APPROVED').length,
+        bookings.filter(b => b.status === 'COMPLETED').length,
+        bookings.filter(b => b.status === 'CANCELLED').length
+      ],
+      backgroundColor: ['#f59e0b', '#0ea5e9', '#10b981', '#ef4444']
+    }]
+  };
+
+  const getStatusBadge = (status) => {
+    const colors = {
+      PENDING: 'warning',
+      CONFIRMED: 'success',
+      APPROVED: 'info',
+      REJECTED: 'danger',
+      COMPLETED: 'success',
+      CANCELLED: 'secondary'
+    };
+    return <Badge bg={colors[status] || 'secondary'}>{status}</Badge>;
+  };
+
+  const filteredUsers = users.filter(user => 
+    user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredBookings = bookings.filter(booking => 
+    booking.userName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    booking.status?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // Tab configuration
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> },
+    { id: 'users', label: 'Users', icon: <FaUsers /> },
+    { id: 'bookings', label: 'Bookings', icon: <FaCalendarCheck /> },
+    { id: 'centers', label: 'Centers', icon: <FaHospital /> },
+    { id: 'drives', label: 'Drives', icon: <FaSyringe /> },
+    { id: 'certificates', label: 'Certificates', icon: <FaCertificate /> },
+    { id: 'news', label: 'News', icon: <FaNewspaper /> },
+    { id: 'feedback', label: 'Feedback', icon: <FaComment /> },
+    { id: 'contacts', label: 'Contacts', icon: <FaPhone /> }
+  ];
+
+  // Load functions for Feedback and Contacts
+  const loadFeedbacks = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllFeedback(0, 10);
+      const payload = response.data;
+      setFeedbacks(Array.isArray(payload) ? payload : (payload?.content || []));
+    } catch (err) {
+      setError('Failed to load feedback');
+      setFeedbacks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadContacts = async () => {
+    try {
+      setLoading(true);
+      const response = await adminAPI.getAllContacts();
+      setContacts(response.data || []);
+    } catch (err) {
+      setError('Failed to load contacts');
+      setContacts([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRespondToFeedback = async (id) => {
+    if (!responseText.trim()) {
+      setError('Please enter a response');
+      return;
+    }
+    try {
+      await adminAPI.respondToFeedback(id, responseText);
+      setSuccess('Response sent successfully!');
+      setShowFeedbackModal(false);
+      setResponseText('');
+      loadFeedbacks();
+    } catch (err) {
+      setError('Failed to send response');
+    }
+  };
+
+  const handleRespondToContact = async (id) => {
+    if (!responseText.trim()) {
+      setError('Please enter a response');
+      return;
+    }
+    try {
+      await adminAPI.respondToContact(id, responseText);
+      setSuccess('Response sent successfully!');
+      setShowContactModal(false);
+      setResponseText('');
+      loadContacts();
+    } catch (err) {
+      setError('Failed to send response');
+    }
+  };
+
+  const handleDeleteContact = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this contact?')) return;
+    try {
+      await adminAPI.deleteContact(id);
+      setSuccess('Contact deleted successfully!');
+      loadContacts();
+    } catch (err) {
+      setError('Failed to delete contact');
+    }
+  };
+
+  const openFeedbackModal = (feedback) => {
+    setSelectedFeedback(feedback);
+    setResponseText(feedback.response || '');
+    setShowFeedbackModal(true);
+  };
+
+  const openContactModal = (contact) => {
+    setSelectedContact(contact);
+    setResponseText(contact.response || '');
+    setShowContactModal(true);
+  };
+
+  const renderFeedback = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaComment className="me-2" />User Feedback</h5>
+      </Card.Header>
+      <Card.Body className="p-0">
+        {feedbacks.length === 0 ? (
+          <div className="text-center py-5">
+            <FaComment size={48} className="text-muted mb-3" />
+            <p className="text-muted">No feedback yet.</p>
+          </div>
+        ) : (
+          <Table responsive hover className="mb-0">
+            <thead style={{background: '#f8fafc'}}>
+              <tr>
+                <th className="ps-4">ID</th>
+                <th>User Email</th>
+                <th>Subject</th>
+                <th>Rating</th>
+                <th>Status</th>
+                <th className="text-end pe-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feedbacks.map(feedback => (
+                <tr key={feedback.id}>
+                  <td className="ps-4">#{feedback.id}</td>
+                  <td>{feedback.userEmail || 'Anonymous'}</td>
+                  <td>{feedback.subject || 'N/A'}</td>
+                  <td>
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} style={{color: i < (feedback.rating || 0) ? '#f59e0b' : '#e2e8f0'}}>★</span>
+                    ))}
+                  </td>
+                  <td>
+                    <Badge bg={feedback.status === 'APPROVED' ? 'success' : 'warning'}>
+                      {feedback.status || 'PENDING'}
+                    </Badge>
+                  </td>
+                  <td className="text-end pe-4">
+                    <Button variant="outline-primary" size="sm" onClick={() => openFeedbackModal(feedback)} style={{borderRadius: '0.375rem'}}>
+                      <FaEdit /> Respond
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Card.Body>
+    </Card>
+  );
+
+  const renderContacts = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaPhone className="me-2" />Contact Inquiries</h5>
+      </Card.Header>
+      <Card.Body className="p-0">
+        {contacts.length === 0 ? (
+          <div className="text-center py-5">
+            <FaPhone size={48} className="text-muted mb-3" />
+            <p className="text-muted">No contact inquiries yet.</p>
+          </div>
+        ) : (
+          <Table responsive hover className="mb-0">
+            <thead style={{background: '#f8fafc'}}>
+              <tr>
+                <th className="ps-4">ID</th>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Message</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th className="text-end pe-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {contacts.map(contact => (
+                <tr key={contact.id}>
+                  <td className="ps-4">#{contact.id}</td>
+                  <td>{contact.name}</td>
+                  <td>{contact.email}</td>
+                  <td>{contact.phone || 'N/A'}</td>
+                  <td>{contact.message?.substring(0, 30)}{contact.message && contact.message.length > 30 ? '...' : ''}</td>
+                  <td>{contact.createdAt ? new Date(contact.createdAt).toLocaleDateString() : 'N/A'}</td>
+                  <td>
+                    <Badge bg={contact.status === 'RESPONDED' ? 'success' : 'warning'}>
+                      {contact.status || 'PENDING'}
+                    </Badge>
+                  </td>
+                  <td className="text-end pe-4">
+                    <Button variant="outline-primary" size="sm" className="me-2" onClick={() => openContactModal(contact)} style={{borderRadius: '0.375rem'}}>
+                      <FaEdit /> Respond
+                    </Button>
+                    <Button variant="outline-danger" size="sm" onClick={() => handleDeleteContact(contact.id)} style={{borderRadius: '0.375rem'}}>
+                      <FaTrash />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Card.Body>
+    </Card>
+  );
+
+  const renderDashboard = () => (
+    <>
+      {/* Stats Cards - Matching user dashboard style */}
+      <Row className="mb-4 g-4">
+        <Col md={6} lg={3}>
+          <div className="stats-card" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>
+            <div className="d-flex align-items-center justify-content-between">
+              <div>
+                <div className="stat-label" style={{opacity: 0.9}}>Total Users</div>
+                <div className="stat-number">{stats?.totalUsers || 0}</div>
+              </div>
+              <FaUsers size={40} style={{opacity: 0.3}} />
+            </div>
+          </div>
+        </Col>
+        <Col md={6} lg={3}>
+          <div className="stats-card" style={{background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}>
+            <div className="d-flex align-items-center justify-content-between">
+              <div>
+                <div className="stat-label" style={{opacity: 0.9}}>Total Bookings</div>
+                <div className="stat-number">{stats?.totalBookings || 0}</div>
+              </div>
+              <FaCalendarCheck size={40} style={{opacity: 0.3}} />
+            </div>
+          </div>
+        </Col>
+        <Col md={6} lg={3}>
+          <div className="stats-card" style={{background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'}}>
+            <div className="d-flex align-items-center justify-content-between">
+              <div>
+                <div className="stat-label" style={{opacity: 0.9}}>Active Drives</div>
+                <div className="stat-number">{stats?.activeDrives || 0}</div>
+              </div>
+              <FaSyringe size={40} style={{opacity: 0.3}} />
+            </div>
+          </div>
+        </Col>
+        <Col md={6} lg={3}>
+          <div className="stats-card" style={{background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'}}>
+            <div className="d-flex align-items-center justify-content-between">
+              <div>
+                <div className="stat-label" style={{opacity: 0.9}}>Centers</div>
+                <div className="stat-number">{stats?.totalCenters || 0}</div>
+              </div>
+              <FaHospital size={40} style={{opacity: 0.3}} />
+            </div>
+          </div>
+        </Col>
+      </Row>
+
+      {/* Charts */}
+      <Row className="mb-4 g-4">
+        <Col md={8}>
+          <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+            <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}}>
+              <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaChartLine className="me-2" />System Overview</h5>
+            </Card.Header>
+            <Card.Body>
+              <Bar 
+                data={chartData} 
+                options={{ 
+                  responsive: true, 
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: false }
+                  },
+                  scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                    x: { grid: { display: false } }
+                  }
+                }} 
+                height={300}
+              />
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={4}>
+          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
+            <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}}>
+              <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCalendarCheck className="me-2" />Bookings by Status</h5>
+            </Card.Header>
+            <Card.Body className="d-flex justify-content-center align-items-center">
+              <Doughnut 
+                data={bookingsByStatus} 
+                options={{ 
+                  responsive: true, 
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: 'bottom' }
+                  }
+                }} 
+                height={250}
+              />
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Quick Stats */}
+      <Row className="g-4">
+        <Col md={4}>
+          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
+            <Card.Body className="text-center py-4">
+              <div style={{width: '60px', height: '60px', margin: '0 auto 1rem', background: 'linear-gradient(135deg, #e0f2fe 0%, #0ea5e9 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                <FaUsers size={24} style={{color: '#0ea5e9'}} />
+              </div>
+              <h2 className="fw-bold mb-1" style={{color: '#0ea5e9'}}>{stats?.newUsersThisMonth || 0}</h2>
+              <p className="text-muted mb-0">New Users This Month</p>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={4}>
+          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
+            <Card.Body className="text-center py-4">
+              <div style={{width: '60px', height: '60px', margin: '0 auto 1rem', background: 'linear-gradient(135deg, #d1fae5 0%, #10b981 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                <FaCalendarCheck size={24} style={{color: '#10b981'}} />
+              </div>
+              <h2 className="fw-bold mb-1" style={{color: '#10b981'}}>{stats?.bookingsToday || 0}</h2>
+              <p className="text-muted mb-0">Bookings Today</p>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col md={4}>
+          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
+            <Card.Body className="text-center py-4">
+              <div style={{width: '60px', height: '60px', margin: '0 auto 1rem', background: 'linear-gradient(135deg, #cffafe 0%, #06b6d4 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                <FaCertificate size={24} style={{color: '#06b6d4'}} />
+              </div>
+              <h2 className="fw-bold mb-1" style={{color: '#06b6d4'}}>{stats?.completedVaccinations || 0}</h2>
+              <p className="text-muted mb-0">Vaccinations Completed</p>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+    </>
+  );
+
+  const renderUsers = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <Row className="align-items-center">
+          <Col md={6}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaUsers className="me-2" />User Management</h5>
+          </Col>
+          <Col md={6}>
+            <div className="d-flex gap-2">
+              <Form.Control 
+                type="text" 
+                placeholder="Search users..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{borderRadius: '0.5rem'}}
+              />
+            </div>
+          </Col>
+        </Row>
+      </Card.Header>
+      <Card.Body className="p-0">
+        <Table responsive hover className="mb-0">
+          <thead style={{background: '#f8fafc'}}>
+            <tr>
+              <th className="ps-4">ID</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Age</th>
+              <th>Status</th>
+              <th>Verified</th>
+              <th className="text-end pe-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUsers.slice(currentPage * 10, (currentPage + 1) * 10).map(user => (
+              <tr key={user.id}>
+                <td className="ps-4">#{user.id}</td>
+                <td className="fw-medium">{user.fullName}</td>
+                <td>{user.email}</td>
+                <td>{user.age}</td>
+                <td><Badge bg={user.enabled ? 'success' : 'danger'} style={user.enabled ? {background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'} : {background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'}}>{user.enabled ? 'Active' : 'Disabled'}</Badge></td>
+                <td>
+                  {user.emailVerified ? 
+                    <Badge bg="success" style={{background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}><FaCheck className="me-1" />Yes</Badge> : 
+                    <Badge bg="warning" style={{background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'}}><FaTimes className="me-1" />No</Badge>
+                  }
+                </td>
+                <td className="text-end pe-4">
+                  <Button 
+                    variant={user.enabled ? 'outline-danger' : 'outline-success'} 
+                    size="sm"
+                    onClick={() => handleToggleUser(user.id, user.enabled)}
+                    style={{borderRadius: '0.375rem'}}
+                  >
+                    {user.enabled ? 'Disable' : 'Enable'}
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderBookings = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <Row className="align-items-center">
+          <Col md={6}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCalendarCheck className="me-2" />Booking Management</h5>
+          </Col>
+          <Col md={6}>
+            <Form.Control 
+              type="text" 
+              placeholder="Search bookings..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{borderRadius: '0.5rem'}}
+            />
+          </Col>
+        </Row>
+      </Card.Header>
+      <Card.Body className="p-0">
+        <Table responsive hover className="mb-0">
+          <thead style={{background: '#f8fafc'}}>
+            <tr>
+              <th className="ps-4">ID</th>
+              <th>User</th>
+              <th>Slot</th>
+              <th>Status</th>
+              <th>Booked At</th>
+              <th className="text-end pe-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredBookings.map(booking => (
+              <tr key={booking.id}>
+                <td className="ps-4">#{booking.id}</td>
+                <td className="fw-medium">{booking.userName || 'N/A'}</td>
+                <td>{booking.slotTime || 'N/A'}</td>
+                <td>{getStatusBadge(booking.status)}</td>
+                <td>{new Date(booking.bookedAt).toLocaleDateString()}</td>
+                <td className="text-end pe-4">
+                  <Button variant="outline-primary" size="sm" className="me-2" onClick={() => openEditBooking(booking)} style={{borderRadius: '0.375rem'}}>
+                    <FaEdit />
+                  </Button>
+                  {booking.status === 'PENDING' && (
+                    <>
+                      <Button variant="outline-success" size="sm" className="me-1" onClick={() => handleUpdateBookingStatus(booking.id, 'approved')} style={{borderRadius: '0.375rem'}}>
+                        <FaCheck />
+                      </Button>
+                      <Button variant="outline-danger" size="sm" onClick={() => handleUpdateBookingStatus(booking.id, 'rejected')} style={{borderRadius: '0.375rem'}}>
+                        <FaTimes />
+                      </Button>
+                    </>
+                  )}
+                  {booking.status === 'APPROVED' && (
+                    <Button variant="outline-success" size="sm" onClick={() => handleUpdateBookingStatus(booking.id, 'completed')} style={{borderRadius: '0.375rem'}}>
+                      Complete
+                    </Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderCenters = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
+        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaHospital className="me-2" />Vaccination Centers</h5>
+        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowCenterModal(true)}>
+          <FaPlus className="me-2" />Add Center
+        </Button>
+      </Card.Header>
+      <Card.Body>
+        <Row className="g-4">
+          {centers.map(center => (
+            <Col key={center.id} md={6} lg={4}>
+              <Card className="h-100 border-0 shadow-sm" style={{borderRadius: '0.75rem', transition: 'transform 0.2s, box-shadow 0.2s'}}>
+                <Card.Body>
+                  <div className="d-flex justify-content-between align-items-start mb-3">
+                    <Card.Title className="h6 mb-0 fw-bold">{center.name}</Card.Title>
+                    <Badge style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>{center.dailyCapacity || 0} doses/day</Badge>
+                  </div>
+                  <div className="text-muted small">
+                    <div className="d-flex align-items-center gap-2 mb-2">
+                      <FaHospital style={{color: '#0ea5e9'}} />
+                      <span>{center.address}, {center.city}</span>
+                    </div>
+                    <div className="d-flex align-items-center gap-2 mb-2">
+                      <FaBell style={{color: '#0ea5e9'}} />
+                      <span>Phone: {center.phone || 'N/A'}</span>
+                    </div>
+                    {center.workingHours && (
+                      <div className="d-flex align-items-center gap-2">
+                        <FaCog style={{color: '#0ea5e9'}} />
+                        <span>Hours: {center.workingHours}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="d-flex gap-2 mt-3">
+                    <Button variant="outline-danger" size="sm" onClick={() => handleDeleteCenter(center.id)} style={{borderRadius: '0.375rem'}}>
+                      <FaTrash className="me-1" />Delete
+                    </Button>
+                  </div>
+                </Card.Body>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderDrives = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
+        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaSyringe className="me-2" />Vaccination Drives</h5>
+        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={handleOpenDriveModal}>
+          <FaPlus className="me-2" />Add Drive
+        </Button>
+      </Card.Header>
+      <Card.Body className="p-0">
+        <Table responsive hover className="mb-0">
+          <thead style={{background: '#f8fafc'}}>
+            <tr>
+              <th className="ps-4">ID</th>
+              <th>Title</th>
+              <th>Center</th>
+              <th>Date</th>
+              <th>Age Range</th>
+              <th>Status</th>
+              <th className="text-end pe-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {drives.map(drive => (
+              <tr key={drive.id}>
+                <td className="ps-4">#{drive.id}</td>
+                <td className="fw-medium">{drive.title}</td>
+                <td>{drive.centerName || 'N/A'}</td>
+                <td>{drive.driveDate}</td>
+                <td>{drive.minAge} - {drive.maxAge}</td>
+                <td>
+                  <Badge bg={drive.active ? 'success' : 'secondary'} style={drive.active ? {background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'} : {background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)'}}>
+                    {drive.active ? 'Active' : 'Inactive'}
+                  </Badge>
+                </td>
+                <td className="text-end pe-4">
+                  <Button variant="outline-primary" size="sm" className="me-2" onClick={() => handleOpenSlotModal(drive)} style={{borderRadius: '0.375rem'}}>
+                    <FaPlus /> Add Slot
+                  </Button>
+                  <Button variant="outline-danger" size="sm" onClick={() => handleDeleteDrive(drive.id)} style={{borderRadius: '0.375rem'}}>
+                    <FaTrash />
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderCertificates = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
+        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCertificate className="me-2" />Certificate Management</h5>
+        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowCertificateModal(true)}>
+          <FaPlus className="me-2" />Generate Certificate
+        </Button>
+      </Card.Header>
+      <Card.Body className="p-0">
+        {certificates.length === 0 ? (
+          <div className="text-center py-5">
+            <FaCertificate size={48} className="text-muted mb-3" />
+            <p className="text-muted">No certificates generated yet.</p>
+            <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none'}} onClick={() => setShowCertificateModal(true)}>
+              Generate First Certificate
+            </Button>
+          </div>
+        ) : (
+          <Table responsive hover className="mb-0">
+            <thead style={{background: '#f8fafc'}}>
+              <tr>
+                <th className="ps-4">Certificate #</th>
+                <th>User</th>
+                <th>Vaccine</th>
+                <th>Dose</th>
+                <th>Center</th>
+                <th>Issued Date</th>
+                <th className="text-end pe-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {certificates.map(cert => (
+                <tr key={cert.id}>
+                  <td className="ps-4 fw-medium">{cert.certificateNumber}</td>
+                  <td>{cert.userName}</td>
+                  <td>{cert.vaccineName}</td>
+                  <td>Dose {cert.doseNumber}</td>
+                  <td>{cert.centerName}</td>
+                  <td>{new Date(cert.issuedAt).toLocaleDateString()}</td>
+                  <td className="text-end pe-4">
+                    <Button variant="outline-primary" size="sm" onClick={() => window.open(`/certificates/${cert.id}`, '_blank')} style={{borderRadius: '0.375rem'}}>
+                      <FaDownload />
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </Card.Body>
+    </Card>
+  );
+
+  const renderNews = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
+        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaNewspaper className="me-2" />News Management</h5>
+        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowNewsModal(true)}>
+          <FaPlus className="me-2" />Post News
+        </Button>
+      </Card.Header>
+      <Card.Body className="p-0">
+        <div className="table-responsive">
+          <Table hover className="mb-0">
+            <thead style={{background: '#f8fafc'}}>
+              <tr>
+                <th>Title</th>
+                <th>Category</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th className="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {news.length === 0 ? (
+                <tr>
+                  <td colSpan="5" className="text-center py-5">
+                    <FaNewspaper size={48} className="text-muted mb-3 d-block" />
+                    <p className="text-muted mb-4">No news posts yet.</p>
+                    <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none'}} onClick={() => setShowNewsModal(true)}>
+                      Post First News
+                    </Button>
+                  </td>
+                </tr>
+              ) : news.map(item => (
+                <tr key={item.id}>
+                  <td className="fw-medium">{item.title}</td>
+                  <td><Badge style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>{item.category || 'GENERAL'}</Badge></td>
+                  <td>{item.publishedAt ? new Date(item.publishedAt).toLocaleDateString() : 'N/A'}</td>
+                  <td>
+                    <Badge bg={item.active ? 'success' : 'secondary'}>
+                      {item.active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </td>
+                  <td className="text-end">
+                    <Button 
+                      variant="outline-primary" 
+                      size="sm" 
+                      className="me-2" 
+                      onClick={() => handleEditNews(item)}
+                      style={{borderRadius: '0.375rem'}}
+                    >
+                      Edit
+                    </Button>
+                    <Button 
+                      variant="outline-danger" 
+                      size="sm"
+                      onClick={() => handleDeleteNews(item.id)}
+                      style={{borderRadius: '0.375rem'}}
+                    >
+                      Delete
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+      </Card.Body>
+
+    </Card>
+  );
+
+  if (loading && !stats) {
+    return (
+      <div className="d-flex align-items-center justify-content-center" style={{minHeight: '60vh'}}>
+        <div className="text-center">
+          <Spinner animation="border" style={{color: '#0ea5e9'}} />
+          <p className="mt-3 text-muted">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-pattern" style={{minHeight: '100vh', paddingBottom: '2rem'}}>
+      {/* Admin Header - Matching user dashboard hero style */}
+      <div style={{
+        background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+        padding: '3rem 0',
+        marginBottom: '2rem',
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.05\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")'
+        }}></div>
+        <Container position="relative">
+          <Row className="align-items-center">
+            <Col md={8}>
+              <div className="d-flex align-items-center gap-3 mb-3">
+                <div style={{
+                  width: '70px',
+                  height: '70px',
+                  background: 'rgba(255,255,255,0.2)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <FaUserShield size={32} style={{color: 'white'}} />
+                </div>
+                <div>
+                  <h1 className="mb-1 fw-bold text-white" style={{fontSize: '2rem'}}>Admin Dashboard</h1>
+                  <p className="mb-0 text-white-50">Manage your vaccination system</p>
+                </div>
+              </div>
+            </Col>
+            <Col md={4} className="text-md-end">
+              <Button 
+                variant="light" 
+                onClick={loadDashboardData}
+                style={{borderRadius: '0.5rem'}}
+              >
+                <FaCog className="me-2" />Refresh Data
+              </Button>
+            </Col>
+          </Row>
+        </Container>
+      </div>
+
+      <Container>
+        {/* Alerts */}
+        {error && <Alert variant="danger" dismissible onClose={() => setError(null)} className="mb-4" style={{borderRadius: '0.5rem', border: 'none'}}>{error}</Alert>}
+        {success && <Alert variant="success" dismissible onClose={() => setSuccess(null)} className="mb-4" style={{borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg, #d1fae5 0%, #10b981 100%)', color: '#065f46'}}>{success}</Alert>}
+
+        {/* Tab Navigation - Matching user dashboard style */}
+        <div className="mb-4" style={{
+          background: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          padding: '0.5rem'
+        }}>
+          <Tabs activeKey={activeTab} onSelect={setActiveTab} className="justify-content-center">
+            {tabs.map(tab => (
+              <Tab 
+                key={tab.id} 
+                eventKey={tab.id} 
+                title={
+                  <span className={`d-flex align-items-center gap-2 ${activeTab === tab.id ? '' : 'text-muted'}`}>
+                    {tab.icon}
+                    {tab.label}
+                  </span>
+                } 
+              />
+            ))}
+          </Tabs>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'dashboard' && renderDashboard()}
+        {activeTab === 'users' && renderUsers()}
+        {activeTab === 'bookings' && renderBookings()}
+        {activeTab === 'centers' && renderCenters()}
+        {activeTab === 'drives' && renderDrives()}
+        {activeTab === 'certificates' && renderCertificates()}
+        {activeTab === 'news' && renderNews()}
+        {activeTab === 'feedback' && renderFeedback()}
+        {activeTab === 'contacts' && renderContacts()}
+      </Container>
+
+      {/* Create News Modal */}
+      <Modal show={showNewsModal} onHide={() => setShowNewsModal(false)} size="lg" centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaNewspaper className="me-2" />Post News</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleCreateNews}>
+          <Modal.Body>
+            <Form.Group className="mb-3">
+              <Form.Label>Title</Form.Label>
+              <Form.Control type="text" value={newsForm.title} onChange={e => setNewsForm({...newsForm, title: e.target.value})} required placeholder="Enter news title" style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Category</Form.Label>
+              <Form.Select value={newsForm.category} onChange={e => setNewsForm({...newsForm, category: e.target.value})} style={{borderRadius: '0.5rem'}}>
+                <option value="GENERAL">General</option>
+                <option value="HEALTH">Health</option>
+                <option value="VACCINATION">Vaccination</option>
+                <option value="UPDATE">Update</option>
+              </Form.Select>
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Content</Form.Label>
+              <Form.Control as="textarea" rows={4} value={newsForm.content} onChange={e => setNewsForm({...newsForm, content: e.target.value})} required placeholder="Write your news content..." style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowNewsModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Post News</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Edit News Modal */}
+      <Modal show={showEditNewsModal} onHide={() => setShowEditNewsModal(false)} size="lg" centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaNewspaper className="me-2" />Edit News</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleUpdateNews}>
+          <Modal.Body>
+            <Form.Group className="mb-3">
+              <Form.Label>Title</Form.Label>
+              <Form.Control type="text" value={editNewsForm.title} onChange={e => setEditNewsForm({...editNewsForm, title: e.target.value})} required style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Category</Form.Label>
+              <Form.Select value={editNewsForm.category} onChange={e => setEditNewsForm({...editNewsForm, category: e.target.value})} style={{borderRadius: '0.5rem'}}>
+                <option value="GENERAL">General</option>
+                <option value="HEALTH">Health</option>
+                <option value="VACCINATION">Vaccination</option>
+                <option value="UPDATE">Update</option>
+              </Form.Select>
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Content</Form.Label>
+              <Form.Control as="textarea" rows={4} value={editNewsForm.content} onChange={e => setEditNewsForm({...editNewsForm, content: e.target.value})} required style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowEditNewsModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Update News</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+
+      {/* Center Modal */}
+      <Modal show={showCenterModal} onHide={() => setShowCenterModal(false)} size="lg" centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaHospital className="me-2" />Add Vaccination Center</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleCreateCenter}>
+          <Modal.Body>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Center Name</Form.Label>
+                  <Form.Control type="text" value={centerForm.name} onChange={e => setCenterForm({...centerForm, name: e.target.value})} required placeholder="Enter center name" style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Phone</Form.Label>
+                  <Form.Control type="text" value={centerForm.phone} onChange={e => setCenterForm({...centerForm, phone: e.target.value})} required placeholder="Phone number" style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+            </Row>
+            <Form.Group className="mb-3">
+              <Form.Label>Address</Form.Label>
+              <Form.Control type="text" value={centerForm.address} onChange={e => setCenterForm({...centerForm, address: e.target.value})} required placeholder="Full address" style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+            <Row>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>City</Form.Label>
+                  <Form.Control type="text" value={centerForm.city} onChange={e => setCenterForm({...centerForm, city: e.target.value})} required style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>State</Form.Label>
+                  <Form.Control type="text" value={centerForm.state} onChange={e => setCenterForm({...centerForm, state: e.target.value})} style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Pincode</Form.Label>
+                  <Form.Control type="text" value={centerForm.pincode} onChange={e => setCenterForm({...centerForm, pincode: e.target.value})} style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+            </Row>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Email</Form.Label>
+                  <Form.Control type="email" value={centerForm.email} onChange={e => setCenterForm({...centerForm, email: e.target.value})} placeholder="center@example.com" style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Daily Capacity</Form.Label>
+                  <Form.Control type="number" value={centerForm.dailyCapacity} onChange={e => setCenterForm({...centerForm, dailyCapacity: e.target.value})} style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+            </Row>
+            <Form.Group className="mb-3">
+              <Form.Label>Working Hours</Form.Label>
+              <Form.Control type="text" value={centerForm.workingHours} onChange={e => setCenterForm({...centerForm, workingHours: e.target.value})} placeholder="e.g., 09:00 AM - 05:00 PM" style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowCenterModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Create Center</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Drive Modal */}
+      <Modal show={showDriveModal} onHide={() => setShowDriveModal(false)} size="lg" centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaSyringe className="me-2" />Add Vaccination Drive</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleCreateDrive}>
+          <Modal.Body>
+            <Form.Group className="mb-3">
+              <Form.Label>Drive Title</Form.Label>
+              <Form.Control type="text" value={driveForm.title} onChange={e => setDriveForm({...driveForm, title: e.target.value})} required placeholder="e.g., COVID-19 Booster Drive" style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Description</Form.Label>
+              <Form.Control as="textarea" rows={2} value={driveForm.description} onChange={e => setDriveForm({...driveForm, description: e.target.value})} placeholder="Drive description" style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+            <Row>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Center</Form.Label>
+                  <Form.Select value={driveForm.centerId} onChange={e => setDriveForm({...driveForm, centerId: e.target.value})} required style={{borderRadius: '0.5rem'}}>
+                    <option value="">Select Center</option>
+                    {centers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </Form.Select>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Date</Form.Label>
+                  <Form.Control type="date" value={driveForm.driveDate} onChange={e => setDriveForm({...driveForm, driveDate: e.target.value})} required style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+            </Row>
+            <Row>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Min Age</Form.Label>
+                  <Form.Control type="number" value={driveForm.minAge} onChange={e => setDriveForm({...driveForm, minAge: e.target.value})} min="0" style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Max Age</Form.Label>
+                  <Form.Control type="number" value={driveForm.maxAge} onChange={e => setDriveForm({...driveForm, maxAge: e.target.value})} min="0" style={{borderRadius: '0.5rem'}} />
+                </Form.Group>
+              </Col>
+              <Col md={4}>
+                <Form.Group className="mb-3">
+                  <Form.Label>Active</Form.Label>
+                  <Form.Check type="switch" checked={driveForm.active} onChange={e => setDriveForm({...driveForm, active: e.target.checked})} label={driveForm.active ? 'Yes' : 'No'} />
+                </Form.Group>
+              </Col>
+            </Row>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowDriveModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Create Drive</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Slot Modal */}
+      <Modal show={showSlotModal} onHide={() => setShowSlotModal(false)} size="lg" centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaCalendarCheck className="me-2" />Add Slot to Drive</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleCreateSlot}>
+          <Modal.Body>
+            <Alert variant="info" style={{background: 'linear-gradient(135deg, #cffafe 0%, #06b6d4 100%)', border: 'none', borderRadius: '0.5rem'}}>
+              <small>Creating slot for drive: <strong>{selectedDrive?.title}</strong></small>
+            </Alert>
+            <Form.Group className="mb-3">
+              <Form.Label>Start Time</Form.Label>
+              <Form.Control 
+                type="datetime-local" 
+                value={slotForm.startTime} 
+                onChange={e => setSlotForm({...slotForm, startTime: e.target.value})} 
+                required 
+                style={{borderRadius: '0.5rem'}}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>End Time</Form.Label>
+              <Form.Control 
+                type="datetime-local" 
+                value={slotForm.endTime} 
+                onChange={e => setSlotForm({...slotForm, endTime: e.target.value})} 
+                required 
+                style={{borderRadius: '0.5rem'}}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Capacity (Number of Appointments)</Form.Label>
+              <Form.Control 
+                type="number" 
+                value={slotForm.capacity} 
+                onChange={e => setSlotForm({...slotForm, capacity: parseInt(e.target.value)})} 
+                required 
+                min="1"
+                placeholder="e.g., 50"
+                style={{borderRadius: '0.5rem'}}
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowSlotModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Create Slot</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Certificate Modal */}
+      <Modal show={showCertificateModal} onHide={() => setShowCertificateModal(false)} size="lg" centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaCertificate className="me-2" />Generate Certificate</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleGenerateCertificate}>
+          <Modal.Body>
+            <Alert variant="info" style={{background: 'linear-gradient(135deg, #cffafe 0%, #06b6d4 100%)', border: 'none', borderRadius: '0.5rem'}}>
+              <small>Generate a vaccination certificate for a completed booking. The booking must be in COMPLETED status.</small>
+            </Alert>
+            <Form.Group className="mb-3">
+              <Form.Label>Booking ID</Form.Label>
+              <Form.Control 
+                type="number" 
+                value={certificateForm.bookingId} 
+                onChange={e => setCertificateForm({...certificateForm, bookingId: e.target.value})} 
+                required 
+                placeholder="Enter booking ID"
+                style={{borderRadius: '0.5rem'}}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Vaccine Name</Form.Label>
+              <Form.Control 
+                type="text" 
+                value={certificateForm.vaccineName} 
+                onChange={e => setCertificateForm({...certificateForm, vaccineName: e.target.value})} 
+                required 
+                placeholder="e.g., Covishield, Covaxin, Pfizer"
+                style={{borderRadius: '0.5rem'}}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Dose Number</Form.Label>
+              <Form.Select 
+                value={certificateForm.doseNumber} 
+                onChange={e => setCertificateForm({...certificateForm, doseNumber: parseInt(e.target.value)})}
+                style={{borderRadius: '0.5rem'}}
+              >
+                <option value={1}>Dose 1</option>
+                <option value={2}>Dose 2</option>
+                <option value={3}>Booster Dose</option>
+              </Form.Select>
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowCertificateModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Generate Certificate</Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Edit Booking Modal */}
+      <Modal show={showEditBookingModal} onHide={() => setShowEditBookingModal(false)} centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title>Update Booking Status</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>Booking ID: <strong>#{selectedBooking?.id}</strong></p>
+          <p>Current Status: {getStatusBadge(selectedBooking?.status)}</p>
+          <hr />
+          <p className="mb-2">Change status to:</p>
+          <div className="d-flex gap-2 flex-wrap">
+            {selectedBooking?.status === 'PENDING' && (
+              <>
+                <Button variant="success" onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'approved')} style={{borderRadius: '0.5rem'}}>
+                  <FaCheck className="me-1" /> Approve
+                </Button>
+                <Button variant="danger" onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'rejected')} style={{borderRadius: '0.5rem'}}>
+                  <FaTimes className="me-1" /> Reject
+                </Button>
+              </>
+            )}
+            {selectedBooking?.status === 'APPROVED' && (
+              <Button variant="success" onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'completed')} style={{borderRadius: '0.5rem'}}>
+                <FaCheck className="me-1" /> Mark Completed
+              </Button>
+            )}
+            {(selectedBooking?.status === 'PENDING' || selectedBooking?.status === 'APPROVED') && (
+              <Button variant="secondary" onClick={() => handleUpdateBookingStatus(selectedBooking.id, 'cancelled')} style={{borderRadius: '0.5rem'}}>
+                Cancel Booking
+              </Button>
+            )}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowEditBookingModal(false)} style={{borderRadius: '0.5rem'}}>Close</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Feedback Response Modal */}
+      <Modal show={showFeedbackModal} onHide={() => setShowFeedbackModal(false)} centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaComment className="me-2" />Respond to Feedback</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p><strong>From:</strong> {selectedFeedback?.userEmail || 'Anonymous'}</p>
+          <p><strong>Subject:</strong> {selectedFeedback?.subject || 'N/A'}</p>
+          <p><strong>Rating:</strong> {[...Array(5)].map((_, i) => <span key={i} style={{color: i < (selectedFeedback?.rating || 0) ? '#f59e0b' : '#e2e8f0'}}>★</span>)}</p>
+          <hr />
+          <p className="mb-2"><strong>Feedback:</strong></p>
+          <div className="bg-light p-3 mb-3 rounded" style={{fontSize: '0.9rem'}}>
+            {selectedFeedback?.message || 'No message'}
+          </div>
+          <Form.Group>
+            <Form.Label>Your Response</Form.Label>
+            <Form.Control 
+              as="textarea" 
+              rows={4} 
+              value={responseText} 
+              onChange={(e) => setResponseText(e.target.value)}
+              placeholder="Write your response to this feedback..."
+              style={{borderRadius: '0.5rem'}}
+            />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowFeedbackModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+          <Button onClick={() => handleRespondToFeedback(selectedFeedback?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Response</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Contact Response Modal */}
+      <Modal show={showContactModal} onHide={() => setShowContactModal(false)} centered>
+        <Modal.Header closeButton style={{background: '#f8fafc'}}>
+          <Modal.Title><FaPhone className="me-2" />Respond to Contact</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p><strong>Name:</strong> {selectedContact?.name}</p>
+          <p><strong>Email:</strong> {selectedContact?.email}</p>
+          <p><strong>Phone:</strong> {selectedContact?.phone || 'N/A'}</p>
+          <p><strong>Subject:</strong> {selectedContact?.subject || 'N/A'}</p>
+          <hr />
+          <p className="mb-2"><strong>Message:</strong></p>
+          <div className="bg-light p-3 mb-3 rounded" style={{fontSize: '0.9rem'}}>
+            {selectedContact?.message || 'No message'}
+          </div>
+          <Form.Group>
+            <Form.Label>Your Response</Form.Label>
+            <Form.Control 
+              as="textarea" 
+              rows={4} 
+              value={responseText} 
+              onChange={(e) => setResponseText(e.target.value)}
+              placeholder="Write your response to this inquiry..."
+              style={{borderRadius: '0.5rem'}}
+            />
+          </Form.Group>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowContactModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+          <Button onClick={() => handleRespondToContact(selectedContact?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Response</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Custom Styles */}
+      <style>{`
+        .nav-tabs .nav-link {
+          border: none;
+          padding: 0.875rem 1.5rem;
+          color: #64748b;
+          font-weight: 600;
+          border-radius: 0.5rem;
+          transition: all 0.2s;
+        }
+        .nav-tabs .nav-link:hover {
+          background: #e0f2fe;
+          color: #0ea5e9;
+        }
+        .nav-tabs .nav-link.active {
+          background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+          color: white;
+          border-radius: 0.5rem;
+        }
+        .stats-card {
+          border-radius: 0.75rem;
+          padding: 1.5rem;
+          color: white;
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .stats-card:hover {
+          transform: translateY(-4px);
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+        }
+        .stats-card .stat-number {
+          font-size: 2.5rem;
+          font-weight: 800;
+          line-height: 1;
+        }
+        .stats-card .stat-label {
+          font-size: 0.875rem;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          font-weight: 500;
+        }
+        .table thead th {
+          background: #f8fafc;
+          border-bottom: 2px solid #0ea5e9;
+          color: #1e293b;
+          font-weight: 600;
+          text-transform: uppercase;
+          font-size: 0.75rem;
+          letter-spacing: 0.5px;
+          padding: 1rem;
+        }
+        .table tbody td {
+          padding: 1rem;
+          vertical-align: middle;
+          border-color: #e2e8f0;
+        }
+        .table tbody tr:hover {
+          background: #e0f2fe;
+        }
+        .card {
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+          transform: translateY(-2px);
+        }
+      `}</style>
+    </div>
+  );
+}

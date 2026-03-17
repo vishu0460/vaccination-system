@@ -1,0 +1,32 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local env
+.env
+admin_login.json
+
+# Root artifacts
+*.log
+*.tmp
+package-lock.json
+
+# Backend
+backend/target/
+backend/*.log
+backend/*.txt
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-report/
+frontend/test-results/
+frontend/*.log
+frontend/build*.log
+frontend/npm_install.log
+
+# Optional local folders with ACL issues / non-project data
+9.6/
+Server/

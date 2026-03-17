@@ -1,0 +1,1 @@
+ALTER TABLE news ADD COLUMN created_by BIGINT NULL;

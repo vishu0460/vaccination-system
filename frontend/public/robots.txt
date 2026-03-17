@@ -1,0 +1,49 @@
+# Smart Vaccination System - Robots.txt
+# https://vaccination.example.com
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Disallow admin and private areas
+Disallow: /admin/
+Disallow: /user/
+Disallow: /api/
+Disallow: /reset-password
+Disallow: /forgot-password
+
+# Sitemap location
+Sitemap: https://vaccination.example.com/sitemap.xml
+
+# Crawl-delay (optional, for polite crawling)
+Crawl-delay: 1
+
+# Googlebot specific rules
+User-agent: Googlebot
+Allow: /
+Disallow: /admin/
+Disallow: /user/
+Disallow: /api/
+
+# Bingbot specific rules
+User-agent: Bingbot
+Allow: /
+Disallow: /admin/
+Disallow: /user/
+Disallow: /api/
+
+# Twitter bot
+User-agent: Twitterbot
+Allow: /
+
+# Facebook crawler
+User-agent: facebookexternalhit
+Allow: /
+
+# Google Image bot
+User-agent: Googlebot-Image
+Allow: /
+
+# Google Mobile bot
+User-agent: Googlebot-Mobile
+Allow: /

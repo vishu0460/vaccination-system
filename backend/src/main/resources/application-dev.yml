@@ -1,0 +1,51 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:vaccination_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
+    username: sa
+    password: 
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+  sql:
+    init:
+      mode: always
+  mail:
+    host: ${MAIL_HOST:mailhog}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,http://localhost,http://frontend:80,http://frontend}
+  admin:
+    email: ${DEFAULT_ADMIN_EMAIL:vaxzone.vaccine@gmail.com}
+    password: ${DEFAULT_ADMIN_PASSWORD:Vaccine@#6030}
+  dev:
+    auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:true}
+  mail:
+    from: ${MAIL_FROM:noreply@vaccination.local}
+  seed:
+    enabled: ${APP_SEED_ENABLED:true}

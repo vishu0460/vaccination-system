@@ -1,0 +1,150 @@
+import React, { useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
+import api from "../api/client";
+
+export default function ResetPasswordPage() {
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") || "";
+  
+  const [resetToken, setResetToken] = useState(token);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    
+    if (newPassword !== confirmPassword) {
+      setMsg("Passwords do not match!");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setMsg("Password must be at least 6 characters");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { data } = await api.post("/auth/reset-password", { token: resetToken, newPassword });
+      setMsg(data.message || "Password reset successful!");
+      setSuccess(true);
+    } catch (err) {
+      setMsg(err.response?.data?.message || "Reset failed. Please check your token.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Helmet>
+        <title>Reset Password - VaxZone</title>
+      </Helmet>
+
+      <div className="auth-container">
+        <div className="auth-card scale-in">
+          <div className="card-header">
+            <i className="bi bi-shield-lock display-4 d-block mb-2"></i>
+            <h4 className="mb-0 fw-bold">Reset Password</h4>
+            <p className="mb-0 opacity-75">Enter your new password</p>
+          </div>
+          <div className="card-body">
+            {msg && (
+              <div className={`alert ${success ? "alert-success" : "alert-danger"}`}>
+                {msg}
+              </div>
+            )}
+
+            {!success && (
+              <form onSubmit={submit}>
+                <div className="mb-3">
+                  <label className="form-label">Reset Token</label>
+                  <div className="input-group">
+                    <span className="input-group-text bg-light border-end-0">
+                      <i className="bi bi-key text-muted"></i>
+                    </span>
+                    <input 
+                      className="form-control border-start-0" 
+                      placeholder="Enter reset token from email"
+                      required 
+                      value={resetToken} 
+                      onChange={(e) => setResetToken(e.target.value)} 
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">New Password</label>
+                  <div className="input-group">
+                    <span className="input-group-text bg-light border-end-0">
+                      <i className="bi bi-lock text-muted"></i>
+                    </span>
+                    <input 
+                      className="form-control border-start-0" 
+                      type="password" 
+                      placeholder="Enter new password"
+                      required 
+                      value={newPassword} 
+                      onChange={(e) => setNewPassword(e.target.value)} 
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <label className="form-label">Confirm Password</label>
+                  <div className="input-group">
+                    <span className="input-group-text bg-light border-end-0">
+                      <i className="bi bi-lock-fill text-muted"></i>
+                    </span>
+                    <input 
+                      className="form-control border-start-0" 
+                      type="password" 
+                      placeholder="Confirm new password"
+                      required 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                    />
+                  </div>
+                </div>
+
+                <button type="submit" className="btn btn-warning w-100 btn-lg" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                      Resetting...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-check2-circle me-2"></i> Reset Password
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {success && (
+              <div className="text-center">
+                <Link to="/login" className="btn btn-primary btn-lg">
+                  <i className="bi bi-box-arrow-in-right me-2"></i> Go to Login
+                </Link>
+              </div>
+            )}
+
+            <div className="text-center mt-4">
+              <p className="text-muted mb-0">
+                Need a new token?{" "}
+                <Link to="/forgot-password" className="text-decoration-none fw-bold text-primary">
+                  Request here
+                </Link>
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
