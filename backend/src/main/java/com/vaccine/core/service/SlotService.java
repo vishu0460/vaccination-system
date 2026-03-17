@@ -1,7 +1,7 @@
 package com.vaccine.core.service;
 
-import com.vaccine.dto.DriveResponse;
-import com.vaccine.core.model.Slot;
+import com.vaccine.common.dto.DriveResponse;
+import com.vaccine.domain.Slot;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import org.springframework.stereotype.Service;
 
@@ -9,12 +9,12 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@Service
+@RequiredArgsConstructor
+@Slf4j
+@Transactional(readOnly = true)
 public class SlotService {
     private final SlotRepository slotRepository;
-
-    public SlotService(SlotRepository slotRepository) {
-        this.slotRepository = slotRepository;
-    }
 
     public List<Slot> getAllActiveSlots() {
         return slotRepository.findByDrive_ActiveTrue();

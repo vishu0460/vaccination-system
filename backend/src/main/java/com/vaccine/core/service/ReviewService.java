@@ -1,8 +1,8 @@
 package com.vaccine.core.service;
 
-import com.vaccine.core.model.Review;
-import com.vaccine.core.model.User;
-import com.vaccine.core.model.VaccinationCenter;
+import com.vaccine.domain.Review;
+import com.vaccine.domain.User;
+import com.vaccine.domain.VaccinationCenter;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.ReviewRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
@@ -15,17 +15,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
+@Service
+@RequiredArgsConstructor
+@Slf4j
+@Transactional(readOnly = true)
 public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final VaccinationCenterRepository centerRepository;
-
-    public ReviewService(ReviewRepository reviewRepository, UserRepository userRepository, 
-                        VaccinationCenterRepository centerRepository) {
-        this.reviewRepository = reviewRepository;
-        this.userRepository = userRepository;
-        this.centerRepository = centerRepository;
-    }
 
     @Transactional
     public Review createReview(String email, Long centerId, Integer rating, String comment) {

@@ -3,7 +3,7 @@ package com.vaccine.web.controller;
 import com.vaccine.common.dto.CertificateRequest;
 import com.vaccine.common.dto.CertificateResponse;
 import com.vaccine.domain.Certificate;
-import com.vaccine.core.model.User;
+import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import com.vaccine.core.service.CertificateService;

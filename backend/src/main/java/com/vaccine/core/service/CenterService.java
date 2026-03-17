@@ -1,7 +1,7 @@
 package com.vaccine.core.service;
 
-import com.vaccine.dto.CenterRequest;
-import com.vaccine.core.model.VaccinationCenter;
+import com.vaccine.common.dto.CenterRequest;
+import com.vaccine.domain.VaccinationCenter;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.VaccinationCenterRepository;
 import org.springframework.cache.annotation.Cacheable;
@@ -16,12 +16,12 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@Service
+@RequiredArgsConstructor
+@Slf4j
+@Transactional(readOnly = true)
 public class CenterService {
     private final VaccinationCenterRepository centerRepository;
-
-    public CenterService(VaccinationCenterRepository centerRepository) {
-        this.centerRepository = centerRepository;
-    }
 
     @Transactional
     public VaccinationCenter createCenter(CenterRequest req) {

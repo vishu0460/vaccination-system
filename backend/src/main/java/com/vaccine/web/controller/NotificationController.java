@@ -1,6 +1,6 @@
 package com.vaccine.web.controller;
 
-import com.vaccine.core.model.SlotNotification;
+// import com.vaccine.core.model.SlotNotification; // Fixed: use domain if exists or create DTO
 import com.vaccine.core.service.SlotNotificationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
