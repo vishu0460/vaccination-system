@@ -1,9 +1,9 @@
 package com.vaccine.core.service;
 
-import com.vaccine.dto.SummaryResponse;
-import com.vaccine.core.model.VaccinationCenter;
-import com.vaccine.core.model.VaccinationDrive;
-import com.vaccine.core.model.Slot;
+import com.vaccine.common.dto.SummaryResponse;
+import com.vaccine.domain.VaccinationCenter;
+import com.vaccine.domain.VaccinationDrive;
+import com.vaccine.domain.Slot;
 import com.vaccine.infrastructure.persistence.repository.VaccinationCenterRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,36 +46,23 @@ public class PublicService {
         return result;
     }
 
-    @Cacheable(value = "public-drives", key = "T(java.lang.String).valueOf(#city) + ':' + #page + ':' + #size")
-    public Map<String, Object> getDrives(String city, int page, int size) {
+    public Map<String, Object> getDrives(String city, LocalDate fromDate, Integer age, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<VaccinationDrive> drives = driveRepository.findActiveDrivesPaged(
-            normalize(city), null, null, pageable);
+        List<VaccinationDrive> drives = driveRepository.findActiveDrives(city, fromDate, age);
         Map<String, Object> result = new HashMap<>();
-        result.put("drives", drives.getContent());
-        result.put("totalPages", drives.getTotalPages());
-        result.put("totalElements", drives.getTotalElements());
+        result.put("drives", drives);
+        result.put("totalPages", 1);
+        result.put("totalElements", drives.size());
         return result;
     }
 
-    @Cacheable(value = "public-drives", key = "T(java.lang.String).valueOf(#city) + ':' + T(java.lang.String).valueOf(#fromDate) + ':' + T(java.lang.String).valueOf(#age) + ':' + #page + ':' + #size")
-    public Map<String, Object> getDrives(String city, java.time.LocalDate fromDate, Integer age, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<VaccinationDrive> drives = driveRepository.findActiveDrivesPaged(
-            normalize(city), fromDate, age, pageable);
-        Map<String, Object> result = new HashMap<>();
-        result.put("drives", drives.getContent());
-        result.put("totalPages", drives.getTotalPages());
-        result.put("totalElements", drives.getTotalElements());
-        return result;
-    }
-
-    @Cacheable("public-summary")
+@Cacheable("public-summary")
     public SummaryResponse getSummary() {
         long totalCenters = centerRepository.count();
         long activeDrives = driveRepository.countByActiveTrue();
-        long availableSlots = slotRepository.countAvailableSlots();
-        return new SummaryResponse(totalCenters, activeDrives, availableSlots);
+        long totalSlots = slotRepository.count();
+        long totalBookings = 0L;
+        return new SummaryResponse(totalCenters, activeDrives, totalSlots, totalBookings);
     }
 
     public Optional<VaccinationCenter> getCenterDetail(Long id) {
@@ -82,7 +70,7 @@ public class PublicService {
     }
 
     public List<Slot> getDriveSlots(Long driveId) {
-        return slotRepository.findAvailableByDriveId(driveId);
+        return slotRepository.findByDriveIdOrderByStartTime(driveId);
     }
 
     private String normalize(String value) {

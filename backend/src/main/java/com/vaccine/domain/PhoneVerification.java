@@ -17,6 +17,9 @@ public class PhoneVerification {
     private Long id;
 
     @Column(nullable = false)
+    private Long userId;
+
+    @Column(nullable = false)
     private String phoneNumber;
 
     @Column(nullable = false)
@@ -26,11 +29,8 @@ public class PhoneVerification {
     private LocalDateTime expiresAt;
 
     @Column(nullable = false)
-    private boolean verified = false;
-
-    @Column(name = "user_id")
-    private Long userId;
+    private boolean used = false;
 
     @Column(name = "created_at")
-    private LocalDateTime createdAt;
+    private LocalDateTime createdAt = LocalDateTime.now();
 }

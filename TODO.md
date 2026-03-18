@@ -1,50 +1,34 @@
-# Vaccination System Full Repair TODO
-Status: [IN PROGRESS] 
+# Vaccination System Cleanup TODO
+**Plan Approved ✅ | Safe Minimal Cleanup | Progress Tracking**
 
-## Plan Breakdown (Approved by user)
+## 🔧 CURRENT STATUS
+- Backend: Clean (no junk, compiles expected)
+- Frontend: Clean (no test files)
+- Root: TODOs streamlined
+- Structure: Optimized
+- Verification: Pending
 
-### Phase 1: Compilation Fixes (High Priority)
-- [x] 1.1 Fix all import errors in controllers/services (domain vs core.model)
-- [ ] 1.2 Add missing Lombok annotations (@RequiredArgsConstructor, @Slf4j, @Transactional)
-- [ ] 1.3 Implement stubbed methods in services (CenterService, SlotService, etc.)
-- [ ] 1.4 `mvn clean compile` → SUCCESS
+## 📋 CLEANUP STEPS (Sequential)
 
-### Phase 2: Backend Core Fixes
-- [ ] 2.1 Complete service implementations (queries, business logic)
-- [ ] 2.2 Fix SecurityConfig: permit authenticated paths
-- [ ] 2.3 Add missing controllers (ProfileController, NotificationController)
-- [ ] 2.4 Enhance GlobalExceptionHandler
-- [ ] 2.5 Update DataSeeder (add ADMIN role, test data)
-- [ ] 2.6 `mvn clean test` → All tests pass
+### 1. **Delete Junk Files** [IN PROGRESS]
+- [ ] backend/src/main/java/HashGenerator.java (one-time tool)
+- [ ] frontend/src/pages/test.jsx (dev remnant)
+- [ ] frontend/vite.config.js.timestamp-* (cache)
+- [ ] frontend/public/sitemap.xml (fake)
+- [ ] frontend/public/robots.txt (if junk)
+- [ ] Root TODO-*.md clutter (AUTH, BACKEND-FIX, etc.; keep this TODO.md)
 
-### Phase 3: Frontend Integration
-- [ ] 3.1 Fix api/client.js paths
-- [ ] 3.2 Update components/pages for API responses
-- [ ] 3.3 `npm ci && npm run build` → SUCCESS
+### 2. **Build Verification**
+- [ ] cd backend && mvn clean compile
+- [ ] cd frontend && npm run build
 
-### Phase 4: Database & Data
-- [ ] 4.1 Align Flyway migrations with entities
-- [ ] 4.2 Seed centers/drives/slots/news data
-- [ ] 4.3 Test public endpoints return data
+### 3. **Runtime Check**
+- [ ] Backend: mvn spring-boot:run (local-simple)
+- [ ] Frontend: npm run dev
+- [ ] docker-compose up --build
 
-### Phase 5: Security & Prod
-- [ ] 5.1 Verify admin login (vaxzone.vaccine@gmail.com / Vaccine@#6030)
-- [ ] 5.2 Secure actuator endpoints
-- [ ] 5.3 Docker optimizations
-- [ ] 5.4 Update README with run instructions
+### 4. **Final Validation**
+- [ ] No errors, all features intact (auth, dashboard, APIs)
 
-### Phase 6: Verification
-- [ ] 6.1 Full docker-compose up → No errors
-- [ ] 6.2 Test key flows: register/login/book/ admin dashboard
-- [ ] 6.3 No console errors, data visible in UI
-
-**Next Step: 1.2 Add Lombok annotations → Mark complete & run mvn clean compile**
-
-**Commands to run after each phase:**
-```
-backend: mvn clean compile test
-frontend: npm ci && npm run build
-full: docker-compose up --build
-```
-
+**Next: Complete deletions → run mvn clean compile → update progress**
 

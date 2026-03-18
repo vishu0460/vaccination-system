@@ -1,5 +1,7 @@
 package com.vaccine.common.dto;
 
+import jakarta.validation.constraints.*;
+
 public record ForgotPasswordRequest(
-    String email
+    @NotBlank @Email String email
 ) {}

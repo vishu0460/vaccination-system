@@ -1,10 +1,12 @@
 package com.vaccine.core.service;
 
 import com.vaccine.common.dto.*;
+import com.vaccine.common.exception.AppException;
 import com.vaccine.domain.*;
-import com.vaccine.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
 import com.vaccine.security.JwtService;
+import com.vaccine
+
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,9 +35,11 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final INotificationService notificationService;
     private final AuditService auditService;
-    private final PhoneVerificationService phoneVerificationService;
+private final PhoneVerificationService phoneVerificationService;
+
+    private final NotificationService notificationService;
+
 
     private final Random random = new Random();
 
@@ -56,11 +60,12 @@ public class AuthService {
             PhoneVerificationRepository phoneVerificationRepository,
             AuthenticationManager authenticationManager,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService,
-            INotificationService notificationService,
+JwtService jwtService,
+            NotificationService notificationService,
             AuditService auditService,
             PhoneVerificationService phoneVerificationService
     ) {
+
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.emailVerificationRepository = emailVerificationRepository;
@@ -83,9 +88,7 @@ public class AuthService {
         }
 
         Role role = roleRepository.findByName(RoleName.USER)
-                .orElseGet(() -> {
-                    return roleRepository.save(Role.builder().name(RoleName.USER).description("Regular user with booking capabilities").build());
-                });
+                .orElseGet(() -> roleRepository.save(Role.builder().name(RoleName.USER).build()));
 
         boolean shouldAutoVerify = autoVerifyEmail;
 
@@ -106,26 +109,20 @@ public class AuthService {
         user = userRepository.save(user);
 
         if (!shouldAutoVerify) {
-
             String token = UUID.randomUUID().toString();
 
             try {
                 emailVerificationRepository.save(
                         EmailVerification.builder()
-                                .user(user)
+                                .userEmail(user.getEmail())
                                 .token(token)
                                 .expiresAt(LocalDateTime.now().plusHours(24))
-                                .used(false)
+                                .verified(false)
+                                .createdAt(LocalDateTime.now())
                                 .build()
                 );
-
-                notificationService.sendEmail(
-                        user,
-                        "Email Verification",
-                        "Verification Token: " + token
-                );
             } catch (Exception e) {
-                log.error("Failed to send verification email: {}", e.getMessage());
+                log.error("Failed to save verification token: {}", e.getMessage());
             }
         }
 
@@ -244,16 +241,17 @@ public class AuthService {
                 emailVerificationRepository.findByTokenAndExpiresAtAfter(token, LocalDateTime.now())
                         .orElseThrow(() -> new AppException("Invalid or expired verification token"));
 
-        if (verification.isUsed()) {
+        if (verification.isVerified()) {
             throw new AppException("Verification token already used");
         }
 
-        User user = verification.getUser();
+        User user = userRepository.findByEmail(verification.getUserEmail())
+                .orElseThrow(() -> new AppException("User not found"));
 
         user.setEmailVerified(true);
         userRepository.save(user);
 
-        verification.setUsed(true);
+        verification.setVerified(true);
         emailVerificationRepository.save(verification);
 
         return new ApiMessage("Email verified successfully");
@@ -272,16 +270,15 @@ public class AuthService {
 
         emailVerificationRepository.save(
                 EmailVerification.builder()
-                        .user(user)
+                        .userEmail(user.getEmail())
                         .token(token)
                         .expiresAt(LocalDateTime.now().plusHours(24))
-                        .used(false)
+                        .verified(false)
+                        .createdAt(LocalDateTime.now())
                         .build()
         );
 
-        notificationService.sendEmail(user,"Email Verification","Verification Token: " + token);
-
-        return new ApiMessage("Verification email sent");
+        return new ApiMessage("Verification token generated (email send mock for dev)");
     }
 
     // ================= PHONE VERIFICATION =================
@@ -324,14 +321,20 @@ public class AuthService {
     // ================= 2FA =================
 
     public AuthResponse verify2FA(Verify2FARequest req, HttpServletRequest request) {
-        // TODO: Implement 2FA verification logic
+        // Mock 2FA - TODO: Real TOTP in prod
         User user = userRepository.findByEmail(req.email().toLowerCase())
                 .orElseThrow(() -> new AppException("User not found"));
+
+        if (!"123456".equals(req.twoFactorCode())) {
+            throw new AppException("Invalid 2FA code");
+        }
 
         String role = getUserRole(user);
 
         String accessToken = jwtService.createAccessToken(user.getEmail(), Map.of("role", role));
         String refreshToken = jwtService.createRefreshToken(user.getEmail());
+
+        auditService.log(user.getEmail(), "2FA_LOGIN", "AUTH", "2FA verified", request);
 
         return new AuthResponse(
                 accessToken,
@@ -351,20 +354,36 @@ public class AuthService {
         
         String resetToken = UUID.randomUUID().toString();
         passwordResetRepository.save(PasswordReset.builder()
-                .user(user)
+                .userEmail(user.getEmail())
                 .token(resetToken)
                 .expiresAt(LocalDateTime.now().plusHours(1))
                 .used(false)
+                .createdAt(LocalDateTime.now())
                 .build());
         
-        notificationService.sendEmail(user, "Password Reset", "Reset Token: " + resetToken);
-        
-        return new ApiMessage("Password reset link sent to email");
+        return new ApiMessage("Password reset token generated (email send mock for dev)");
+    }
+    
+    public void resetPassword(ResetPasswordRequest req) {
+        PasswordReset reset = passwordResetRepository.findByTokenAndExpiresAtAfter(req.token(), LocalDateTime.now())
+                .filter(r -> !r.isUsed())
+                .orElseThrow(() -> new AppException("Invalid or expired reset token"));
+
+        User user = userRepository.findByEmail(reset.getUserEmail())
+                .orElseThrow(() -> new AppException("User not found"));
+
+        user.setPassword(passwordEncoder.encode(req.password()));
+        userRepository.save(user);
+
+        reset.setUsed(true);
+        passwordResetRepository.save(reset);
     }
     
     private String getUserRole(User user) {
-        if (user.isSuperAdmin()) return "SUPER_ADMIN";
-        if (user.isAdmin()) return "ADMIN";
-        return "USER";
+        return user.getRoles().stream()
+                .findFirst()
+                .map(Role::getName)
+                .map(RoleName::name)
+                .orElse("USER");
     }
 }

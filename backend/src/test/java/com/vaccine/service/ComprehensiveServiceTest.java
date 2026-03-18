@@ -1,4 +1,5 @@
-package com.vaccine.service;
+package com.vaccine;
+
 
 import com.vaccine.common.dto.*;
 import com.vaccine.domain.*;

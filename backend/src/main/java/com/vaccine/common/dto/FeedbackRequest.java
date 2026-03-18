@@ -1,7 +1,5 @@
 package com.vaccine.common.dto;
 
-public record FeedbackRequest(
-    Integer rating,
-    String subject,
-    String message
-) {}
+public record FeedbackRequest(String subject, String message, Integer rating) {
+}
+

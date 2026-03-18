@@ -1,6 +1,6 @@
 package com.vaccine.service;
 
-import com.vaccine.common.dto.BookingRequest;
+import com.vaccine.common.dto.BookingRequest;\nimport com.vaccine.common.exception.AppException;\nimport com.vaccine.infrastructure.persistence.repository.UserRepository;\nimport com.vaccine.domain.User;\nimport com.vaccine.domain.Slot;\nimport com.vaccine.domain.Booking;\nimport com.vaccine.domain.VaccinationDrive;\nimport com.vaccine.domain.VaccinationCenter;\nimport com.vaccine.domain.BookingStatus;
 import com.vaccine.domain.*;
 import com.vaccine.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;

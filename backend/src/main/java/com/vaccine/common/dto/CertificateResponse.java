@@ -5,5 +5,15 @@ import java.time.LocalDateTime;
 public record CertificateResponse(
     Long id,
     String certificateNumber,
-    String vaccineType,
-    LocalDateTime issued
+    String vaccineName,
+    Integer doseNumber,
+    LocalDateTime nextDoseDate,
+    String qrCode,
+    LocalDateTime issuedAt,
+    String userName,
+    String userEmail,
+    String centerName,
+    String driveTitle,
+    String slotTime,
+    String digitalVerificationCode
+) {}

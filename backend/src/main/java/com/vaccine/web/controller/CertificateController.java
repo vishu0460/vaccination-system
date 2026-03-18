@@ -13,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/certificates")
@@ -39,7 +40,7 @@ public class CertificateController {
         List<CertificateResponse> certs = certificateService.getUserCertificates(user.getId())
             .stream()
             .map(this::toResponse)
-            .toList();
+            .collect(Collectors.toList());
         return ResponseEntity.ok(certs);
     }
 

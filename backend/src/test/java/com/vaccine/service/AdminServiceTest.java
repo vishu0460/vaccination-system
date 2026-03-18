@@ -1,6 +1,6 @@
-package com.vaccine.core.service;
+package com.vaccine.service;
 
-import com.vaccine.domain.AdminServiceTest; // Wait, no.
+import com.vaccine.core.service.AdminService;
 
 import com.vaccine.common.dto.AdminDashboardStatsResponse;
 import com.vaccine.common.dto.CenterRequest;
@@ -59,7 +59,7 @@ class AdminServiceTest {
 
     @Test
     void createCenter_WithValidRequest_ShouldCreateCenter() {
-CenterRequest req = new CenterRequest("Test Center", "Test Address", 12345, "Test City", "Test State", 12.34, 56.78);
+CenterRequest req = new CenterRequest("Test Center", "Test Address", "Test City", "Test State", "12345", "1234567890", "test@center.com", "9AM-5PM", 100);
         
         when(centerRepository.save(any(VaccinationCenter.class))).thenAnswer(inv -> {
             VaccinationCenter center = inv.getArgument(0);
@@ -78,7 +78,7 @@ CenterRequest req = new CenterRequest("Test Center", "Test Address", 12345, "Tes
     @Test
     void createDrive_WithValidRequest_ShouldCreateDrive() {
         VaccinationCenter center = VaccinationCenter.builder().id(1L).name("Center").city("City").build();
-DriveRequest req = new DriveRequest("Drive Title", "Description", 1L, LocalDate.now().plusDays(7), 18, 60);
+DriveRequest req = new DriveRequest("Pfizer", "Description", 1L, LocalDate.now().plusDays(7), 18, 60, true);
 
         when(centerRepository.findById(1L)).thenReturn(Optional.of(center));
         when(driveRepository.save(any(VaccinationDrive.class))).thenAnswer(inv -> inv.getArgument(0));
@@ -86,7 +86,7 @@ DriveRequest req = new DriveRequest("Drive Title", "Description", 1L, LocalDate.
         VaccinationDrive result = adminService.createDrive(req);
 
         assertNotNull(result);
-        assertEquals("Drive Title", result.getTitle());
+assertEquals("Pfizer", result.getVaccineType());
         verify(driveRepository).save(any(VaccinationDrive.class));
     }
 
@@ -99,7 +99,7 @@ DriveRequest req = new DriveRequest("Drive", "Desc", 1L, LocalDate.now().plusDay
 
     @Test
     void createSlot_WithValidRequest_ShouldCreateSlot() {
-        VaccinationDrive drive = VaccinationDrive.builder().id(1L).title("Drive").build();
+VaccinationDrive drive = VaccinationDrive.builder().id(1L).vaccineType("Drive").build();
         LocalDateTime startTime = LocalDateTime.now().plusDays(7).withHour(9).withMinute(0);
         LocalDateTime endTime = LocalDateTime.now().plusDays(7).withHour(12).withMinute(0);
         SlotRequest req = new SlotRequest(1L, startTime, endTime, 50);
@@ -150,9 +150,8 @@ DriveRequest req = new DriveRequest("Drive", "Desc", 1L, LocalDate.now().plusDay
         when(centerRepository.count()).thenReturn(5L);
         when(driveRepository.count()).thenReturn(10L);
         when(driveRepository.countByActiveTrue()).thenReturn(7L);
-        when(slotRepository.count()).thenReturn(20L);
-        when(slotRepository.countAvailableSlots()).thenReturn(12L);
-        when(newsRepository.countByActiveTrue()).thenReturn(4L);
+when(slotRepository.count()).thenReturn(20L);\nwhen(slotRepository.countAvailableSlots()).thenReturn(12L);
+when(newsRepository.count()).thenReturn(4L);
         when(userRepository.countUsersSince(any())).thenReturn(10L);
         when(bookingRepository.countBookingsSince(any())).thenReturn(3L);
 
@@ -166,9 +165,9 @@ DriveRequest req = new DriveRequest("Drive", "Desc", 1L, LocalDate.now().plusDay
         assertEquals(20, result.totalSlots());
         assertEquals(10, result.newUsersThisMonth());
         assertEquals(3, result.bookingsToday());
-        assertEquals(5, result.centers());
+assertEquals(5L, result.totalCenters());
         assertEquals(12, result.availableSlots());
-        assertEquals(4, result.news());
+assertEquals(4L, result.totalNews());
     }
 
     @Test

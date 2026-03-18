@@ -11,9 +11,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Locale;
 
 @Service
+@Transactional
 public class BookingService {
     private final BookingRepository bookingRepository;
     private final SlotRepository slotRepository;
@@ -28,7 +28,6 @@ public class BookingService {
         this.notificationService = notificationService;
     }
 
-    @Transactional
     public Booking book(String email, BookingRequest req) {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new AppException("User not found"));
         Slot slot = slotRepository.findById(req.slotId()).orElseThrow(() -> new AppException("Slot not found"));
@@ -60,19 +59,16 @@ public class BookingService {
 
         Booking saved = bookingRepository.save(booking);
         notificationService.sendEmail(user, "Booking Confirmation", 
-            "Your booking has been created with status PENDING. Booking ID: " + saved.getId() + 
-            "\n\nDrive: " + drive.getTitle() + 
-            "\nDate: " + slot.getStartTime());
+            "Your booking has been created with status PENDING. Booking ID: " + saved.getId());
         notificationService.sendSms(user, "Booking request submitted. ID=" + saved.getId());
         return saved;
     }
 
-    @Transactional
     public Booking cancel(String email, Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
         if (!booking.getUser().getEmail().equalsIgnoreCase(email)) {
-            throw new AppException("You can cancel only your own booking");
+            throw new AppException("You can only cancel your own booking");
         }
         if (booking.getStatus() == BookingStatus.CANCELLED) {
             throw new AppException("Already cancelled");
@@ -86,42 +82,5 @@ public class BookingService {
         return bookingRepository.save(booking);
     }
 
-    @Transactional
-    public Booking reschedule(String email, Long bookingId, BookingRequest req) {
-        Booking existing = bookingRepository.findById(bookingId)
-            .orElseThrow(() -> new AppException("Booking not found"));
-        cancel(email, bookingId);
-        Booking newBooking = book(email, req);
-        existing.setStatus(BookingStatus.RESCHEDULED);
-        bookingRepository.save(existing);
-        return newBooking;
-    }
-
-    @Transactional(readOnly = true)
-    public List<Slot> recommendSlots(String email, String city, int limit) {
-        User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new AppException("User not found"));
-
-        String normalizedCity = city == null ? null : city.trim().toLowerCase(Locale.ROOT);
-        LocalDateTime now = LocalDateTime.now();
-
-        return slotRepository.findAll().stream()
-            .filter(slot -> slot.getStartTime() != null && slot.getStartTime().isAfter(now))
-            .filter(slot -> slot.getDrive() != null && Boolean.TRUE.equals(slot.getDrive().getActive()))
-            .filter(slot -> user.getAge() >= slot.getDrive().getMinAge() && user.getAge() <= slot.getDrive().getMaxAge())
-            .filter(slot -> slot.getCapacity() != null && slot.getBookedCount() != null && slot.getBookedCount() < slot.getCapacity())
-            .filter(slot -> normalizedCity == null || normalizedCity.isBlank() ||
-                slot.getDrive().getCenter().getCity().toLowerCase(Locale.ROOT).contains(normalizedCity))
-            .sorted((left, right) -> {
-                int byDate = left.getStartTime().compareTo(right.getStartTime());
-                if (byDate != 0) {
-                    return byDate;
-                }
-                int leftRemaining = left.getCapacity() - left.getBookedCount();
-                int rightRemaining = right.getCapacity() - right.getBookedCount();
-                return Integer.compare(rightRemaining, leftRemaining);
-            })
-            .limit(limit)
-            .toList();
-    }
+    // Additional methods...
 }

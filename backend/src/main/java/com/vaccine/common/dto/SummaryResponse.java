@@ -1,9 +1,5 @@
 package com.vaccine.common.dto;
 
-public record SummaryResponse(
-    Long totalCenters,
-    Long totalDrives,
-    Long availableSlots,
-    Long totalUsers,
-    Double averageRating
-) {}
+public record SummaryResponse(Long centersCount, Long drivesCount, Long availableSlots, Long totalBookings) {
+}
+

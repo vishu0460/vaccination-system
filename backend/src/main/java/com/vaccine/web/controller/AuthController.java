@@ -1,6 +1,8 @@
 package com.vaccine.web.controller;
 
 import com.vaccine.common.dto.*;
+import com.vaccine.common.exception.AppException;
+import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.core.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -53,9 +55,10 @@ public class AuthController {
         return ResponseEntity.ok(authService.forgotPassword(req));
     }
 
-    @PostMapping("/reset-password")
-    public ResponseEntity<ApiMessage> resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
-        return ResponseEntity.ok(authService.resetPassword(req));
+@PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest req) {
+        authService.resetPassword(req);
+        return ResponseEntity.ok(new ApiMessage("Password reset successful"));
     }
 
     // 2FA endpoint - verify 2FA code
