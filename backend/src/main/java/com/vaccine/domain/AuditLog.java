@@ -29,8 +29,8 @@ public class AuditLog {
     @Column(length = 255)
     private String details;
 
-    @Column(nullable = false, length = 64)
-    private String ipAddress;
+@Column(nullable = false, length = 64)
+    private String ip;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

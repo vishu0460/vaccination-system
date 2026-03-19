@@ -27,21 +27,37 @@ public class Contact {
     @Column(columnDefinition = "TEXT", nullable = false)
     private String message;
 
+@Column(nullable = false, length = 255)
+    private String name;
+
+    @Column(nullable = false, length = 255)
+    private String email;
+
+    @Column(length = 20)
+    private String phone;
+
     @Column(name = "admin_response", columnDefinition = "TEXT")
-    private String adminResponse;
+    private String response;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private String status;
+    private ContactStatus status;
 
-    @Column(name = "submitted_at")
-    private LocalDateTime submittedAt;
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 
-    @Column(name = "responded_at")
-    private LocalDateTime respondedAt;
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
-        submittedAt = LocalDateTime.now();
-        status = "PENDING";
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+        if (status == null) status = ContactStatus.PENDING;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

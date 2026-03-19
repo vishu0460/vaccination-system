@@ -1,5 +1,6 @@
 package com.vaccine.web.controller;
 
+import com.vaccine.common.dto.ApiResponse;
 import com.vaccine.common.dto.SummaryResponse;
 import com.vaccine.domain.Slot;
 import com.vaccine.domain.VaccinationCenter;
@@ -7,51 +8,67 @@ import com.vaccine.core.service.PublicService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-@RestController
-@RequestMapping("/public")
-@RequiredArgsConstructor
 @Slf4j
+@RestController
+@Validated
+@RequiredArgsConstructor
+@RequestMapping("/api/v1/public")
 public class PublicController {
     
     private final PublicService publicService;
 
     @GetMapping("/centers")
-    public ResponseEntity<Map<String, Object>> getCenters(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCenters(
             @RequestParam(required = false) String city,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(publicService.getCenters(city, page, size));
+        log.info("Public centers query: city={}, page={}, size={}", city, page, size);
+        Map<String, Object> centersData = publicService.getCenters(city, page, size);
+        return ResponseEntity.ok(ApiResponse.success(centersData));
     }
 
     @GetMapping("/drives")
-    public ResponseEntity<Map<String, Object>> getDrives(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDrives(
             @RequestParam(required = false) String city,
-            @RequestParam(required = false) java.time.LocalDate fromDate,
+            @RequestParam(required = false) LocalDate fromDate,
             @RequestParam(required = false) Integer age,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(publicService.getDrives(city, fromDate, age, page, size));
+        log.info("Public drives query: city={}, fromDate={}, age={}, page={}, size={}", city, fromDate, age, page, size);
+        Map<String, Object> drivesData = publicService.getDrives(city, fromDate, age, page, size);
+        return ResponseEntity.ok(ApiResponse.success(drivesData));
     }
 
     @GetMapping("/summary")
-    public ResponseEntity<SummaryResponse> getSummary() {
-        return ResponseEntity.ok(publicService.getSummary());
+    public ResponseEntity<ApiResponse<SummaryResponse>> getSummary() {
+        log.info("Public summary requested");
+        SummaryResponse summary = publicService.getSummary();
+        return ResponseEntity.ok(ApiResponse.success(summary));
     }
 
     @GetMapping("/centers/{id}")
-    public ResponseEntity<VaccinationCenter> getCenterDetail(@PathVariable Long id) {
-        Optional<VaccinationCenter> center = publicService.getCenterDetail(id);
-        return center.map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<ApiResponse<VaccinationCenter>> getCenterDetail(@PathVariable Long id) {
+        log.info("Public center detail ID={}", id);
+        Optional<VaccinationCenter> centerOpt = publicService.getCenterDetail(id);
+        if (centerOpt.isPresent()) {
+            return ResponseEntity.ok(ApiResponse.success(centerOpt.get()));
+        } else {
+            return ResponseEntity.notFound().build();
+        }
     }
 
     @GetMapping("/drives/{driveId}/slots")
-    public ResponseEntity<List<Slot>> getDriveSlots(@PathVariable Long driveId) {
-        return ResponseEntity.ok(publicService.getDriveSlots(driveId));
+    public ResponseEntity<ApiResponse<List<Slot>>> getDriveSlots(@PathVariable Long driveId) {
+        log.info("Public drive slots ID={}", driveId);
+        List<Slot> slots = publicService.getDriveSlots(driveId);
+        return ResponseEntity.ok(ApiResponse.success(slots));
     }
 }

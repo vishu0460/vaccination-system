@@ -3,7 +3,6 @@ package com.vaccine.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -18,7 +17,7 @@ public class Certificate {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
+    @OneToOne
     @JoinColumn(name = "booking_id")
     private Booking booking;
 
@@ -41,10 +40,12 @@ public class Certificate {
     private String digitalVerificationCode;
 
     @Column(name = "next_dose_date")
-    private LocalDate nextDoseDate;
+    private LocalDateTime nextDoseDate;
 
     @Column(name = "issued_at")
     private LocalDateTime issuedAt;
+
+    private String qrCode;
 
     @PrePersist
     protected void onCreate() {

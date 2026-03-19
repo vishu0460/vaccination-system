@@ -26,7 +26,7 @@ public class VaccinationCenter {
     private String state;
 
     @Column(name = "pincode")
-    private Integer pincode;
+    private String pincode;
 
     private Double lat;
 
@@ -38,4 +38,11 @@ public class VaccinationCenter {
 
     @Column(columnDefinition = "TEXT")
     private String description;
+
+    @Column(name = "working_hours")
+    private String workingHours;
+
+    private Integer dailyCapacity;
+
+    // Lombok generated getters/setters/builders
 }

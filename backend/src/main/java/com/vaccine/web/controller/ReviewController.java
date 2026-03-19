@@ -1,22 +1,28 @@
 package com.vaccine.web.controller;
 
+import com.vaccine.common.dto.ApiResponse;
 import com.vaccine.common.dto.ReviewRequest;
 import com.vaccine.common.dto.ReviewResponse;
 import com.vaccine.domain.Review;
 import com.vaccine.core.service.ReviewService;
 import jakarta.validation.Valid;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @RestController
-@RequestMapping("/reviews")
+@Validated
+@RequestMapping("/api/v1/reviews")
 public class ReviewController {
     private final ReviewService reviewService;
 
@@ -25,64 +31,73 @@ public class ReviewController {
     }
 
     @PostMapping
-    public ResponseEntity<ReviewResponse> createReview(
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<ReviewResponse>> createReview(
             @Valid @RequestBody ReviewRequest request,
             Authentication auth) {
+        log.info("Create review for centerId={}, rating={}, user={}", request.centerId(), request.rating(), auth.getName());
         Review review = reviewService.createReview(
             auth.getName(), request.centerId(), request.rating(), request.comment());
-        return ResponseEntity.ok(toResponse(review));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(toResponse(review), "Review created"));
     }
 
     @GetMapping("/center/{centerId}")
-    public ResponseEntity<List<ReviewResponse>> getCenterReviews(@PathVariable Long centerId) {
+    public ResponseEntity<ApiResponse<List<ReviewResponse>>> getCenterReviews(@PathVariable Long centerId) {
+        log.info("Get reviews for center={}", centerId);
         List<ReviewResponse> reviews = reviewService.getApprovedReviewsByCenter(centerId)
             .stream()
             .map(this::toResponse)
             .toList();
-        return ResponseEntity.ok(reviews);
+        return ResponseEntity.ok(ApiResponse.success(reviews));
     }
 
     @GetMapping("/center/{centerId}/paged")
-    public ResponseEntity<Page<ReviewResponse>> getCenterReviewsPaged(
+    public ResponseEntity<ApiResponse<Page<ReviewResponse>>> getCenterReviewsPaged(
             @PathVariable Long centerId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
+        log.info("Get paged reviews for center={}, page={}, size={}", centerId, page, size);
         Page<ReviewResponse> reviews = reviewService.getApprovedReviewsByCenterPaged(
             centerId, PageRequest.of(page, size))
             .map(this::toResponse);
-        return ResponseEntity.ok(reviews);
+        return ResponseEntity.ok(ApiResponse.success(reviews));
     }
 
     @GetMapping("/center/{centerId}/rating")
-    public ResponseEntity<Map<String, Object>> getCenterRating(@PathVariable Long centerId) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getCenterRating(@PathVariable Long centerId) {
+        log.info("Get rating for center={}", centerId);
         Double avg = reviewService.getAverageRating(centerId);
         Long count = reviewService.getReviewCount(centerId);
-        return ResponseEntity.ok(Map.of(
+        Map<String, Object> ratingInfo = Map.of(
             "averageRating", avg != null ? avg : 0.0,
             "reviewCount", count
-        ));
+        );
+        return ResponseEntity.ok(ApiResponse.success(ratingInfo));
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('SUPER_ADMIN')")
-    public ResponseEntity<List<ReviewResponse>> getAllReviews() {
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<List<ReviewResponse>>> getAllReviews() {
+        log.info("Get all reviews");
         List<ReviewResponse> reviews = reviewService.getAllReviews()
             .stream()
             .map(this::toResponse)
             .toList();
-        return ResponseEntity.ok(reviews);
+        return ResponseEntity.ok(ApiResponse.success(reviews));
     }
 
     @PatchMapping("/{reviewId}/approve")
-    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('SUPER_ADMIN')")
-    public ResponseEntity<ReviewResponse> approveReview(@PathVariable Long reviewId) {
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<ReviewResponse>> approveReview(@PathVariable Long reviewId) {
+        log.info("Approve review={}", reviewId);
         Review review = reviewService.approveReview(reviewId);
-        return ResponseEntity.ok(toResponse(review));
+        return ResponseEntity.ok(ApiResponse.success(toResponse(review), "Review approved"));
     }
 
     @DeleteMapping("/{reviewId}")
-    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('SUPER_ADMIN')")
-    public ResponseEntity<Void> deleteReview(@PathVariable Long reviewId) {
+    @PreAuthorize("hasAnyAuthority('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> deleteReview(@PathVariable Long reviewId) {
+        log.info("Delete review={}", reviewId);
         reviewService.deleteReview(reviewId);
         return ResponseEntity.noContent().build();
     }

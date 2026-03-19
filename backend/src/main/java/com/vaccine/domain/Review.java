@@ -34,11 +34,15 @@ public class Review {
     @Column(name = "is_approved", nullable = false)
     private Boolean isApproved = false;
 
-    @Column(name = "submitted_at")
+@Column(name = "submitted_at")
     private LocalDateTime submittedAt;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
         submittedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now();
     }
 }

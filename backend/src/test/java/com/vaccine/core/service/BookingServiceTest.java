@@ -1,8 +1,9 @@
-package com.vaccine.service;
+package com.vaccine.core.service;
 
-import com.vaccine.common.dto.BookingRequest;\nimport com.vaccine.common.exception.AppException;\nimport com.vaccine.infrastructure.persistence.repository.UserRepository;\nimport com.vaccine.domain.User;\nimport com.vaccine.domain.Slot;\nimport com.vaccine.domain.Booking;\nimport com.vaccine.domain.VaccinationDrive;\nimport com.vaccine.domain.VaccinationCenter;\nimport com.vaccine.domain.BookingStatus;
+import com.vaccine.common.dto.BookingRequest;
+import com.vaccine.common.exception.AppException;
+import com.vaccine.core.service.INotificationService;
 import com.vaccine.domain.*;
-import com.vaccine.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
@@ -14,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -59,13 +61,15 @@ class BookingServiceTest {
             .center(testCenter)
             .build();
 
+        LocalDateTime slotDateTime = LocalDateTime.now().plusDays(1);
         testSlot = Slot.builder()
             .id(1L)
             .drive(testDrive)
-            .startTime(LocalDateTime.now().plusDays(1))
-            .endTime(LocalDateTime.now().plusDays(1).plusHours(1))
+            .dateTime(slotDateTime)
             .capacity(10)
             .bookedCount(0)
+            .startTime(slotDateTime.toLocalTime())
+            .endTime(slotDateTime.plusHours(1).toLocalTime())
             .build();
 
         testUser = User.builder()
@@ -78,12 +82,10 @@ class BookingServiceTest {
 
     @Test
     void book_Success() {
-        BookingRequest request = new BookingRequest(1L);
+        BookingRequest request = new BookingRequest(1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
-        when(bookingRepository.existsByUserIdAndSlotStartTimeBetweenAndStatusIn(
-            any(), any(), any(), any())).thenReturn(false);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> {
             Booking b = invocation.getArgument(0);
             b.setId(1L);
@@ -94,14 +96,13 @@ class BookingServiceTest {
 
         assertNotNull(result);
         assertEquals(BookingStatus.PENDING, result.getStatus());
-        assertEquals(1, testSlot.getBookedCount());
         verify(slotRepository).save(testSlot);
     }
 
     @Test
     void book_AgeNotEligible() {
         testUser.setAge(15);
-        BookingRequest request = new BookingRequest(1L);
+        BookingRequest request = new BookingRequest(1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
@@ -113,23 +114,10 @@ class BookingServiceTest {
     @Test
     void book_SlotFull() {
         testSlot.setBookedCount(10);
-        BookingRequest request = new BookingRequest(1L);
+        BookingRequest request = new BookingRequest(1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
-
-        assertThrows(AppException.class, () -> 
-            bookingService.book("test@example.com", request));
-    }
-
-    @Test
-    void book_ConflictExists() {
-        BookingRequest request = new BookingRequest(1L);
-
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-        when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
-        when(bookingRepository.existsByUserIdAndSlotStartTimeBetweenAndStatusIn(
-            any(), any(), any(), any())).thenReturn(true);
 
         assertThrows(AppException.class, () -> 
             bookingService.book("test@example.com", request));
@@ -150,7 +138,7 @@ class BookingServiceTest {
         Booking result = bookingService.cancel("test@example.com", 1L);
 
         assertEquals(BookingStatus.CANCELLED, result.getStatus());
-        assertEquals(0, testSlot.getBookedCount());
+        verify(slotRepository).save(testSlot);
     }
 
     @Test

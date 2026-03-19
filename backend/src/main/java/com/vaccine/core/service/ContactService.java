@@ -3,6 +3,7 @@ package com.vaccine.core.service;
 import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.common.dto.ContactRequest;
 import com.vaccine.domain.Contact;
+import com.vaccine.domain.ContactStatus;
 import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.ContactRepository;
@@ -41,7 +42,7 @@ public class ContactService {
         contact.setSubject(request.subject());
         contact.setMessage(request.message());
         contact.setUser(user);
-        contact.setStatus(Contact.ContactStatus.PENDING);
+        contact.setStatus(ContactStatus.PENDING);
 
         contactRepository.save(contact);
 
@@ -69,7 +70,7 @@ public class ContactService {
                 .orElseThrow(() -> new AppException("Contact not found"));
 
         contact.setResponse(response);
-        contact.setStatus(Contact.ContactStatus.RESPONDED);
+        contact.setStatus(ContactStatus.RESOLVED);
         contactRepository.save(contact);
 
         return new ApiMessage("Response sent successfully");

@@ -125,6 +125,10 @@ public boolean hasRole(RoleName roleName) {
             .anyMatch(role -> role.getName().equals(roleName));
     }
 
+    public String getPassword() {
+        return password;
+    }
+
     public String getEmail() {
         return email;
     }

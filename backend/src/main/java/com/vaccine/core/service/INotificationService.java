@@ -7,9 +7,9 @@ import java.util.List;
 public interface INotificationService {
     void sendBookingNotification(Booking booking);
     
-    void sendEmail(User user, String subject, String message);
+void sendEmail(com.vaccine.domain.User user, String subject, String message);
     
-    void sendSms(User user, String message);
+    void sendSms(com.vaccine.domain.User user, String message);
     
     List<Notification> getAllNotifications();
     

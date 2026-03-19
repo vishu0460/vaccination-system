@@ -6,9 +6,11 @@ import java.time.LocalTime;
 public record DriveRequest(
     String title,
     String description,
+    String vaccineType,
     Long centerId,
     LocalDate driveDate,
     Integer minAge,
     Integer maxAge,
+    Integer totalSlots,
     Boolean active
 ) {}

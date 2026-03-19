@@ -1,7 +1,8 @@
-package com.vaccine;
-
+package com.vaccine.service;
 
 import com.vaccine.common.dto.*;
+import com.vaccine.core.service.AuditService;
+import com.vaccine.core.service.INotificationService;
 import com.vaccine.domain.*;
 import com.vaccine.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
@@ -19,9 +20,13 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
 
+import com.vaccine.domain.ContactStatus;
+import com.vaccine.domain.FeedbackStatus;
+
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+
 
 /**
  * Comprehensive Service Layer Tests
@@ -43,7 +48,7 @@ class ComprehensiveServiceTest {
     @Mock private ContactRepository contactRepository;
     @Mock private NewsRepository newsRepository;
     @Mock private ReviewRepository reviewRepository;
-    @Mock private NotificationRepository notificationRepository;
+
     @Mock private INotificationService notificationService;
     @Mock private AuditService auditService;
 
@@ -136,17 +141,18 @@ class ComprehensiveServiceTest {
             .minAge(18)
             .maxAge(60)
             .active(true)
-            .createdAt(LocalDateTime.now())
             .build();
 
         // Setup Slot
+        LocalDateTime slotDateTime = LocalDateTime.now().plusDays(7);
         testSlot = Slot.builder()
             .id(1L)
             .drive(testDrive)
-            .startTime(LocalDateTime.now().plusDays(7).withHour(10).withMinute(0))
-            .endTime(LocalDateTime.now().plusDays(7).withHour(11).withMinute(0))
+            .dateTime(slotDateTime)
             .capacity(10)
             .bookedCount(0)
+            .startTime(slotDateTime.toLocalTime())
+            .endTime(slotDateTime.plusHours(1).toLocalTime())
             .build();
 
         // Setup Booking
@@ -175,7 +181,7 @@ class ComprehensiveServiceTest {
         testFeedback.setSubject("Test Feedback");
         testFeedback.setMessage("This is a test feedback message");
         testFeedback.setRating(4);
-        testFeedback.setStatus(Feedback.FeedbackStatus.PENDING);
+        testFeedback.setStatus(FeedbackStatus.PENDING);
         testFeedback.setCreatedAt(LocalDateTime.now());
 
         // Setup Contact - using manual creation
@@ -183,8 +189,8 @@ class ComprehensiveServiceTest {
         testContact.setId(1L);
         testContact.setUser(testUser);
         testContact.setSubject("Test Inquiry");
-        testContact.setMessage("This is a test inquiry message");
-        testContact.setStatus(Contact.ContactStatus.PENDING);
+testContact.setMessage("This is a test inquiry message");
+        testContact.setStatus(ContactStatus.PENDING);
         testContact.setPhone("+1234567890");
         testContact.setCreatedAt(LocalDateTime.now());
 
@@ -556,16 +562,16 @@ class ComprehensiveServiceTest {
 
     @Test
     void testPastBookingDate() {
-        testSlot.setStartTime(LocalDateTime.now().minusDays(1));
+        testSlot.setStartTime(LocalDateTime.now().minusDays(1).toLocalTime());
         
-        assertTrue(testSlot.getStartTime().isBefore(LocalDateTime.now()));
+        assertTrue(testSlot.getStartTime().isBefore(LocalDateTime.now().toLocalTime()));
     }
 
     @Test
     void testFutureBookingDate() {
-        testSlot.setStartTime(LocalDateTime.now().plusMonths(1));
+        testSlot.setStartTime(LocalDateTime.now().plusMonths(1).toLocalTime());
         
-        assertTrue(testSlot.getStartTime().isAfter(LocalDateTime.now()));
+        assertTrue(testSlot.getStartTime().isAfter(LocalDateTime.now().toLocalTime()));
     }
 
     // ========== CONCURRENCY TESTS ==========
@@ -711,15 +717,15 @@ class ComprehensiveServiceTest {
         assertNotNull(testFeedback.getSubject());
         
         // 2. Admin views feedback
-        assertEquals(Feedback.FeedbackStatus.PENDING, testFeedback.getStatus());
+        assertEquals(FeedbackStatus.PENDING, testFeedback.getStatus());
         
         // 3. Admin responds to feedback
         testFeedback.setResponse("Thank you for your feedback!");
         assertNotNull(testFeedback.getResponse());
         
         // 4. Feedback status updated
-        testFeedback.setStatus(Feedback.FeedbackStatus.APPROVED);
-        assertEquals(Feedback.FeedbackStatus.APPROVED, testFeedback.getStatus());
+        testFeedback.setStatus(FeedbackStatus.RESPONDED);
+        assertEquals(FeedbackStatus.RESPONDED, testFeedback.getStatus());
     }
 
     @Test
@@ -728,15 +734,15 @@ class ComprehensiveServiceTest {
         assertNotNull(testContact.getSubject());
         
         // 2. Admin views inquiry
-        assertEquals(Contact.ContactStatus.PENDING, testContact.getStatus());
+        assertEquals(ContactStatus.PENDING, testContact.getStatus());
         
         // 3. Admin responds to inquiry
         testContact.setResponse("We will look into this.");
         assertNotNull(testContact.getResponse());
         
         // 4. Inquiry status updated
-        testContact.setStatus(Contact.ContactStatus.RESPONDED);
-        assertEquals(Contact.ContactStatus.RESPONDED, testContact.getStatus());
+        testContact.setStatus(ContactStatus.RESOLVED);
+        assertEquals(ContactStatus.RESOLVED, testContact.getStatus());
     }
 
     // ========== PERFORMANCE TESTS ==========

@@ -6,8 +6,11 @@ public record NewsResponse(
     Long id,
     String title,
     String content,
-    boolean published,
+    String summary,
+    String imageUrl,
+    Integer priority,
+    Boolean active,
     LocalDateTime publishedAt,
     LocalDateTime expiresAt,
-    LocalDateTime createdAt
+    String category
 ) {}

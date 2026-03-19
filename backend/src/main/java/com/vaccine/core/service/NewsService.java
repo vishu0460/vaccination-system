@@ -1,8 +1,8 @@
 package com.vaccine.core.service;
 
-import com.vaccine.dto.NewsRequest;
-import com.vaccine.dto.NewsResponse;
-import com.vaccine.core.model.News;
+import com.vaccine.common.dto.NewsRequest;
+import com.vaccine.common.dto.NewsResponse;
+import com.vaccine.domain.News;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.NewsRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
@@ -38,16 +38,17 @@ public class NewsService {
 
     @Transactional
     public NewsResponse createNews(NewsRequest request, String adminEmail) {
-        News news = new News();
-        news.setTitle(request.getTitle().trim());
-        news.setContent(request.getContent().trim());
-        news.setSummary(request.getSummary() != null ? request.getSummary().trim() : null);
-        news.setImageUrl(request.getImageUrl() != null ? request.getImageUrl().trim() : null);
-        news.setPriority(request.getPriority() != null ? request.getPriority() : 0);
-        news.setActive(request.getActive() != null ? request.getActive() : true);
-        news.setExpiresAt(request.getExpiresAt());
-        news.setCreatedBy(userRepository.findByEmail(adminEmail).map(user -> user.getId()).orElse(null));
-        news.setCategory(normalizeCategory(request.getCategory()));
+        News news = News.builder()
+            .title(request.title().trim())
+            .content(request.content().trim())
+            .summary(request.summary() != null ? request.summary().trim() : null)
+            .imageUrl(request.imageUrl() != null ? request.imageUrl().trim() : null)
+            .priority(request.priority() != null ? request.priority() : 0)
+            .active(request.active() != null ? request.active() : true)
+            .expiresAt(request.expiresAt())
+            .createdBy(userRepository.findByEmail(adminEmail).map(user -> user.getId()).orElse(null))
+            .category(normalizeCategory(request.category()))
+            .build();
 
         news = newsRepository.save(news);
         return toResponse(news);
@@ -58,14 +59,14 @@ public class NewsService {
         News news = newsRepository.findById(id)
             .orElseThrow(() -> new AppException("News not found"));
 
-        news.setTitle(request.getTitle().trim());
-        news.setContent(request.getContent().trim());
-        news.setSummary(request.getSummary() != null ? request.getSummary().trim() : null);
-        news.setImageUrl(request.getImageUrl() != null ? request.getImageUrl().trim() : null);
-        if (request.getPriority() != null) news.setPriority(request.getPriority());
-        if (request.getActive() != null) news.setActive(request.getActive());
-        news.setExpiresAt(request.getExpiresAt());
-        news.setCategory(normalizeCategory(request.getCategory()));
+        news.setTitle(request.title().trim());
+        news.setContent(request.content().trim());
+        news.setSummary(request.summary() != null ? request.summary().trim() : null);
+        news.setImageUrl(request.imageUrl() != null ? request.imageUrl().trim() : null);
+        if (request.priority() != null) news.setPriority(request.priority());
+        if (request.active() != null) news.setActive(request.active());
+        news.setExpiresAt(request.expiresAt());
+        news.setCategory(normalizeCategory(request.category()));
 
         news = newsRepository.save(news);
         return toResponse(news);
@@ -87,18 +88,18 @@ public class NewsService {
     }
 
     private NewsResponse toResponse(News news) {
-        NewsResponse response = new NewsResponse();
-        response.setId(news.getId());
-        response.setTitle(news.getTitle());
-        response.setContent(news.getContent());
-        response.setSummary(news.getSummary());
-        response.setImageUrl(news.getImageUrl());
-        response.setPriority(news.getPriority());
-        response.setActive(news.getActive());
-        response.setPublishedAt(news.getPublishedAt());
-        response.setExpiresAt(news.getExpiresAt());
-        response.setCategory(news.getCategory());
-        return response;
+        return new NewsResponse(
+            news.getId(),
+            news.getTitle(),
+            news.getContent(),
+            news.getSummary(),
+            news.getImageUrl(),
+            news.getPriority(),
+            news.getActive(),
+            news.getPublishedAt(),
+            news.getExpiresAt(),
+            news.getCategory()
+        );
     }
 
     public List<NewsResponse> getLatestPublishedNews(int limit) {

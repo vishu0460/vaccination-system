@@ -27,6 +27,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import com.vaccine.core.service.FeedbackService;
+import com.vaccine.domain.FeedbackStatus;
 
 @ExtendWith(MockitoExtension.class)
 class FeedbackServiceTest {
@@ -56,7 +58,7 @@ class FeedbackServiceTest {
         testFeedback.setRating(5);
         testFeedback.setSubject("Great Service");
         testFeedback.setMessage("Excellent vaccination drive");
-        testFeedback.setStatus(Feedback.FeedbackStatus.PENDING);
+        testFeedback.setStatus(FeedbackStatus.PENDING);
         testFeedback.setCreatedAt(LocalDateTime.now());
     }
 
@@ -64,10 +66,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Great Service");
-        request.setMessage("Excellent vaccination drive");
-        request.setRating(5);
+        FeedbackRequest request = new FeedbackRequest("Great Service", "Excellent vaccination drive", 5);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -84,10 +83,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_WithRating_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Test");
-        request.setMessage("Test message");
-        request.setRating(4);
+        FeedbackRequest request = new FeedbackRequest("Test", "Test message", 4);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -103,9 +99,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_WithoutRating_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Test");
-        request.setMessage("Test message");
+        FeedbackRequest request = new FeedbackRequest("Test", "Test message", null);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -206,16 +200,14 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_NullSubject_ThrowsException() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setMessage("Test message");
+        FeedbackRequest request = new FeedbackRequest(null, "Test message", null);
 
         assertThrows(IllegalArgumentException.class, () -> feedbackService.submitFeedback(request, testUser));
     }
 
     @Test
     void submitFeedback_NullMessage_ThrowsException() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Test");
+        FeedbackRequest request = new FeedbackRequest("Test", null, null);
 
         assertThrows(IllegalArgumentException.class, () -> feedbackService.submitFeedback(request, testUser));
     }
@@ -259,9 +251,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_MaxSubjectLength_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("a".repeat(100));
-        request.setMessage("Test message");
+        FeedbackRequest request = new FeedbackRequest("a".repeat(100), "Test message", null);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -276,9 +266,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_MaxMessageLength_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Test");
-        request.setMessage("a".repeat(2000));
+        FeedbackRequest request = new FeedbackRequest("Test", "a".repeat(2000), null);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -293,10 +281,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_RatingZero_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Test");
-        request.setMessage("Test message");
-        request.setRating(0);
+        FeedbackRequest request = new FeedbackRequest("Test", "Test message", 0);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -311,10 +296,7 @@ class FeedbackServiceTest {
 
     @Test
     void submitFeedback_RatingMax_Success() {
-        FeedbackRequest request = new FeedbackRequest();
-        request.setSubject("Test");
-        request.setMessage("Test message");
-        request.setRating(5);
+        FeedbackRequest request = new FeedbackRequest("Test", "Test message", 5);
 
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> {
             Feedback f = invocation.getArgument(0);
@@ -354,7 +336,7 @@ class FeedbackServiceTest {
     @Test
     void respondToFeedback_AlreadyResponded_UpdatesResponse() {
         testFeedback.setResponse("Previous response");
-        testFeedback.setStatus(Feedback.FeedbackStatus.APPROVED);
+        testFeedback.setStatus(FeedbackStatus.RESPONDED);
         
         when(feedbackRepository.findById(1L)).thenReturn(Optional.of(testFeedback));
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -368,7 +350,7 @@ class FeedbackServiceTest {
     @Test
     void getFeedbackById_IncludesAllFields() {
         testFeedback.setResponse("Test response");
-        testFeedback.setStatus(Feedback.FeedbackStatus.APPROVED);
+        testFeedback.setStatus(FeedbackStatus.RESPONDED);
         
         when(feedbackRepository.findById(1L)).thenReturn(Optional.of(testFeedback));
 
@@ -380,7 +362,8 @@ class FeedbackServiceTest {
         assertEquals("Great Service", result.get("subject"));
         assertEquals("Excellent vaccination drive", result.get("message"));
         assertEquals("Test response", result.get("response"));
-        assertEquals("APPROVED", result.get("status"));
+        assertEquals("RESPONDED", (String) result.get("status"));
     }
 }
+
 

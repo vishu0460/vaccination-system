@@ -6,11 +6,14 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
 public interface VaccinationCenterRepository extends JpaRepository<VaccinationCenter, Long> {
-    Optional<VaccinationCenter> findByNameIgnoreCase(String name);
+Optional<VaccinationCenter> findByNameIgnoreCase(String name);
+    
+    List<VaccinationCenter> findByCityIgnoreCase(String city);
     
     Page<VaccinationCenter> findByCityContainingIgnoreCase(String city, Pageable pageable);
 }

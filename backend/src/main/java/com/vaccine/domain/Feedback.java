@@ -28,20 +28,34 @@ public class Feedback {
     @Column(nullable = false)
     private Integer rating;
 
-    @Column(columnDefinition = "TEXT")
-    private String comment;
+@Column(columnDefinition = "TEXT")
+    private String message;
+
+    @Column(name = "subject")
+    private String subject;
 
     @Column(name = "admin_response", columnDefinition = "TEXT")
-    private String adminResponse;
+    private String response;
 
-    @Column(name = "submitted_at")
-    private LocalDateTime submittedAt;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private FeedbackStatus status = FeedbackStatus.PENDING;
 
-    @Column(name = "responded_at")
-    private LocalDateTime respondedAt;
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
 
-    @PrePersist
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+@PrePersist
     protected void onCreate() {
-        submittedAt = LocalDateTime.now();
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+        if (status == null) status = FeedbackStatus.PENDING;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 }

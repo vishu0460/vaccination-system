@@ -17,6 +17,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import com.vaccine.core.service.CertificateService;
 
 @ExtendWith(MockitoExtension.class)
 class CertificateServiceTest {
@@ -53,8 +54,8 @@ class CertificateServiceTest {
         testSlot = new Slot();
         testSlot.setId(1L);
         testSlot.setDrive(testDrive);
-        testSlot.setStartTime(LocalDateTime.now().plusDays(1));
-        testSlot.setEndTime(LocalDateTime.now().plusDays(1).plusHours(1));
+        testSlot.setStartTime(LocalDateTime.now().plusDays(1).toLocalTime());
+        testSlot.setEndTime(LocalDateTime.now().plusDays(1).plusHours(1).toLocalTime());
         testSlot.setCapacity(10);
         testSlot.setBookedCount(0);
 

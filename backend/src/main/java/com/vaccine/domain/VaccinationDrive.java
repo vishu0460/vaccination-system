@@ -23,10 +23,13 @@ public class VaccinationDrive {
     private VaccinationCenter center;
 
     @Column(nullable = false)
+    private String title;
+
+    @Column(nullable = false)
     private String vaccineType;
 
     @Column(nullable = false)
-    private LocalDate date;
+    private LocalDate driveDate;
 
     @Column(nullable = false)
     private Integer minAge;
@@ -42,6 +45,9 @@ public class VaccinationDrive {
 
     @Column(nullable = false)
     private Integer totalSlots;
+
+    @Column(nullable = false)
+    private Boolean active = true;
 
     private String description;
 }

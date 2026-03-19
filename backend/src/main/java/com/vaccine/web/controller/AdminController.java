@@ -2,8 +2,14 @@ package com.vaccine.web.controller;
 
 import com.vaccine.common.dto.*;
 import com.vaccine.core.service.AdminService;
+import com.vaccine.core.service.AuditService;
+import com.vaccine.core.service.ContactService;
+import com.vaccine.core.service.FeedbackService;
 import com.vaccine.domain.Booking;
 import com.vaccine.domain.BookingStatus;
+import com.vaccine.domain.Slot;
+import com.vaccine.domain.VaccinationCenter;
+import com.vaccine.domain.VaccinationDrive;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -15,10 +21,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
-@Slf4j
 @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('SUPER_ADMIN')")
 public class AdminController {
 
@@ -34,8 +40,8 @@ public class AdminController {
 
     @GetMapping("/bookings")
     public ResponseEntity<Map<String, Object>> getAllBookings(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"20\") int size,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) BookingStatus status,
             @RequestParam(required = false) String city) {
         return ResponseEntity.ok(adminService.getAllBookings(PageRequest.of(page, size), status, city));
@@ -48,30 +54,30 @@ public class AdminController {
 
     @GetMapping("/centers")
     public ResponseEntity<Map<String, Object>> getAllCenters(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"10\") int size) {
-        return ResponseEntity.ok(adminService.getAllCenters(PageRequest.of(page, size)));
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(adminService.getAllCentersPaginated(PageRequest.of(page, size)));
     }
 
     @PostMapping("/centers")
-    public ResponseEntity<Map<String, Object>> createCenter(@Valid @RequestBody CenterRequest req) {
+    public ResponseEntity<VaccinationCenter> createCenter(@Valid @RequestBody CenterRequest req) {
         return ResponseEntity.ok(adminService.createCenter(req));
     }
 
     @GetMapping("/drives")
     public ResponseEntity<Map<String, Object>> getAllDrives(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"10\") int size) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(adminService.getAllDrives(PageRequest.of(page, size)));
     }
 
     @PostMapping("/drives")
-    public ResponseEntity<Map<String, Object>> createDrive(@Valid @RequestBody DriveRequest req) {
+    public ResponseEntity<VaccinationDrive> createDrive(@Valid @RequestBody DriveRequest req) {
         return ResponseEntity.ok(adminService.createDrive(req));
     }
 
     @PostMapping("/slots")
-    public ResponseEntity<Map<String, Object>> createSlot(@Valid @RequestBody SlotRequest req) {
+    public ResponseEntity<Slot> createSlot(@Valid @RequestBody SlotRequest req) {
         return ResponseEntity.ok(adminService.createSlot(req));
     }
 
@@ -82,9 +88,9 @@ public class AdminController {
 
     @GetMapping("/users")
     public ResponseEntity<Map<String, Object>> getAllUsers(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"10\") int size) {
-        return ResponseEntity.ok(adminService.getAllUsers(PageRequest.of(page, size)));
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(adminService.getAllUsersPaginated(PageRequest.of(page, size)));
     }
 
     @PatchMapping("/users/{userId}/enable")
@@ -99,38 +105,38 @@ public class AdminController {
 
     @GetMapping("/feedback")
     public ResponseEntity<Map<String, Object>> getAllFeedback(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"10\") int size) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(adminService.getAllFeedback(PageRequest.of(page, size)));
     }
 
     @PatchMapping("/feedback/{feedbackId}/respond")
     public ResponseEntity<Map<String, Object>> respondToFeedback(@PathVariable Long feedbackId, @RequestBody Map<String, String> response) {
-        return ResponseEntity.ok(adminService.respondToFeedback(feedbackId, response.get(\"response\")));
+        return ResponseEntity.ok(adminService.respondToFeedback(feedbackId, response.get("response")));
     }
 
     @GetMapping("/contacts")
     public ResponseEntity<Map<String, Object>> getAllContacts(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"10\") int size) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(adminService.getAllContacts(PageRequest.of(page, size)));
     }
 
     @PatchMapping("/contacts/{contactId}/respond")
     public ResponseEntity<Map<String, Object>> respondToContact(@PathVariable Long contactId, @RequestBody Map<String, String> response) {
-        return ResponseEntity.ok(adminService.respondToContact(contactId, response.get(\"response\")));
+        return ResponseEntity.ok(adminService.respondToContact(contactId, response.get("response")));
     }
 
     @DeleteMapping("/contacts/{contactId}")
     public ResponseEntity<Map<String, Object>> deleteContact(@PathVariable Long contactId) {
         adminService.deleteContact(contactId);
-        return ResponseEntity.ok(Map.of(\"message\", \"Contact deleted successfully\"));
+        return ResponseEntity.ok(Map.of("message", "Contact deleted successfully"));
     }
 
     @GetMapping("/audit-logs")
     public ResponseEntity<Map<String, Object>> getAuditLogs(
-            @RequestParam(defaultValue = \"0\") int page,
-            @RequestParam(defaultValue = \"20\") int size) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(adminService.getAuditLogs(PageRequest.of(page, size)));
     }
 

@@ -70,7 +70,7 @@ public class PublicService {
     }
 
     public List<Slot> getDriveSlots(Long driveId) {
-        return slotRepository.findByDriveIdOrderByStartTime(driveId);
+        return slotRepository.findByDriveIdOrderByStartTimeAsc(driveId);
     }
 
     private String normalize(String value) {

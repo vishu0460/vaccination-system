@@ -5,10 +5,10 @@ import com.vaccine.common.exception.AppException;
 import com.vaccine.domain.*;
 import com.vaccine.infrastructure.persistence.repository.*;
 import com.vaccine.security.JwtService;
-import com.vaccine
-
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -18,9 +18,6 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Service
 public class AuthService {
@@ -35,11 +32,9 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final AuditService auditService;
-private final PhoneVerificationService phoneVerificationService;
-
     private final NotificationService notificationService;
-
+    private final AuditService auditService;
+    private final PhoneVerificationService phoneVerificationService;
 
     private final Random random = new Random();
 
@@ -60,12 +55,11 @@ private final PhoneVerificationService phoneVerificationService;
             PhoneVerificationRepository phoneVerificationRepository,
             AuthenticationManager authenticationManager,
             PasswordEncoder passwordEncoder,
-JwtService jwtService,
+            JwtService jwtService,
             NotificationService notificationService,
             AuditService auditService,
             PhoneVerificationService phoneVerificationService
     ) {
-
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.emailVerificationRepository = emailVerificationRepository;
@@ -79,10 +73,7 @@ JwtService jwtService,
         this.phoneVerificationService = phoneVerificationService;
     }
 
-    // ================= REGISTER =================
-
     public ApiMessage register(RegisterRequest req, HttpServletRequest request) {
-
         if (userRepository.existsByEmail(req.email().toLowerCase())) {
             throw new AppException("Email already registered");
         }
@@ -110,28 +101,21 @@ JwtService jwtService,
 
         if (!shouldAutoVerify) {
             String token = UUID.randomUUID().toString();
-
-            try {
-                emailVerificationRepository.save(
-                        EmailVerification.builder()
-                                .userEmail(user.getEmail())
-                                .token(token)
-                                .expiresAt(LocalDateTime.now().plusHours(24))
-                                .verified(false)
-                                .createdAt(LocalDateTime.now())
-                                .build()
-                );
-            } catch (Exception e) {
-                log.error("Failed to save verification token: {}", e.getMessage());
-            }
+            emailVerificationRepository.save(
+                    EmailVerification.builder()
+                            .userEmail(user.getEmail())
+                            .token(token)
+                            .expiresAt(LocalDateTime.now().plusHours(24))
+                            .verified(false)
+                            .createdAt(LocalDateTime.now())
+                            .build()
+            );
         }
 
         auditService.log(user.getEmail(),"REGISTER","AUTH","User registered",request);
 
         return new ApiMessage("Registration successful! " + (shouldAutoVerify ? "You can now login." : "Please check your email to verify your account."));
     }
-
-    // ================= LOGIN =================
 
     public AuthResponse login(LoginRequest req, HttpServletRequest request) {
         log.info("Login attempt for email: {}", req.email());
@@ -147,14 +131,12 @@ JwtService jwtService,
             throw new AppException("Account is disabled. Please contact administrator.");
         }
 
-        if (user.getLockUntil() != null &&
-                user.getLockUntil().isAfter(LocalDateTime.now())) {
+        if (user.getLockUntil() != null && user.getLockUntil().isAfter(LocalDateTime.now())) {
             log.warn("User account locked: {}", req.email());
             throw new AppException("Account locked. Try again later.");
         }
 
         try {
-
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             req.email().toLowerCase(),
@@ -162,7 +144,6 @@ JwtService jwtService,
                     )
             );
             log.info("Authentication successful for email: {}", req.email());
-
         } catch (Exception e) {
             log.warn("Authentication failed for email: {} - {}", req.email(), e.getMessage());
 
@@ -205,10 +186,7 @@ JwtService jwtService,
         );
     }
 
-    // ================= REFRESH TOKEN =================
-
     public AuthResponse refresh(RefreshTokenRequest req) {
-
         Claims claims = jwtService.parse(req.refreshToken());
 
         if (!"refresh".equals(String.valueOf(claims.get("type")))) {
@@ -233,17 +211,11 @@ JwtService jwtService,
         );
     }
 
-    // ================= EMAIL VERIFICATION =================
-
     public ApiMessage verifyEmail(String token) {
-
         EmailVerification verification =
                 emailVerificationRepository.findByTokenAndExpiresAtAfter(token, LocalDateTime.now())
+                        .filter(v -> !v.isVerified())
                         .orElseThrow(() -> new AppException("Invalid or expired verification token"));
-
-        if (verification.isVerified()) {
-            throw new AppException("Verification token already used");
-        }
 
         User user = userRepository.findByEmail(verification.getUserEmail())
                 .orElseThrow(() -> new AppException("User not found"));
@@ -258,7 +230,6 @@ JwtService jwtService,
     }
 
     public ApiMessage resendEmailVerification(ResendVerificationRequest req) {
-
         User user = userRepository.findByEmail(req.email().toLowerCase())
                 .orElseThrow(() -> new AppException("User not found"));
 
@@ -281,10 +252,7 @@ JwtService jwtService,
         return new ApiMessage("Verification token generated (email send mock for dev)");
     }
 
-    // ================= PHONE VERIFICATION =================
-
     public ApiMessage sendPhoneVerificationOTP(String email) {
-
         User user = userRepository.findByEmail(email.toLowerCase())
                 .orElseThrow(() -> new AppException("User not found"));
 
@@ -302,7 +270,6 @@ JwtService jwtService,
     }
 
     public ApiMessage verifyPhone(VerifyPhoneRequest req) {
-
         boolean valid = phoneVerificationService.verifyOTP(req.phoneNumber(), req.otpCode());
 
         if (!valid) {
@@ -318,10 +285,7 @@ JwtService jwtService,
         return new ApiMessage("Phone verified successfully");
     }
 
-    // ================= 2FA =================
-
     public AuthResponse verify2FA(Verify2FARequest req, HttpServletRequest request) {
-        // Mock 2FA - TODO: Real TOTP in prod
         User user = userRepository.findByEmail(req.email().toLowerCase())
                 .orElseThrow(() -> new AppException("User not found"));
 
@@ -346,12 +310,10 @@ JwtService jwtService,
         );
     }
 
-    // ================= FORGOT PASSWORD =================
-
     public ApiMessage forgotPassword(ForgotPasswordRequest req) {
         User user = userRepository.findByEmail(req.email().toLowerCase())
                 .orElseThrow(() -> new AppException("User not found"));
-        
+
         String resetToken = UUID.randomUUID().toString();
         passwordResetRepository.save(PasswordReset.builder()
                 .userEmail(user.getEmail())
@@ -360,10 +322,10 @@ JwtService jwtService,
                 .used(false)
                 .createdAt(LocalDateTime.now())
                 .build());
-        
+
         return new ApiMessage("Password reset token generated (email send mock for dev)");
     }
-    
+
     public void resetPassword(ResetPasswordRequest req) {
         PasswordReset reset = passwordResetRepository.findByTokenAndExpiresAtAfter(req.token(), LocalDateTime.now())
                 .filter(r -> !r.isUsed())
@@ -378,12 +340,13 @@ JwtService jwtService,
         reset.setUsed(true);
         passwordResetRepository.save(reset);
     }
-    
+
     private String getUserRole(User user) {
         return user.getRoles().stream()
-                .findFirst()
                 .map(Role::getName)
                 .map(RoleName::name)
+                .findFirst()
                 .orElse("USER");
     }
 }
+

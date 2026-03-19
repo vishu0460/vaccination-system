@@ -20,6 +20,8 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import com.vaccine.core.service.ContactService;
+import com.vaccine.domain.ContactStatus;
 
 @ExtendWith(MockitoExtension.class)
 class ContactServiceTest {
@@ -48,7 +50,7 @@ class ContactServiceTest {
         testContact.setPhone("+91-1234567890");
         testContact.setSubject("General Inquiry");
         testContact.setMessage("I have a question about vaccination");
-        testContact.setStatus(Contact.ContactStatus.PENDING);
+        testContact.setStatus(ContactStatus.PENDING);
         testContact.setCreatedAt(LocalDateTime.now());
     }
 
@@ -300,7 +302,7 @@ class ContactServiceTest {
     @Test
     void respondToContact_AlreadyResponded_UpdatesResponse() {
         testContact.setResponse("Previous response");
-        testContact.setStatus(Contact.ContactStatus.RESPONDED);
+        testContact.setStatus(ContactStatus.RESOLVED);
         
         when(contactRepository.findById(1L)).thenReturn(Optional.of(testContact));
         when(contactRepository.save(any(Contact.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -314,7 +316,7 @@ class ContactServiceTest {
     @Test
     void getContactById_IncludesAllFields() {
         testContact.setResponse("Test response");
-        testContact.setStatus(Contact.ContactStatus.RESPONDED);
+        testContact.setStatus(ContactStatus.RESOLVED);
         
         when(contactRepository.findById(1L)).thenReturn(Optional.of(testContact));
 
@@ -327,7 +329,7 @@ class ContactServiceTest {
         assertEquals("General Inquiry", result.get("subject"));
         assertEquals("I have a question about vaccination", result.get("message"));
         assertEquals("Test response", result.get("response"));
-        assertEquals("RESPONDED", result.get("status"));
+        assertEquals("RESOLVED", result.get("status"));
     }
 
     @Test

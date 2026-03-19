@@ -11,6 +11,9 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class Role {
+public RoleName getName() {
+        return name;
+    }
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

@@ -4,6 +4,7 @@ import com.vaccine.common.dto.CenterRequest;
 import com.vaccine.domain.VaccinationCenter;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.VaccinationCenterRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -16,9 +17,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
-@Service
 @RequiredArgsConstructor
-@Slf4j
 @Transactional(readOnly = true)
 public class CenterService {
     private final VaccinationCenterRepository centerRepository;
@@ -72,3 +71,4 @@ public class CenterService {
         return centerRepository.count();
     }
 }
+

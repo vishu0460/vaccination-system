@@ -1,7 +1,7 @@
 package com.vaccine.core.service;
 
-import com.vaccine.dto.ProfileUpdateRequest;
-import com.vaccine.core.model.User;
+import com.vaccine.common.dto.ProfileUpdateRequest;
+import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;

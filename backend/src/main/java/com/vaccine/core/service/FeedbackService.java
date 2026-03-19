@@ -4,6 +4,7 @@ import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.common.dto.FeedbackRequest;
 import com.vaccine.common.dto.FeedbackResponse;
 import com.vaccine.domain.Feedback;
+import com.vaccine.domain.FeedbackStatus;
 import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.FeedbackRepository;
@@ -30,20 +31,19 @@ public class FeedbackService {
 
     public ApiMessage submitFeedback(FeedbackRequest request, User user) {
         // Validate required fields
-        if (request.getSubject() == null || request.getSubject().isBlank()) {
+        if (request.subject() == null || request.subject().isBlank()) {
             throw new IllegalArgumentException("Subject is required");
         }
-        if (request.getMessage() == null || request.getMessage().isBlank()) {
+        if (request.message() == null || request.message().isBlank()) {
             throw new IllegalArgumentException("Message is required");
         }
 
         Feedback feedback = new Feedback();
         feedback.setUser(user);
-        feedback.setRating(request.getRating());
-        feedback.setMessage(request.getMessage());
-        feedback.setSubject(request.getSubject());
-        feedback.setStatus(Feedback.FeedbackStatus.PENDING);
-        feedback.setCreatedAt(LocalDateTime.now());
+        feedback.setRating(request.rating());
+        feedback.setMessage(request.message());
+        feedback.setSubject(request.subject());
+        feedback.setStatus(FeedbackStatus.PENDING);
 
         feedbackRepository.save(feedback);
         return new ApiMessage("Feedback submitted successfully");
@@ -84,7 +84,7 @@ public class FeedbackService {
             .orElseThrow(() -> new AppException("Feedback not found"));
 
         feedback.setResponse(response);
-        feedback.setStatus(Feedback.FeedbackStatus.APPROVED);
+        feedback.setStatus(FeedbackStatus.RESPONDED);
         feedbackRepository.save(feedback);
 
         return new ApiMessage("Response sent successfully");
@@ -95,7 +95,7 @@ public class FeedbackService {
             .orElseThrow(() -> new AppException("Feedback not found"));
 
         feedback.setResponse(response);
-        feedback.setStatus(Feedback.FeedbackStatus.APPROVED);
+        feedback.setStatus(FeedbackStatus.RESPONDED);
         feedbackRepository.save(feedback);
 
         return toResponse(feedback);

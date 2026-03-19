@@ -7,6 +7,8 @@ import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.ReviewRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationCenterRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -15,16 +17,23 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
-@RequiredArgsConstructor
-@Slf4j
 @Transactional(readOnly = true)
 public class ReviewService {
+    private static final Logger log = LoggerFactory.getLogger(ReviewService.class);
+
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final VaccinationCenterRepository centerRepository;
 
+    public ReviewService(ReviewRepository reviewRepository, UserRepository userRepository, VaccinationCenterRepository centerRepository) {
+        this.reviewRepository = reviewRepository;
+        this.userRepository = userRepository;
+        this.centerRepository = centerRepository;
+    }
+
     @Transactional
     public Review createReview(String email, Long centerId, Integer rating, String comment) {
+        log.info("Creating review for user {}, center {}", email, centerId);
         User user = userRepository.findByEmail(email).orElseThrow(() -> new AppException("User not found"));
         VaccinationCenter center = centerRepository.findById(centerId).orElseThrow(() -> new AppException("Center not found"));
         
@@ -36,12 +45,13 @@ public class ReviewService {
             throw new AppException("Rating must be between 1 and 5");
         }
         
-        Review review = new Review();
-        review.setUser(user);
-        review.setCenter(center);
-        review.setRating(rating);
-        review.setComment(comment);
-        review.setIsApproved(false);
+        Review review = Review.builder()
+            .user(user)
+            .center(center)
+            .rating(rating)
+            .comment(comment)
+            .isApproved(false)
+            .build();
         
         return reviewRepository.save(review);
     }
@@ -64,6 +74,7 @@ public class ReviewService {
 
     @Transactional
     public Review approveReview(Long reviewId) {
+        log.info("Approving review {}", reviewId);
         Review review = reviewRepository.findById(reviewId).orElseThrow(() -> new AppException("Review not found"));
         review.setIsApproved(true);
         return reviewRepository.save(review);
@@ -71,6 +82,7 @@ public class ReviewService {
 
     @Transactional
     public void deleteReview(Long reviewId) {
+        log.info("Deleting review {}", reviewId);
         reviewRepository.deleteById(reviewId);
     }
 

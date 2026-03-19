@@ -1,59 +1,77 @@
 package com.vaccine.exception;
 
-import com.vaccine.common.dto.ApiMessage;
+import com.vaccine.common.dto.ApiResponse;
 import jakarta.validation.ConstraintViolationException;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
+@Order(-2)
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<?> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();
-        for (FieldError error : ex.getBindingResult().getFieldErrors()) {
-            errors.put(error.getField(), error.getDefaultMessage());
-        }
-        return ResponseEntity.badRequest().body(errors);
+        ex.getBindingResult().getFieldErrors().forEach(error -> 
+            errors.put(error.getField(), error.getDefaultMessage()));
+        List<String> errorList = errors.entrySet().stream()
+            .map(e -> e.getKey() + ": " + e.getValue())
+            .collect(Collectors.toList());
+        return ResponseEntity.badRequest().body(ApiResponse.error(
+            "Validation failed", errorList, 400));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    public ResponseEntity<ApiMessage> handleConstraint(ConstraintViolationException ex) {
-        return ResponseEntity.badRequest().body(new ApiMessage(ex.getMessage()));
+    public ResponseEntity<ApiResponse<?>> handleConstraint(ConstraintViolationException ex) {
+        List<String> errors = ex.getConstraintViolations().stream()
+            .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+            .collect(Collectors.toList());
+        return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage(), errors, 400));
     }
 
     @ExceptionHandler({AppException.class, IllegalArgumentException.class, BadCredentialsException.class})
-    public ResponseEntity<ApiMessage> handleBusiness(Exception ex) {
-        return ResponseEntity.badRequest().body(new ApiMessage(ex.getMessage()));
+    public ResponseEntity<ApiResponse<?>> handleBusiness(RuntimeException ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage(), 400));
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    public ResponseEntity<ApiMessage> handleDenied(AccessDeniedException ex) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiMessage("Access denied"));
+    public ResponseEntity<ApiResponse<?>> handleDenied(AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ApiResponse.error("Access denied to this resource", 403));
     }
 
-    @ExceptionHandler(NoResourceFoundException.class)
-    public ResponseEntity<ApiMessage> handleNotFound(NoResourceFoundException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiMessage("Resource not found"));
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ResponseEntity<ApiResponse<?>> handleNotFound(RuntimeException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Resource not found", 404));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiResponse<?>> handleJsonParse(HttpMessageNotReadableException ex) {
+        return ResponseEntity.badRequest().body(ApiResponse.error("Invalid JSON format", 400));
+    }
+
+    @ExceptionHandler(NullPointerException.class)
+    public ResponseEntity<ApiResponse<?>> handleNPE(NullPointerException ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.error("Internal null reference error", 500));
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiMessage> handleUnknown(Exception ex) {
-        String message = ex.getMessage();
-        if (message == null || message.isBlank()) {
-            message = "An unexpected error occurred. Please try again later.";
-        }
+    public ResponseEntity<ApiResponse<?>> handleUnknown(Exception ex) {
+        String message = ex.getMessage() != null ? ex.getMessage() : "An unexpected error occurred";
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body(new ApiMessage(message));
+            .body(ApiResponse.error(message, 500));
     }
 }

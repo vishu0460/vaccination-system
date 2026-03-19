@@ -21,10 +21,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.Set;
+import com.vaccine.core.service.AuthService;
+import com.vaccine.core.service.AuditService;
+import com.vaccine.core.service.NotificationService;
+import com.vaccine.core.service.PhoneVerificationService;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doThrow;
 
 @ExtendWith(MockitoExtension.class)
 class AuthServiceTest {
@@ -71,7 +76,7 @@ class AuthServiceTest {
 
     @Test
     void register_WithNewEmail_ShouldCreateUser() {
-        RegisterRequest req = new RegisterRequest("test@example.com", "Test User", "Password123", 25, "+1234567890", "123 Main St", "City", "State", "12345");
+RegisterRequest req = new RegisterRequest("test@example.com", "Test User", "Password123", 25, "+1234567890");
         
         when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
         when(roleRepository.findByName(RoleName.USER)).thenReturn(Optional.of(Role.builder().name(RoleName.USER).build()));
@@ -86,16 +91,16 @@ class AuthServiceTest {
 
     @Test
     void register_WithExistingEmail_ShouldThrowException() {
-        RegisterRequest req = new RegisterRequest("existing@example.com", "Test User", "Password123", 25, "+1234567890", "123 Main St", "City", "State", "12345");
+RegisterRequest req = new RegisterRequest("existing@example.com", "Test User", "Password123", 25, "+1234567890");
         
         when(userRepository.existsByEmail("existing@example.com")).thenReturn(true);
 
         assertThrows(AppException.class, () -> authService.register(req, httpServletRequest));
     }
 
-    @Test
+@Test
     void login_WithValidCredentials_ShouldReturnAuthResponse() {
-        LoginRequest req = new LoginRequest("user@example.com", "password", null);
+        LoginRequest req = new LoginRequest("user@example.com", "password");
         User user = User.builder()
             .email("user@example.com")
             .emailVerified(true)
@@ -118,9 +123,9 @@ class AuthServiceTest {
         verify(userRepository).save(any(User.class));
     }
 
-    @Test
+@Test
     void login_WithInvalidCredentials_ShouldThrowException() {
-        LoginRequest req = new LoginRequest("user@example.com", "wrongpassword", null);
+        LoginRequest req = new LoginRequest("user@example.com", "wrongpassword");
         User user = User.builder()
             .email("user@example.com")
             .emailVerified(true)
@@ -133,9 +138,9 @@ class AuthServiceTest {
         assertThrows(BadCredentialsException.class, () -> authService.login(req, httpServletRequest));
     }
 
-    @Test
+@Test
     void login_WithUnverifiedEmail_ShouldThrowException() {
-        LoginRequest req = new LoginRequest("user@example.com", "password", null);
+        LoginRequest req = new LoginRequest("user@example.com", "password");
         User user = User.builder()
             .email("user@example.com")
             .emailVerified(false)
@@ -146,9 +151,9 @@ class AuthServiceTest {
         assertThrows(AppException.class, () -> authService.login(req, httpServletRequest));
     }
 
-    @Test
+@Test
     void login_WithLockedAccount_ShouldThrowException() {
-        LoginRequest req = new LoginRequest("user@example.com", "password", null);
+        LoginRequest req = new LoginRequest("user@example.com", "password");
         User user = User.builder()
             .email("user@example.com")
             .lockUntil(LocalDateTime.now().plusMinutes(30))
@@ -185,13 +190,13 @@ class AuthServiceTest {
     @Test
     void verifyEmail_WithValidToken_ShouldVerifyEmail() {
         EmailVerification verification = EmailVerification.builder()
-            .user(User.builder().email("user@example.com").emailVerified(false).build())
+            .userEmail("user@example.com")
             .token("validToken")
             .expiresAt(LocalDateTime.now().plusHours(1))
-            .used(false)
+            .verified(false)
             .build();
 
-        when(emailVerificationRepository.findByToken("validToken")).thenReturn(Optional.of(verification));
+        when(emailVerificationRepository.findByTokenAndExpiresAtAfter(eq("validToken"), any(LocalDateTime.class))).thenReturn(Optional.of(verification));
         when(emailVerificationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         ApiMessage result = authService.verifyEmail("validToken");
@@ -205,10 +210,10 @@ class AuthServiceTest {
         EmailVerification verification = EmailVerification.builder()
             .token("expiredToken")
             .expiresAt(LocalDateTime.now().minusHours(1))
-            .used(false)
+            .verified(false)
             .build();
 
-        when(emailVerificationRepository.findByToken("expiredToken")).thenReturn(Optional.of(verification));
+        when(emailVerificationRepository.findByTokenAndExpiresAtAfter(eq("expiredToken"), any(LocalDateTime.class))).thenReturn(Optional.of(verification));
 
         assertThrows(AppException.class, () -> authService.verifyEmail("expiredToken"));
     }
@@ -230,13 +235,13 @@ class AuthServiceTest {
     void resetPassword_WithValidToken_ShouldResetPassword() {
         User user = User.builder().email("user@example.com").build();
         PasswordReset reset = PasswordReset.builder()
-            .user(user)
+            .userEmail("user@example.com")
             .token("validToken")
             .expiresAt(LocalDateTime.now().plusHours(1))
             .used(false)
             .build();
 
-        when(passwordResetRepository.findByToken("validToken")).thenReturn(Optional.of(reset));
+        when(passwordResetRepository.findByTokenAndExpiresAtAfter(eq("validToken"), any(LocalDateTime.class))).thenReturn(Optional.of(reset));
 
         authService.resetPassword(new ResetPasswordRequest("validToken", "newPassword"));
         
@@ -248,13 +253,13 @@ class AuthServiceTest {
     void resetPassword_WithExpiredToken_ShouldThrowException() {
         User user = User.builder().email("user@example.com").build();
         PasswordReset reset = PasswordReset.builder()
-            .user(user)
+            .userEmail("user@example.com")
             .token("expiredToken")
             .expiresAt(LocalDateTime.now().minusHours(1))
             .used(false)
             .build();
 
-        when(passwordResetRepository.findByToken("expiredToken")).thenReturn(Optional.of(reset));
+        when(passwordResetRepository.findByTokenAndExpiresAtAfter(eq("expiredToken"), any(LocalDateTime.class))).thenReturn(Optional.of(reset));
 
         AppException exception = assertThrows(AppException.class, () -> {
             authService.resetPassword(new ResetPasswordRequest("expiredToken", "newPassword"));
