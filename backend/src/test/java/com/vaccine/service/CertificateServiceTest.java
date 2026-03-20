@@ -92,13 +92,14 @@ class CertificateServiceTest {
         assertTrue(result.getCertificateNumber().startsWith("VAX-"));
         assertEquals("Covishield", result.getVaccineName());
         assertEquals(1, result.getDoseNumber());
+        assertEquals(testUser, result.getUser());
         assertNotNull(result.getQrCode());
         assertNotNull(result.getDigitalVerificationCode());
     }
 
     @Test
-    void generateCertificate_Success_WithApprovedBooking() {
-        testBooking.setStatus(BookingStatus.APPROVED);
+    void generate_FromBooking_UsesDriveVaccineType() {
+        testDrive.setVaccineType("Covaxin");
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(testBooking));
         when(certificateRepository.existsByBookingId(1L)).thenReturn(false);
         when(certificateRepository.save(any(Certificate.class))).thenAnswer(invocation -> {
@@ -107,11 +108,11 @@ class CertificateServiceTest {
             return cert;
         });
 
-        Certificate result = certificateService.generateCertificate(1L, "Covaxin", 2);
+        Certificate result = certificateService.generate(testBooking);
 
         assertNotNull(result);
         assertEquals("Covaxin", result.getVaccineName());
-        assertEquals(2, result.getDoseNumber());
+        assertEquals(1, result.getDoseNumber());
     }
 
 @Test
@@ -345,4 +346,3 @@ when(certificateRepository.findByBookingId(1L)).thenReturn(Optional.of(new Certi
         assertEquals(32, result.getDigitalVerificationCode().length());
     }
 }
-

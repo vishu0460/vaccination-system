@@ -7,6 +7,7 @@ import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
+import com.vaccine.util.SlotStatusResolver;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,8 +45,8 @@ public class BookingService {
         if (!Boolean.TRUE.equals(drive.getActive())) {
             throw new AppException("Drive is not active");
         }
-        if (slot.getDateTime() != null && slot.getDateTime().isBefore(LocalDateTime.now())) {
-            throw new AppException("Cannot book a past slot");
+        if (SlotStatusResolver.resolve(slot) == SlotStatus.EXPIRED) {
+            throw new AppException("Cannot book an expired slot");
         }
         if (user.getAge() < drive.getMinAge() || user.getAge() > drive.getMaxAge()) {
             throw new AppException("Age not eligible for this drive");
@@ -121,6 +122,9 @@ public class BookingService {
             throw new AppException("You can only reschedule your own booking");
         }
         Slot newSlot = slotRepository.findById(req.slotId()).orElseThrow(() -> new AppException("Slot not found"));
+        if (SlotStatusResolver.resolve(newSlot) == SlotStatus.EXPIRED) {
+            throw new AppException("Cannot reschedule to an expired slot");
+        }
         if (newSlot.getBookedCount() >= newSlot.getCapacity()) {
             throw new AppException("Selected slot is full");
         }

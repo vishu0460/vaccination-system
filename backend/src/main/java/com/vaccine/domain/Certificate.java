@@ -21,6 +21,10 @@ public class Certificate {
     @JoinColumn(name = "booking_id")
     private Booking booking;
 
+    @ManyToOne
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
     @Column(unique = true, nullable = false)
     private String certificateNumber;
 

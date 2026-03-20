@@ -7,6 +7,7 @@ import com.vaccine.core.service.ContactService;
 import com.vaccine.core.service.FeedbackService;
 import com.vaccine.domain.Booking;
 import com.vaccine.domain.BookingStatus;
+import com.vaccine.domain.SlotStatus;
 import com.vaccine.domain.Slot;
 import com.vaccine.domain.VaccinationCenter;
 import com.vaccine.domain.VaccinationDrive;
@@ -17,8 +18,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -54,7 +58,13 @@ public class AdminController {
 
     @PutMapping({"/booking/{bookingId}/complete", "/bookings/{bookingId}/complete"})
     public ResponseEntity<BookingResponse> completeBooking(@PathVariable Long bookingId, HttpServletRequest request) {
-        return ResponseEntity.ok(adminService.updateBookingStatus(bookingId, "complete", request));
+        return ResponseEntity.ok(adminService.completeBookingResponse(bookingId, request));
+    }
+
+    @DeleteMapping({"/booking/{bookingId}", "/bookings/{bookingId}"})
+    public ResponseEntity<Map<String, Object>> deleteBooking(@PathVariable Long bookingId, HttpServletRequest request) {
+        adminService.deleteBooking(bookingId, request);
+        return ResponseEntity.ok(Map.of("message", "Booking deleted successfully"));
     }
 
     @GetMapping("/centers")
@@ -115,8 +125,21 @@ public class AdminController {
     @GetMapping("/slots")
     public ResponseEntity<Map<String, Object>> getAllSlots(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(adminService.getAllSlots(PageRequest.of(page, size)));
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) SlotStatus status,
+            @RequestParam(required = false) Long centerId,
+            @RequestParam(required = false) Long driveId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(adminService.getAllSlots(PageRequest.of(page, size), status, centerId, driveId, date));
+    }
+
+    @GetMapping("/slots/all")
+    public ResponseEntity<List<AdminSlotResponse>> getAllSlotsList(
+            @RequestParam(required = false) SlotStatus status,
+            @RequestParam(required = false) Long centerId,
+            @RequestParam(required = false) Long driveId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return ResponseEntity.ok(adminService.getAllSlots(status, centerId, driveId, date));
     }
 
     @DeleteMapping({"/slots/{slotId}", "/slot/{slotId}"})

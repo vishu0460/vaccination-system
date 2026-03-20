@@ -135,7 +135,8 @@ export const adminAPI = {
   getAllCenters: () => apiClient.get("/admin/centers"),
   getAllDrives: () => apiClient.get("/admin/drives"),
   getAllUsers: () => apiClient.get("/admin/users"),
-  getAllSlots: () => apiClient.get("/admin/slots"),
+  getAllSlots: (params = {}) => apiClient.get("/admin/slots", { params }),
+  getAllSlotsList: (params = {}) => apiClient.get("/admin/slots/all", { params }),
   getDriveSlots: (driveId) => apiClient.get(`/admin/drives/${driveId}/slots`),
   createCenter: (data) => apiClient.post("/admin/centers", data),
   updateCenter: (centerId, data) => apiClient.put(`/admin/centers/${centerId}`, data),
@@ -150,9 +151,7 @@ export const adminAPI = {
   disableUser: (userId) => apiClient.patch(`/admin/users/${userId}/disable`),
   updateBookingStatus: (bookingId, status) => {
     const actionMap = {
-      approved: "approve",
       approve: "approve",
-      rejected: "reject",
       reject: "reject",
       cancelled: "cancel",
       canceled: "cancel",
@@ -171,6 +170,7 @@ export const adminAPI = {
     return apiClient.patch(`/admin/bookings/${bookingId}/${action}`);
   },
   completeBooking: (bookingId) => apiClient.put(`/admin/booking/${bookingId}/complete`),
+  deleteBooking: (bookingId) => apiClient.delete(`/admin/booking/${bookingId}`),
   exportBookings: () => apiClient.get("/admin/bookings/export", { responseType: "blob" }),
   getAuditLogs: () => apiClient.get("/admin/audit-logs"),
   getAllFeedback: (page = 0, size = 10) => apiClient.get("/admin/feedback", { params: { page, size } }),

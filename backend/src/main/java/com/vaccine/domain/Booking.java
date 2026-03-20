@@ -25,7 +25,8 @@ public class Booking {
     @JoinColumn(name = "slot_id")
     private Slot slot;
 
-    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
     private BookingStatus status;
 
     @Column(name = "booked_at")

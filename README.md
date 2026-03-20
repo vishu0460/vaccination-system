@@ -10,11 +10,17 @@
 ### 1. Backend + Database (Terminal 1)
 ```bash
 cd backend
-mvn clean spring-boot:run -Dspring.profiles.active=local-fixed
+run-local.cmd
 ```
 - Runs on http://localhost:8080
 - H2 in-memory DB with seed data (5 centers, 8 drives, slots, news)
 - Swagger: http://localhost:8080/swagger-ui.html
+
+Alternative:
+```bash
+cd backend
+powershell -ExecutionPolicy Bypass -File .\run-local.ps1
+```
 
 ### 2. Frontend (Terminal 2)
 ```bash
@@ -61,6 +67,7 @@ Frontend: http://localhost:80 | Backend: http://localhost:8080
 
 ## 🛠 Troubleshooting
 **Backend not starting?** Check Maven logs for compilation errors  
+**Port 8080 already in use?** Run `backend\run-local.cmd` to stop the previous listener and restart safely  
 **Frontend blank?** Check browser console for CORS/API errors  
 **No data?** Data auto-seeds on H2 startup - refresh Home page
 

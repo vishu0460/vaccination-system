@@ -46,6 +46,7 @@ public class CertificateService {
         
         Certificate certificate = Certificate.builder()
             .booking(booking)
+            .user(booking.getUser())
             .certificateNumber(certificateNumber)
             .vaccineName(vaccineName)
             .doseNumber(doseNumber != null ? doseNumber : 1)
@@ -56,6 +57,19 @@ public class CertificateService {
             .build();
 
         return certificateRepository.save(certificate);
+    }
+
+    @Transactional
+    public Certificate generate(Booking booking) {
+        if (booking == null || booking.getId() == null) {
+            throw new AppException("Booking not found");
+        }
+
+        String vaccineName = booking.getSlot() != null && booking.getSlot().getDrive() != null
+            ? booking.getSlot().getDrive().getVaccineType()
+            : "Vaccination";
+
+        return generateCertificate(booking.getId(), vaccineName, 1);
     }
 
     public Certificate getCertificateById(Long id) {

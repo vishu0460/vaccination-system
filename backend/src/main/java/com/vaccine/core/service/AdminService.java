@@ -4,6 +4,7 @@ import com.vaccine.common.dto.*;
 import com.vaccine.domain.*;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
+import com.vaccine.util.SlotStatusResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -51,8 +53,7 @@ public class AdminService {
         long totalUsers = userRepository.count();
         long totalBookings = bookingRepository.count();
         long pendingBookings = bookingRepository.countByStatus(BookingStatus.PENDING);
-        long approvedBookings = bookingRepository.countByStatus(BookingStatus.APPROVED);
-        long rejectedBookings = bookingRepository.countByStatus(BookingStatus.REJECTED);
+        long confirmedBookings = bookingRepository.countByStatus(BookingStatus.CONFIRMED);
         long cancelledBookings = bookingRepository.countByStatus(BookingStatus.CANCELLED);
         long totalCenters = centerRepository.count();
         long totalDrives = driveRepository.count();
@@ -71,8 +72,8 @@ public class AdminService {
             .totalUsers(totalUsers)
             .totalBookings(totalBookings)
             .pendingBookings(pendingBookings)
-            .approvedBookings(approvedBookings)
-            .rejectedBookings(rejectedBookings)
+            .approvedBookings(confirmedBookings)
+            .rejectedBookings(0L)
             .cancelledBookings(cancelledBookings)
             .totalCenters(totalCenters)
             .totalDrives(totalDrives)
@@ -93,25 +94,76 @@ public class AdminService {
     }
 
     public BookingResponse updateBookingStatus(Long bookingId, String action, HttpServletRequest request) {
-        Booking booking = bookingRepository.findById(bookingId).orElseThrow();
-        BookingStatus newStatus = switch (action) {
+        if ("complete".equalsIgnoreCase(action)) {
+            return completeBookingResponse(bookingId);
+        }
+
+        Booking booking = bookingRepository.findById(bookingId)
+            .orElseThrow(() -> new AppException("Booking not found"));
+        BookingStatus newStatus = switch (action.toLowerCase()) {
             case "approve", "confirm" -> BookingStatus.CONFIRMED;
-            case "reject" -> BookingStatus.CANCELLED;
-            case "cancel" -> BookingStatus.CANCELLED;
-            case "complete" -> BookingStatus.COMPLETED;
+            case "reject", "cancel" -> BookingStatus.CANCELLED;
             default -> throw new AppException("Invalid action");
         };
         booking.setStatus(newStatus);
         Booking savedBooking = bookingRepository.save(booking);
+        return BookingResponse.from(savedBooking);
+    }
 
-        if (newStatus == BookingStatus.COMPLETED && !certificateService.certificateExistsForBooking(savedBooking.getId())) {
-            String vaccineName = savedBooking.getSlot() != null && savedBooking.getSlot().getDrive() != null
-                ? savedBooking.getSlot().getDrive().getVaccineType()
-                : "Vaccination";
-            certificateService.generateCertificate(savedBooking.getId(), vaccineName, 1);
+    @Transactional
+    public Booking completeBooking(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+            .orElseThrow(() -> new AppException("Booking not found"));
+
+        System.out.println("Before: " + booking.getStatus());
+
+        if (booking.getStatus() == BookingStatus.CANCELLED) {
+            throw new AppException("Cancelled bookings cannot be completed");
         }
 
-        return BookingResponse.from(savedBooking);
+        if (booking.getStatus() == BookingStatus.PENDING) {
+            throw new AppException("Booking must be confirmed before it can be completed");
+        }
+
+        booking.setStatus(BookingStatus.COMPLETED);
+        System.out.println("After: " + booking.getStatus());
+        Booking savedBooking = bookingRepository.saveAndFlush(booking);
+
+        if (!certificateService.certificateExistsForBooking(savedBooking.getId())) {
+            certificateService.generate(savedBooking);
+        }
+
+        return savedBooking;
+    }
+
+    @Transactional
+    public Booking completeBooking(Long bookingId, HttpServletRequest request) {
+        return completeBooking(bookingId);
+    }
+
+    @Transactional
+    public BookingResponse completeBookingResponse(Long bookingId) {
+        return BookingResponse.from(completeBooking(bookingId));
+    }
+
+    @Transactional
+    public BookingResponse completeBookingResponse(Long bookingId, HttpServletRequest request) {
+        return BookingResponse.from(completeBooking(bookingId, request));
+    }
+
+    public void deleteBooking(Long bookingId, HttpServletRequest request) {
+        Booking booking = bookingRepository.findById(bookingId)
+            .orElseThrow(() -> new AppException("Booking not found"));
+
+        Slot slot = booking.getSlot();
+        if (slot != null && booking.getStatus() != BookingStatus.CANCELLED) {
+            int currentBooked = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
+            slot.setBookedCount(Math.max(0, currentBooked - 1));
+            slotRepository.save(slot);
+        }
+
+        bookingRepository.delete(booking);
+        auditService.log("booking-" + bookingId, "DELETE_BOOKING", "BOOKING", "Booking deleted", request);
     }
 
     public List<VaccinationCenter> getAllCenters() {
@@ -171,14 +223,26 @@ public class AdminService {
         return Map.of("content", pageContent, "totalElements", total);
     }
 
-    public Map<String, Object> getAllSlots(PageRequest pageable) {
-        List<Slot> slots = slotRepository.findAll();
+    public Map<String, Object> getAllSlots(PageRequest pageable, SlotStatus status, Long centerId, Long driveId, LocalDate date) {
+        List<AdminSlotResponse> slots = getAllSlots(status, centerId, driveId, date);
         long total = slots.size();
-        List<Slot> pageContent = slots.stream()
+        List<AdminSlotResponse> pageContent = slots.stream()
             .skip(pageable.getOffset())
             .limit(pageable.getPageSize())
             .collect(Collectors.toList());
         return Map.of("content", pageContent, "totalElements", total);
+    }
+
+    public List<AdminSlotResponse> getAllSlots(SlotStatus status, Long centerId, Long driveId, LocalDate date) {
+        return slotRepository.findAll().stream()
+            .filter(slot -> status == null || SlotStatusResolver.resolve(slot) == status)
+            .filter(slot -> centerId == null || (slot.getDrive() != null && slot.getDrive().getCenter() != null
+                && centerId.equals(slot.getDrive().getCenter().getId())))
+            .filter(slot -> driveId == null || (slot.getDrive() != null && driveId.equals(slot.getDrive().getId())))
+            .filter(slot -> date == null || (slot.getDateTime() != null && date.equals(slot.getDateTime().toLocalDate())))
+            .sorted(Comparator.comparing(Slot::getDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
+            .map(this::toAdminSlotResponse)
+            .toList();
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -223,6 +287,7 @@ public class AdminService {
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Slot createSlot(SlotRequest req) {
+        validateSlotRequest(req);
         Slot slot = Slot.builder()
                 .drive(driveRepository.findById(req.driveId()).orElseThrow())
                 .dateTime(req.startTime())
@@ -235,6 +300,7 @@ public class AdminService {
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Slot updateSlot(Long slotId, SlotRequest req) {
+        validateSlotRequest(req);
         Slot slot = slotRepository.findById(slotId)
             .orElseThrow(() -> new AppException("Slot not found"));
         VaccinationDrive drive = driveRepository.findById(req.driveId())
@@ -470,5 +536,36 @@ public class AdminService {
     private void deleteSlotInternal(Slot slot) {
         bookingRepository.deleteAll(bookingRepository.findBySlotId(slot.getId()));
         slotRepository.delete(slot);
+    }
+
+    private AdminSlotResponse toAdminSlotResponse(Slot slot) {
+        int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
+        int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
+
+        return new AdminSlotResponse(
+            slot.getId(),
+            slot.getDateTime(),
+            SlotStatusResolver.resolveEnd(slot),
+            capacity,
+            bookedCount,
+            Math.max(0, capacity - bookedCount),
+            slot.getDrive() != null && slot.getDrive().getCenter() != null ? slot.getDrive().getCenter().getId() : null,
+            slot.getDrive() != null && slot.getDrive().getCenter() != null ? slot.getDrive().getCenter().getName() : null,
+            slot.getDrive() != null ? slot.getDrive().getId() : null,
+            slot.getDrive() != null ? slot.getDrive().getTitle() : null,
+            SlotStatusResolver.resolve(slot).name()
+        );
+    }
+
+    private void validateSlotRequest(SlotRequest req) {
+        if (req.startTime() == null || req.endTime() == null) {
+            throw new AppException("Slot start time and end time are required");
+        }
+        if (!req.endTime().isAfter(req.startTime())) {
+            throw new AppException("Slot end time must be after start time");
+        }
+        if (req.capacity() == null || req.capacity() < 1) {
+            throw new AppException("Slot capacity must be at least 1");
+        }
     }
 }

@@ -52,6 +52,15 @@ const formatDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleDateString();
 };
 
+const formatDateTime = (value) => {
+  if (!value) {
+    return 'N/A';
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString();
+};
+
 const formatDateTimeLocal = (value) => {
   if (!value) {
     return '';
@@ -96,6 +105,7 @@ export default function AdminDashboardPage() {
   const [bookings, setBookings] = useState([]);
   const [centers, setCenters] = useState([]);
   const [drives, setDrives] = useState([]);
+  const [slots, setSlots] = useState([]);
   const [news, setNews] = useState([]);
   const [certificates, setCertificates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -142,6 +152,7 @@ export default function AdminDashboardPage() {
   const [editSlotForm, setEditSlotForm] = useState({ driveId: '', startTime: '', endTime: '', capacity: 50 });
   const [certificateForm, setCertificateForm] = useState({ bookingId: '', vaccineName: '', doseNumber: 1 });
   const [editUserForm, setEditUserForm] = useState({ email: '', fullName: '', age: 0, phoneNumber: '', enabled: true });
+  const [slotFilters, setSlotFilters] = useState({ status: 'ALL', centerId: '', driveId: '', date: '' });
   
   // Feedback and Contact states
   const [feedbacks, setFeedbacks] = useState([]);
@@ -161,11 +172,18 @@ export default function AdminDashboardPage() {
     if (activeTab === 'bookings') loadBookings();
     if (activeTab === 'centers') loadCenters();
     if (activeTab === 'drives') loadDrives();
+    if (activeTab === 'slots') loadSlots();
     if (activeTab === 'news') loadNews();
     if (activeTab === 'certificates') loadCertificates();
     if (activeTab === 'feedback') loadFeedbacks();
     if (activeTab === 'contacts') loadContacts();
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === 'slots') {
+      loadSlots();
+    }
+  }, [slotFilters]);
 
   const loadDashboardData = async () => {
     try {
@@ -239,6 +257,48 @@ export default function AdminDashboardPage() {
     } catch (err) {
       setError('Failed to load drives');
       setDrives([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const buildSlotFilterParams = () => {
+    const params = {};
+
+    if (slotFilters.status && slotFilters.status !== 'ALL') {
+      params.status = slotFilters.status;
+    }
+    if (slotFilters.centerId) {
+      params.centerId = slotFilters.centerId;
+    }
+    if (slotFilters.driveId) {
+      params.driveId = slotFilters.driveId;
+    }
+    if (slotFilters.date) {
+      params.date = slotFilters.date;
+    }
+
+    return params;
+  };
+
+  const loadSlots = async () => {
+    try {
+      setLoading(true);
+      const [slotsResponse, centersResponse, drivesResponse] = await Promise.all([
+        adminAPI.getAllSlotsList(buildSlotFilterParams()),
+        centers.length === 0 ? adminAPI.getAllCenters() : Promise.resolve({ data: { data: centers } }),
+        drives.length === 0 ? adminAPI.getAllDrives() : Promise.resolve({ data: { data: drives } })
+      ]);
+      setSlots(ensureArray(unwrapApiData(slotsResponse)));
+      if (centers.length === 0) {
+        setCenters(ensureArray(unwrapApiData(centersResponse)));
+      }
+      if (drives.length === 0) {
+        setDrives(ensureArray(unwrapApiData(drivesResponse)));
+      }
+    } catch (err) {
+      setError('Failed to load slots');
+      setSlots([]);
     } finally {
       setLoading(false);
     }
@@ -423,16 +483,17 @@ export default function AdminDashboardPage() {
 
   // Open slot modal and ensure drives are loaded
   const handleOpenSlotModal = async (drive) => {
-    setSelectedDrive(drive);
-    setSlotForm({ driveId: drive.id, startTime: '', endTime: '', capacity: 50 });
+    if (drives.length === 0) {
+      await loadDrives();
+    }
+    setSelectedDrive(drive || null);
+    setSlotForm({ driveId: drive?.id || '', startTime: '', endTime: '', capacity: 50 });
     setShowSlotModal(true);
   };
 
   const handleCreateSlot = async (e) => {
     e.preventDefault();
     try {
-      // Format the datetime for the backend
-      const drive = drives.find(d => d.id === slotForm.driveId);
       const slotData = {
         driveId: slotForm.driveId,
         startTime: slotForm.startTime,
@@ -446,6 +507,7 @@ export default function AdminDashboardPage() {
       notifyDataUpdated();
       loadDashboardData();
       loadDrives();
+      loadSlots();
       if (selectedDrive?.id) {
         loadDriveSlots(selectedDrive.id, true);
       }
@@ -480,12 +542,16 @@ export default function AdminDashboardPage() {
 
   const openEditSlotModal = (slot) => {
     setEditingSlot(slot);
+    const isExpired = slot.slotStatus === 'EXPIRED';
     setEditSlotForm({
-      driveId: selectedDrive?.id || slot.drive?.id || '',
-      startTime: slot.editStartTime || formatDateTimeLocal(slot.dateTime || slot.startTime),
-      endTime: slot.editEndTime || combineSlotDateTime(slot.dateTime || slot.startTime, slot.endTime),
+      driveId: selectedDrive?.id || slot.drive?.id || slot.driveId || '',
+      startTime: slot.editStartTime || formatDateTimeLocal(slot.dateTime || slot.startTime || slot.time),
+      endTime: slot.editEndTime || combineSlotDateTime(slot.dateTime || slot.startTime || slot.time, slot.endTime),
       capacity: slot.capacity || 50
     });
+    if (isExpired) {
+      setSuccess('Warning: you are editing an expired slot.');
+    }
     setShowEditSlotModal(true);
   };
 
@@ -499,6 +565,7 @@ export default function AdminDashboardPage() {
       notifyDataUpdated();
       loadDashboardData();
       loadDrives();
+      loadSlots();
       if (selectedDrive?.id) {
         loadDriveSlots(selectedDrive.id, true);
       }
@@ -515,6 +582,7 @@ export default function AdminDashboardPage() {
       notifyDataUpdated();
       loadDashboardData();
       loadDrives();
+      loadSlots();
       if (selectedDrive?.id) {
         loadDriveSlots(selectedDrive.id, true);
       }
@@ -552,18 +620,43 @@ export default function AdminDashboardPage() {
 
   const handleUpdateBookingStatus = async (bookingId, status) => {
     try {
+      let response;
       if (String(status).toLowerCase() === 'completed' || String(status).toLowerCase() === 'complete') {
-        await adminAPI.completeBooking(bookingId);
+        response = await adminAPI.completeBooking(bookingId);
       } else {
-        await adminAPI.updateBookingStatus(bookingId, status);
+        response = await adminAPI.updateBookingStatus(bookingId, status);
+      }
+      const updatedBooking = unwrapApiData(response);
+      if (updatedBooking?.id) {
+        setBookings((current) => current.map((booking) => (
+          booking.id === updatedBooking.id ? { ...booking, ...updatedBooking } : booking
+        )));
+        if (selectedBooking?.id === updatedBooking.id) {
+          setSelectedBooking((current) => current ? { ...current, ...updatedBooking } : current);
+        }
       }
       setSuccess(`Booking ${status} successfully!`);
       setShowEditBookingModal(false);
-      loadDashboardData();
-      loadBookings();
-      loadCertificates();
+      await Promise.all([loadDashboardData(), loadBookings(), loadCertificates()]);
     } catch (err) {
       setError('Failed to update booking status');
+    }
+  };
+
+  const handleDeleteBooking = async (bookingId) => {
+    if (!window.confirm('Delete booking?')) return;
+
+    try {
+      await adminAPI.deleteBooking(bookingId);
+      setBookings((current) => current.filter((booking) => booking.id !== bookingId));
+      if (selectedBooking?.id === bookingId) {
+        setSelectedBooking(null);
+        setShowEditBookingModal(false);
+      }
+      setSuccess('Booking deleted successfully!');
+      await Promise.all([loadDashboardData(), loadBookings(), loadCertificates()]);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete booking');
     }
   };
 
@@ -652,7 +745,7 @@ export default function AdminDashboardPage() {
     datasets: [{
       data: [
         bookings.filter(b => b.status === 'PENDING').length,
-        bookings.filter(b => b.status === 'CONFIRMED' || b.status === 'APPROVED').length,
+        bookings.filter(b => b.status === 'CONFIRMED').length,
         bookings.filter(b => b.status === 'COMPLETED').length,
         bookings.filter(b => b.status === 'CANCELLED').length
       ],
@@ -664,8 +757,6 @@ export default function AdminDashboardPage() {
     const colors = {
       PENDING: 'warning',
       CONFIRMED: 'info',
-      APPROVED: 'info',
-      REJECTED: 'danger',
       COMPLETED: 'success',
       CANCELLED: 'danger'
     };
@@ -682,11 +773,22 @@ export default function AdminDashboardPage() {
     booking.status?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const getSlotStatusBadge = (status) => {
+    const styles = {
+      LIVE: { bg: 'success', text: 'LIVE' },
+      UPCOMING: { bg: 'primary', text: 'UPCOMING' },
+      EXPIRED: { bg: 'danger', text: 'EXPIRED' }
+    };
+    const config = styles[status] || { bg: 'secondary', text: status || 'UNKNOWN' };
+    return <Badge bg={config.bg}>{config.text}</Badge>;
+  };
+
   // Tab configuration
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> },
     { id: 'users', label: 'Users', icon: <FaUsers /> },
     { id: 'bookings', label: 'Bookings', icon: <FaCalendarCheck /> },
+    { id: 'slots', label: 'Manage Slots', icon: <FaCalendarCheck /> },
     { id: 'centers', label: 'Centers', icon: <FaHospital /> },
     { id: 'drives', label: 'Drives', icon: <FaSyringe /> },
     { id: 'certificates', label: 'Certificates', icon: <FaCertificate /> },
@@ -1162,6 +1264,9 @@ export default function AdminDashboardPage() {
                       </Button>
                     </>
                   )}
+                  <Button variant="outline-danger" size="sm" onClick={() => handleDeleteBooking(booking.id)} style={{borderRadius: '0.375rem'}}>
+                    <FaTrash />
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -1276,6 +1381,116 @@ export default function AdminDashboardPage() {
             ))}
           </tbody>
         </Table>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderSlots = () => (
+    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
+        <div>
+          <h5 className="mb-1 fw-bold" style={{color: '#0ea5e9'}}><FaCalendarCheck className="me-2" />Manage Slots</h5>
+          <small className="text-muted">Monitor live, upcoming, and expired slots in one place.</small>
+        </div>
+        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => handleOpenSlotModal(null)}>
+          <FaPlus className="me-2" />Add Slot
+        </Button>
+      </Card.Header>
+      <Card.Body>
+        <Row className="g-3 mb-4">
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>Status</Form.Label>
+              <Form.Select value={slotFilters.status} onChange={(e) => setSlotFilters((current) => ({ ...current, status: e.target.value }))} style={{borderRadius: '0.5rem'}}>
+                <option value="ALL">All</option>
+                <option value="LIVE">Live</option>
+                <option value="UPCOMING">Upcoming</option>
+                <option value="EXPIRED">Expired</option>
+              </Form.Select>
+            </Form.Group>
+          </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>Center</Form.Label>
+              <Form.Select value={slotFilters.centerId} onChange={(e) => setSlotFilters((current) => ({ ...current, centerId: e.target.value, driveId: '' }))} style={{borderRadius: '0.5rem'}}>
+                <option value="">All Centers</option>
+                {centers.map((center) => (
+                  <option key={center.id} value={center.id}>{center.name}</option>
+                ))}
+              </Form.Select>
+            </Form.Group>
+          </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>Drive</Form.Label>
+              <Form.Select value={slotFilters.driveId} onChange={(e) => setSlotFilters((current) => ({ ...current, driveId: e.target.value }))} style={{borderRadius: '0.5rem'}}>
+                <option value="">All Drives</option>
+                {drives
+                  .filter((drive) => !slotFilters.centerId || String(drive.centerId || drive.center?.id || '') === String(slotFilters.centerId))
+                  .map((drive) => (
+                    <option key={drive.id} value={drive.id}>{drive.title}</option>
+                  ))}
+              </Form.Select>
+            </Form.Group>
+          </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>Date</Form.Label>
+              <Form.Control type="date" value={slotFilters.date} onChange={(e) => setSlotFilters((current) => ({ ...current, date: e.target.value }))} style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+          </Col>
+        </Row>
+
+        <div className="d-flex justify-content-between align-items-center mb-3">
+          <small className="text-muted">{slots.length} slot{slots.length === 1 ? '' : 's'} found</small>
+          <Button variant="outline-secondary" size="sm" onClick={() => setSlotFilters({ status: 'ALL', centerId: '', driveId: '', date: '' })} style={{borderRadius: '0.5rem'}}>
+            Reset Filters
+          </Button>
+        </div>
+
+        {slots.length === 0 ? (
+          <div className="text-center py-5">
+            <FaCalendarCheck size={48} className="text-muted mb-3" />
+            <p className="text-muted mb-0">No slots matched the current filters.</p>
+          </div>
+        ) : (
+          <Table responsive hover className="mb-0">
+            <thead style={{background: '#f8fafc'}}>
+              <tr>
+                <th className="ps-4">Slot Time</th>
+                <th>Center</th>
+                <th>Drive</th>
+                <th>Capacity</th>
+                <th>Status</th>
+                <th className="text-end pe-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {slots.map((slot) => (
+                <tr key={slot.id}>
+                  <td className="ps-4">
+                    <div className="fw-medium">{formatDateTime(slot.time)}</div>
+                    <small className="text-muted">Ends {formatDateTime(slot.endTime)}</small>
+                  </td>
+                  <td>{slot.centerName || 'N/A'}</td>
+                  <td>{slot.driveName || 'N/A'}</td>
+                  <td>{slot.bookedCount || 0} / {slot.capacity || 0}</td>
+                  <td>{getSlotStatusBadge(slot.slotStatus)}</td>
+                  <td className="text-end pe-4">
+                    <div className="d-flex justify-content-end gap-2">
+                      <Button variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
+                        <FaEdit />
+                      </Button>
+                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
+                        <FaTrash />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </Card.Body>
     </Card>
   );
@@ -1510,6 +1725,7 @@ export default function AdminDashboardPage() {
         )}
         {activeTab === 'users' && renderUsers()}
         {activeTab === 'bookings' && renderBookings()}
+        {activeTab === 'slots' && renderSlots()}
         {activeTab === 'centers' && renderCenters()}
         {activeTab === 'drives' && renderDrives()}
         {activeTab === 'certificates' && renderCertificates()}
@@ -1862,13 +2078,20 @@ export default function AdminDashboardPage() {
       {/* Slot Modal */}
       <Modal show={showSlotModal} onHide={() => setShowSlotModal(false)} size="lg" centered>
         <Modal.Header closeButton style={{background: '#f8fafc'}}>
-          <Modal.Title><FaCalendarCheck className="me-2" />Add Slot to Drive</Modal.Title>
+          <Modal.Title><FaCalendarCheck className="me-2" />Create Slot</Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleCreateSlot}>
           <Modal.Body>
             <Alert variant="info" style={{background: 'linear-gradient(135deg, #cffafe 0%, #06b6d4 100%)', border: 'none', borderRadius: '0.5rem'}}>
-              <small>Creating slot for drive: <strong>{selectedDrive?.title}</strong></small>
+              <small>{selectedDrive?.title ? <>Creating slot for drive: <strong>{selectedDrive.title}</strong></> : 'Choose a drive, date/time, and capacity to create a slot.'}</small>
             </Alert>
+            <Form.Group className="mb-3">
+              <Form.Label>Drive</Form.Label>
+              <Form.Select value={slotForm.driveId} onChange={e => setSlotForm({...slotForm, driveId: e.target.value})} required style={{borderRadius: '0.5rem'}}>
+                <option value="">Select Drive</option>
+                {drives.map(drive => <option key={drive.id} value={drive.id}>{drive.title}</option>)}
+              </Form.Select>
+            </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Start Time</Form.Label>
               <Form.Control 
@@ -1941,11 +2164,9 @@ export default function AdminDashboardPage() {
                         <Button variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
                           <FaEdit />
                         </Button>
-                        {isSuperAdmin && (
-                          <Button variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
-                            <FaTrash />
-                          </Button>
-                        )}
+                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
+                          <FaTrash />
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -1965,6 +2186,18 @@ export default function AdminDashboardPage() {
         </Modal.Header>
         <Form onSubmit={handleUpdateSlot}>
           <Modal.Body>
+            {editingSlot?.slotStatus === 'EXPIRED' && (
+              <Alert variant="warning" style={{borderRadius: '0.5rem'}}>
+                This slot is expired. Update it carefully before saving changes.
+              </Alert>
+            )}
+            <Form.Group className="mb-3">
+              <Form.Label>Drive</Form.Label>
+              <Form.Select value={editSlotForm.driveId} onChange={e => setEditSlotForm({...editSlotForm, driveId: e.target.value})} required style={{borderRadius: '0.5rem'}}>
+                <option value="">Select Drive</option>
+                {drives.map(drive => <option key={drive.id} value={drive.id}>{drive.title}</option>)}
+              </Form.Select>
+            </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Start Time</Form.Label>
               <Form.Control type="datetime-local" value={editSlotForm.startTime} onChange={e => setEditSlotForm({...editSlotForm, startTime: e.target.value})} required style={{borderRadius: '0.5rem'}} />
@@ -2101,6 +2334,11 @@ export default function AdminDashboardPage() {
                   Cancel Booking
                 </Button>
               </>
+            )}
+            {selectedBooking?.id && (
+              <Button variant="outline-danger" onClick={() => handleDeleteBooking(selectedBooking.id)} style={{borderRadius: '0.5rem'}}>
+                <FaTrash className="me-1" /> Delete Booking
+              </Button>
             )}
           </div>
         </Modal.Body>

@@ -58,6 +58,7 @@ class BookingServiceTest {
             .title("COVID-19 Drive")
             .minAge(18)
             .maxAge(60)
+            .active(true)
             .center(testCenter)
             .build();
 
@@ -121,6 +122,48 @@ class BookingServiceTest {
 
         assertThrows(AppException.class, () -> 
             bookingService.book("test@example.com", request));
+    }
+
+    @Test
+    void book_ExpiredSlotRejected() {
+        LocalDateTime slotDateTime = LocalDateTime.now().minusHours(2);
+        testSlot.setDateTime(slotDateTime);
+        testSlot.setStartTime(slotDateTime.toLocalTime());
+        testSlot.setEndTime(slotDateTime.plusHours(1).toLocalTime());
+        BookingRequest request = new BookingRequest(1L, 1L, null);
+
+        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
+        when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
+
+        assertThrows(AppException.class, () ->
+            bookingService.book("test@example.com", request));
+    }
+
+    @Test
+    void reschedule_ExpiredSlotRejected() {
+        Booking booking = Booking.builder()
+            .id(1L)
+            .user(testUser)
+            .slot(testSlot)
+            .status(BookingStatus.PENDING)
+            .build();
+
+        LocalDateTime slotDateTime = LocalDateTime.now().minusHours(2);
+        Slot expiredSlot = Slot.builder()
+            .id(2L)
+            .drive(testDrive)
+            .dateTime(slotDateTime)
+            .capacity(10)
+            .bookedCount(0)
+            .startTime(slotDateTime.toLocalTime())
+            .endTime(slotDateTime.plusHours(1).toLocalTime())
+            .build();
+
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(booking));
+        when(slotRepository.findById(2L)).thenReturn(Optional.of(expiredSlot));
+
+        assertThrows(AppException.class, () ->
+            bookingService.reschedule("test@example.com", 1L, new BookingRequest(1L, 2L, null)));
     }
 
     @Test
