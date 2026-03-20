@@ -8,6 +8,7 @@ import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import com.vaccine.core.service.ContactService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
@@ -27,8 +28,12 @@ public class ContactController {
     }
 
     @PostMapping
-    public ResponseEntity<ApiMessage> submitContact(@Valid @RequestBody ContactRequest request) {
-        return ResponseEntity.ok(contactService.submitContact(request, null));
+    public ResponseEntity<ApiMessage> submitContact(@Valid @RequestBody ContactRequest request, Authentication authentication) {
+        User user = null;
+        if (authentication != null && authentication.getName() != null && !"anonymousUser".equals(authentication.getName())) {
+            user = userRepository.findByEmail(authentication.getName()).orElse(null);
+        }
+        return ResponseEntity.ok(contactService.submitContact(request, user));
     }
 
     @GetMapping("/my-inquiries")

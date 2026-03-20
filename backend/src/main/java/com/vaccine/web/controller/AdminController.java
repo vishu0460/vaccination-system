@@ -177,6 +177,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.respondToFeedback(feedbackId, response.get("response")));
     }
 
+    @PutMapping("/feedback/{feedbackId}/reply")
+    public ResponseEntity<Map<String, Object>> replyToFeedback(@PathVariable Long feedbackId, @RequestBody Map<String, String> response) {
+        return ResponseEntity.ok(adminService.respondToFeedback(feedbackId, response.get("replyMessage")));
+    }
+
     @GetMapping("/contacts")
     public ResponseEntity<Map<String, Object>> getAllContacts(
             @RequestParam(defaultValue = "0") int page,
@@ -187,6 +192,11 @@ public class AdminController {
     @PatchMapping("/contacts/{contactId}/respond")
     public ResponseEntity<Map<String, Object>> respondToContact(@PathVariable Long contactId, @RequestBody Map<String, String> response) {
         return ResponseEntity.ok(adminService.respondToContact(contactId, response.get("response")));
+    }
+
+    @PutMapping("/contact/{contactId}/reply")
+    public ResponseEntity<Map<String, Object>> replyToContact(@PathVariable Long contactId, @RequestBody Map<String, String> response) {
+        return ResponseEntity.ok(adminService.respondToContact(contactId, response.get("replyMessage")));
     }
 
     @DeleteMapping("/contacts/{contactId}")

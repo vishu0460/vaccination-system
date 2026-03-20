@@ -39,6 +39,7 @@ public class AdminService {
     private final NewsRepository newsRepository;
     private final FeedbackRepository feedbackRepository;
     private final ContactRepository contactRepository;
+    private final NotificationRepository notificationRepository;
     private final ReviewRepository reviewRepository;
     private final EmailVerificationRepository emailVerificationRepository;
     private final PasswordResetRepository passwordResetRepository;
@@ -46,6 +47,8 @@ public class AdminService {
     private final AuditLogRepository auditLogRepository;
     private final CertificateService certificateService;
     private final AuditService auditService;
+    private final FeedbackService feedbackService;
+    private final ContactService contactService;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
@@ -380,29 +383,31 @@ public class AdminService {
     }
 
     public Map<String, Object> getAllFeedback(PageRequest pageRequest) {
-        List<Feedback> feedback = feedbackRepository.findAll();
-        return Map.of("content", feedback, "totalElements", feedbackRepository.count());
+        List<Map<String, Object>> feedback = feedbackService.getAllFeedback();
+        return Map.of("content", feedback, "totalElements", feedback.size());
     }
 
     public Map<String, Object> respondToFeedback(Long feedbackId, String response) {
-        Feedback feedback = feedbackRepository.findById(feedbackId)
-                .orElseThrow(() -> new AppException("Feedback not found"));
-        feedback.setResponse(response);
-        feedbackRepository.save(feedback);
-        return Map.of("message", "Response saved", "feedbackId", feedbackId);
+        feedbackService.respondToFeedback(feedbackId, response);
+        return Map.of(
+            "message", "Response saved",
+            "feedbackId", feedbackId,
+            "feedback", feedbackService.getFeedbackById(feedbackId)
+        );
     }
 
     public Map<String, Object> getAllContacts(PageRequest pageRequest) {
-        List<Contact> contacts = contactRepository.findAll();
-        return Map.of("content", contacts, "totalElements", contactRepository.count());
+        List<Map<String, Object>> contacts = contactService.getAllContacts();
+        return Map.of("content", contacts, "totalElements", contacts.size());
     }
 
     public Map<String, Object> respondToContact(Long contactId, String response) {
-        Contact contact = contactRepository.findById(contactId)
-                .orElseThrow(() -> new AppException("Contact not found"));
-        contact.setResponse(response);
-        contactRepository.save(contact);
-        return Map.of("message", "Response saved", "contactId", contactId);
+        contactService.respondToContact(contactId, response);
+        return Map.of(
+            "message", "Response saved",
+            "contactId", contactId,
+            "contact", contactService.getContactById(contactId)
+        );
     }
 
     public void deleteContact(Long contactId) {

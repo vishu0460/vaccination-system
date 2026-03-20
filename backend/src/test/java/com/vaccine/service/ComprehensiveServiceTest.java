@@ -728,8 +728,8 @@ testContact.setMessage("This is a test inquiry message");
         assertNotNull(testFeedback.getResponse());
         
         // 4. Feedback status updated
-        testFeedback.setStatus(FeedbackStatus.RESPONDED);
-        assertEquals(FeedbackStatus.RESPONDED, testFeedback.getStatus());
+        testFeedback.setStatus(FeedbackStatus.REPLIED);
+        assertEquals(FeedbackStatus.REPLIED, testFeedback.getStatus());
     }
 
     @Test
@@ -745,8 +745,8 @@ testContact.setMessage("This is a test inquiry message");
         assertNotNull(testContact.getResponse());
         
         // 4. Inquiry status updated
-        testContact.setStatus(ContactStatus.RESOLVED);
-        assertEquals(ContactStatus.RESOLVED, testContact.getStatus());
+        testContact.setStatus(ContactStatus.REPLIED);
+        assertEquals(ContactStatus.REPLIED, testContact.getStatus());
     }
 
     // ========== PERFORMANCE TESTS ==========
@@ -820,4 +820,3 @@ testContact.setMessage("This is a test inquiry message");
         assertEquals(testCenter.getId(), testReview.getCenter().getId());
     }
 }
-

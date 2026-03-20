@@ -61,7 +61,7 @@ INSERT INTO news (title, content, published, published_at) VALUES
 
 -- Sample feedback
 INSERT INTO feedback (user_id, email, subject, message, status, created_at) VALUES 
-(1, 'test.user1@example.com', 'Great Service', 'Excellent vaccination experience. Staff was very helpful and professional.', 'RESPONDED', NOW()),
+(1, 'test.user1@example.com', 'Great Service', 'Excellent vaccination experience. Staff was very helpful and professional.', 'REPLIED', NOW()),
 (2, 'test.user2@example.com', 'Appointment Reminder', 'Please add SMS reminders for upcoming appointments.', 'PENDING', DATE_SUB(NOW(), INTERVAL 1 DAY));
 
 -- Sample reviews

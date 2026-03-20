@@ -3,6 +3,7 @@ package com.vaccine.service;
 import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.common.dto.FeedbackRequest;
 import com.vaccine.common.dto.FeedbackResponse;
+import com.vaccine.core.service.CommunicationNotificationService;
 import com.vaccine.domain.Feedback;
 import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
@@ -38,6 +39,8 @@ class FeedbackServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private CommunicationNotificationService communicationNotificationService;
 
     @InjectMocks
     private FeedbackService feedbackService;
@@ -184,7 +187,7 @@ class FeedbackServiceTest {
 
         assertNotNull(result);
         assertEquals("Thank you!", result.getAdminResponse());
-        assertEquals("RESPONDED", result.getStatus());
+        assertEquals("REPLIED", result.getStatus());
     }
 
 
@@ -337,7 +340,7 @@ class FeedbackServiceTest {
     @Test
     void respondToFeedback_AlreadyResponded_UpdatesResponse() {
         testFeedback.setResponse("Previous response");
-        testFeedback.setStatus(FeedbackStatus.RESPONDED);
+        testFeedback.setStatus(FeedbackStatus.REPLIED);
         
         when(feedbackRepository.findById(1L)).thenReturn(Optional.of(testFeedback));
         when(feedbackRepository.save(any(Feedback.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -351,7 +354,7 @@ class FeedbackServiceTest {
     @Test
     void getFeedbackById_IncludesAllFields() {
         testFeedback.setResponse("Test response");
-        testFeedback.setStatus(FeedbackStatus.RESPONDED);
+        testFeedback.setStatus(FeedbackStatus.REPLIED);
         
         when(feedbackRepository.findById(1L)).thenReturn(Optional.of(testFeedback));
 
@@ -363,8 +366,7 @@ class FeedbackServiceTest {
         assertEquals("Great Service", result.get("subject"));
         assertEquals("Excellent vaccination drive", result.get("message"));
         assertEquals("Test response", result.get("response"));
-        assertEquals("RESPONDED", (String) result.get("status"));
+        assertEquals("REPLIED", (String) result.get("status"));
     }
 }
-
 

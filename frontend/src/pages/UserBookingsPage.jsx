@@ -385,8 +385,9 @@ export default function UserBookingsPage() {
                 {notifications.slice(0, 20).map((notification) => (
                   <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
                     <div>
-                      <div className="fw-semibold">{notification.channel === "EMAIL" ? "Email Sent" : "SMS Sent"}</div>
-                      <div className="text-muted small">{notification.message}</div>
+                      <div className="fw-semibold">{notification.title || `${notification.type} Reply`}</div>
+                      <div className="text-muted small">Your message: {notification.message || "No message"}</div>
+                      <div className="small mt-1">Reply: {notification.reply || "No reply yet"}</div>
                     </div>
                     <small className="text-muted">{notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}</small>
                   </li>

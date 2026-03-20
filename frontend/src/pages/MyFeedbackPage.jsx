@@ -27,8 +27,8 @@ export default function MyFeedbackPage() {
   const getStatusBadge = (status) => {
     const colors = {
       PENDING: 'warning',
-      APPROVED: 'success',  // Feedback responded/approved by admin
-      REJECTED: 'danger'
+      REPLIED: 'success',
+      CLOSED: 'secondary'
     };
     return <Badge bg={colors[status] || 'secondary'}>{status || 'PENDING'}</Badge>;
   };
@@ -69,10 +69,10 @@ export default function MyFeedbackPage() {
                   <Card.Title>{item.subject}</Card.Title>
                   <Card.Text>{item.message}</Card.Text>
                   
-                  {item.response && (
+                  {(item.replyMessage || item.response) && (
                     <div className="mt-3 p-3 bg-light rounded">
                       <h6 className="text-success">Admin Response:</h6>
-                      <p className="mb-0">{item.response}</p>
+                      <p className="mb-0">{item.replyMessage || item.response}</p>
                     </div>
                   )}
                   

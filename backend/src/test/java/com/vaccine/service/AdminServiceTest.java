@@ -3,6 +3,8 @@ package com.vaccine.service;
 import com.vaccine.core.service.AuditService;
 import com.vaccine.core.service.AdminService;
 import com.vaccine.core.service.CertificateService;
+import com.vaccine.core.service.ContactService;
+import com.vaccine.core.service.FeedbackService;
 import com.vaccine.domain.Booking;
 import com.vaccine.domain.BookingStatus;
 import com.vaccine.domain.Slot;
@@ -30,6 +32,7 @@ class AdminServiceTest {
     @Mock private NewsRepository newsRepository;
     @Mock private FeedbackRepository feedbackRepository;
     @Mock private ContactRepository contactRepository;
+    @Mock private NotificationRepository notificationRepository;
     @Mock private ReviewRepository reviewRepository;
     @Mock private EmailVerificationRepository emailVerificationRepository;
     @Mock private PasswordResetRepository passwordResetRepository;
@@ -37,6 +40,8 @@ class AdminServiceTest {
     @Mock private AuditLogRepository auditLogRepository;
     @Mock private CertificateService certificateService;
     @Mock private AuditService auditService;
+    @Mock private FeedbackService feedbackService;
+    @Mock private ContactService contactService;
     @Mock private RoleRepository roleRepository;
     @Mock private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
     @Mock private HttpServletRequest request;

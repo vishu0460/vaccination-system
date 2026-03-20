@@ -17,9 +17,11 @@ import java.util.Map;
 @Service
 public class ContactService {
     private final ContactRepository contactRepository;
+    private final CommunicationNotificationService communicationNotificationService;
 
-    public ContactService(ContactRepository contactRepository) {
+    public ContactService(ContactRepository contactRepository, CommunicationNotificationService communicationNotificationService) {
         this.contactRepository = contactRepository;
+        this.communicationNotificationService = communicationNotificationService;
     }
 
     @Transactional
@@ -70,8 +72,16 @@ public class ContactService {
                 .orElseThrow(() -> new AppException("Contact not found"));
 
         contact.setResponse(response);
-        contact.setStatus(ContactStatus.RESOLVED);
+        contact.setStatus(ContactStatus.REPLIED);
         contactRepository.save(contact);
+        communicationNotificationService.notifyReply(
+            contact.getUser(),
+            "CONTACT",
+            "Reply to your contact message",
+            contact.getMessage(),
+            response,
+            contact.getId()
+        );
 
         return new ApiMessage("Response sent successfully");
     }
@@ -87,11 +97,15 @@ public class ContactService {
         map.put("id", contact.getId());
         map.put("name", contact.getName());
         map.put("email", contact.getEmail());
+        map.put("userName", contact.getUser() != null && contact.getUser().getFullName() != null ? contact.getUser().getFullName() : contact.getName());
+        map.put("userEmail", contact.getUser() != null && contact.getUser().getEmail() != null ? contact.getUser().getEmail() : contact.getEmail());
         map.put("phone", contact.getPhone());
         map.put("subject", contact.getSubject());
         map.put("message", contact.getMessage());
         map.put("response", contact.getResponse());
+        map.put("replyMessage", contact.getResponse());
         map.put("status", contact.getStatus().name());
+        map.put("type", "CONTACT");
         map.put("createdAt", contact.getCreatedAt());
         map.put("updatedAt", contact.getUpdatedAt());
         return map;

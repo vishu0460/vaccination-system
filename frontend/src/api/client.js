@@ -126,6 +126,7 @@ export const userAPI = {
   cancelBooking: (bookingId) => apiClient.patch(`/user/bookings/${bookingId}/cancel`),
   rescheduleBooking: (bookingId, data) => apiClient.patch(`/user/bookings/${bookingId}/reschedule`, data),
   getNotifications: () => apiClient.get("/user/notifications"),
+  markNotificationsRead: () => apiClient.patch("/user/notifications/read-all"),
   getSlotRecommendations: (params) => apiClient.get("/user/recommendations/slots", { params })
 };
 
@@ -174,9 +175,9 @@ export const adminAPI = {
   exportBookings: () => apiClient.get("/admin/bookings/export", { responseType: "blob" }),
   getAuditLogs: () => apiClient.get("/admin/audit-logs"),
   getAllFeedback: (page = 0, size = 10) => apiClient.get("/admin/feedback", { params: { page, size } }),
-  respondToFeedback: (id, response) => apiClient.patch(`/admin/feedback/${id}/respond`, { response }),
+  respondToFeedback: (id, replyMessage) => apiClient.put(`/admin/feedback/${id}/reply`, { replyMessage }),
   getAllContacts: () => apiClient.get("/admin/contacts"),
-  respondToContact: (id, response) => apiClient.patch(`/admin/contacts/${id}/respond`, { response }),
+  respondToContact: (id, replyMessage) => apiClient.put(`/admin/contact/${id}/reply`, { replyMessage }),
   deleteContact: (id) => apiClient.delete(`/admin/contacts/${id}`),
   getAllCertificates: () => apiClient.get("/certificates")
 };

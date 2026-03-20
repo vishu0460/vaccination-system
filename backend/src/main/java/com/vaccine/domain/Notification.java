@@ -21,11 +21,23 @@ public class Notification {
     @JoinColumn(name = "user_id")
     private User user;
 
+    @Column(name = "title")
+    private String title;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String message;
 
     @Column(nullable = false)
     private String type;
+
+    @Column(name = "reply_message", columnDefinition = "TEXT")
+    private String replyMessage;
+
+    @Column(name = "status")
+    private String status;
+
+    @Column(name = "reference_id")
+    private Long referenceId;
 
     @Column(name = "is_read", nullable = false)
     private Boolean isRead = false;

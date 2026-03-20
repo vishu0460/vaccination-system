@@ -96,6 +96,11 @@ const notifyDataUpdated = () => {
   }
 };
 
+const communicationBadge = (status) => {
+  const normalized = String(status || 'PENDING').toUpperCase();
+  return <Badge bg={normalized === 'REPLIED' ? 'success' : 'warning'}>{normalized}</Badge>;
+};
+
 export default function AdminDashboardPage() {
   const currentRole = getRole();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN';
@@ -834,7 +839,9 @@ export default function AdminDashboardPage() {
       setSuccess('Response sent successfully!');
       setShowFeedbackModal(false);
       setResponseText('');
-      loadFeedbacks();
+      setSelectedFeedback(null);
+      await loadFeedbacks();
+      notifyDataUpdated();
     } catch (err) {
       setError('Failed to send response');
     }
@@ -850,7 +857,9 @@ export default function AdminDashboardPage() {
       setSuccess('Response sent successfully!');
       setShowContactModal(false);
       setResponseText('');
-      loadContacts();
+      setSelectedContact(null);
+      await loadContacts();
+      notifyDataUpdated();
     } catch (err) {
       setError('Failed to send response');
     }
@@ -869,13 +878,13 @@ export default function AdminDashboardPage() {
 
   const openFeedbackModal = (feedback) => {
     setSelectedFeedback(feedback);
-    setResponseText(feedback.response || '');
+    setResponseText(feedback.replyMessage || feedback.response || '');
     setShowFeedbackModal(true);
   };
 
   const openContactModal = (contact) => {
     setSelectedContact(contact);
-    setResponseText(contact.response || '');
+    setResponseText(contact.replyMessage || contact.response || '');
     setShowContactModal(true);
   };
 
@@ -895,7 +904,8 @@ export default function AdminDashboardPage() {
             <thead style={{background: '#f8fafc'}}>
               <tr>
                 <th className="ps-4">ID</th>
-                <th>User Email</th>
+                <th>User</th>
+                <th>Type</th>
                 <th>Subject</th>
                 <th>Rating</th>
                 <th>Status</th>
@@ -906,21 +916,21 @@ export default function AdminDashboardPage() {
               {feedbacks.map(feedback => (
                 <tr key={feedback.id}>
                   <td className="ps-4">#{feedback.id}</td>
-                  <td>{feedback.userEmail || 'Anonymous'}</td>
+                  <td>
+                    <div className="fw-semibold">{feedback.userName || 'Anonymous'}</div>
+                    <div className="small text-muted">{feedback.userEmail || 'No email'}</div>
+                  </td>
+                  <td><Badge bg="info">{feedback.type || 'FEEDBACK'}</Badge></td>
                   <td>{feedback.subject || 'N/A'}</td>
                   <td>
                     {[...Array(5)].map((_, i) => (
                       <span key={i} style={{color: i < (feedback.rating || 0) ? '#f59e0b' : '#e2e8f0'}}>★</span>
                     ))}
                   </td>
-                  <td>
-                    <Badge bg={feedback.status === 'APPROVED' ? 'success' : 'warning'}>
-                      {feedback.status || 'PENDING'}
-                    </Badge>
-                  </td>
+                  <td>{communicationBadge(feedback.status)}</td>
                   <td className="text-end pe-4">
                     <Button variant="outline-primary" size="sm" onClick={() => openFeedbackModal(feedback)} style={{borderRadius: '0.375rem'}}>
-                      <FaEdit /> Respond
+                      <FaEdit /> {feedback.replyMessage || feedback.response ? 'Edit Reply' : 'Reply'}
                     </Button>
                   </td>
                 </tr>
@@ -948,8 +958,8 @@ export default function AdminDashboardPage() {
             <thead style={{background: '#f8fafc'}}>
               <tr>
                 <th className="ps-4">ID</th>
-                <th>Name</th>
-                <th>Email</th>
+                <th>User</th>
+                <th>Type</th>
                 <th>Phone</th>
                 <th>Message</th>
                 <th>Date</th>
@@ -961,19 +971,18 @@ export default function AdminDashboardPage() {
               {contacts.map(contact => (
                 <tr key={contact.id}>
                   <td className="ps-4">#{contact.id}</td>
-                  <td>{contact.name}</td>
-                  <td>{contact.email}</td>
+                  <td>
+                    <div className="fw-semibold">{contact.userName || contact.name || 'Guest'}</div>
+                    <div className="small text-muted">{contact.userEmail || contact.email || 'No email'}</div>
+                  </td>
+                  <td><Badge bg="secondary">{contact.type || 'CONTACT'}</Badge></td>
                   <td>{contact.phone || 'N/A'}</td>
                   <td>{contact.message?.substring(0, 30)}{contact.message && contact.message.length > 30 ? '...' : ''}</td>
                 <td>{formatDate(contact.createdAt)}</td>
-                  <td>
-                    <Badge bg={contact.status === 'RESPONDED' ? 'success' : 'warning'}>
-                      {contact.status || 'PENDING'}
-                    </Badge>
-                  </td>
+                  <td>{communicationBadge(contact.status)}</td>
                   <td className="text-end pe-4">
                     <Button variant="outline-primary" size="sm" className="me-2" onClick={() => openContactModal(contact)} style={{borderRadius: '0.375rem'}}>
-                      <FaEdit /> Respond
+                      <FaEdit /> {contact.replyMessage || contact.response ? 'Edit Reply' : 'Reply'}
                     </Button>
                     <Button variant="outline-danger" size="sm" onClick={() => handleDeleteContact(contact.id)} style={{borderRadius: '0.375rem'}}>
                       <FaTrash />
@@ -2350,10 +2359,11 @@ export default function AdminDashboardPage() {
       {/* Feedback Response Modal */}
       <Modal show={showFeedbackModal} onHide={() => setShowFeedbackModal(false)} centered>
         <Modal.Header closeButton style={{background: '#f8fafc'}}>
-          <Modal.Title><FaComment className="me-2" />Respond to Feedback</Modal.Title>
+          <Modal.Title><FaComment className="me-2" />Reply to Feedback</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <p><strong>From:</strong> {selectedFeedback?.userEmail || 'Anonymous'}</p>
+          <p><strong>From:</strong> {selectedFeedback?.userName || 'Anonymous'} ({selectedFeedback?.userEmail || 'No email'})</p>
+          <p><strong>Type:</strong> {selectedFeedback?.type || 'FEEDBACK'}</p>
           <p><strong>Subject:</strong> {selectedFeedback?.subject || 'N/A'}</p>
           <p><strong>Rating:</strong> {[...Array(5)].map((_, i) => <span key={i} style={{color: i < (selectedFeedback?.rating || 0) ? '#f59e0b' : '#e2e8f0'}}>★</span>)}</p>
           <hr />
@@ -2361,32 +2371,38 @@ export default function AdminDashboardPage() {
           <div className="bg-light p-3 mb-3 rounded" style={{fontSize: '0.9rem'}}>
             {selectedFeedback?.message || 'No message'}
           </div>
+          {(selectedFeedback?.replyMessage || selectedFeedback?.response) && (
+            <div className="bg-success-subtle p-3 mb-3 rounded" style={{fontSize: '0.9rem'}}>
+              <strong>Existing reply:</strong> {selectedFeedback?.replyMessage || selectedFeedback?.response}
+            </div>
+          )}
           <Form.Group>
-            <Form.Label>Your Response</Form.Label>
+            <Form.Label>Your Reply</Form.Label>
             <Form.Control 
               as="textarea" 
               rows={4} 
               value={responseText} 
               onChange={(e) => setResponseText(e.target.value)}
-              placeholder="Write your response to this feedback..."
+              placeholder="Write your reply to this feedback..."
               style={{borderRadius: '0.5rem'}}
             />
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowFeedbackModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
-          <Button onClick={() => handleRespondToFeedback(selectedFeedback?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Response</Button>
+          <Button onClick={() => handleRespondToFeedback(selectedFeedback?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Reply</Button>
         </Modal.Footer>
       </Modal>
 
       {/* Contact Response Modal */}
       <Modal show={showContactModal} onHide={() => setShowContactModal(false)} centered>
         <Modal.Header closeButton style={{background: '#f8fafc'}}>
-          <Modal.Title><FaPhone className="me-2" />Respond to Contact</Modal.Title>
+          <Modal.Title><FaPhone className="me-2" />Reply to Contact</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <p><strong>Name:</strong> {selectedContact?.name}</p>
-          <p><strong>Email:</strong> {selectedContact?.email}</p>
+          <p><strong>Name:</strong> {selectedContact?.userName || selectedContact?.name}</p>
+          <p><strong>Email:</strong> {selectedContact?.userEmail || selectedContact?.email}</p>
+          <p><strong>Type:</strong> {selectedContact?.type || 'CONTACT'}</p>
           <p><strong>Phone:</strong> {selectedContact?.phone || 'N/A'}</p>
           <p><strong>Subject:</strong> {selectedContact?.subject || 'N/A'}</p>
           <hr />
@@ -2394,21 +2410,26 @@ export default function AdminDashboardPage() {
           <div className="bg-light p-3 mb-3 rounded" style={{fontSize: '0.9rem'}}>
             {selectedContact?.message || 'No message'}
           </div>
+          {(selectedContact?.replyMessage || selectedContact?.response) && (
+            <div className="bg-success-subtle p-3 mb-3 rounded" style={{fontSize: '0.9rem'}}>
+              <strong>Existing reply:</strong> {selectedContact?.replyMessage || selectedContact?.response}
+            </div>
+          )}
           <Form.Group>
-            <Form.Label>Your Response</Form.Label>
+            <Form.Label>Your Reply</Form.Label>
             <Form.Control 
               as="textarea" 
               rows={4} 
               value={responseText} 
               onChange={(e) => setResponseText(e.target.value)}
-              placeholder="Write your response to this inquiry..."
+              placeholder="Write your reply to this inquiry..."
               style={{borderRadius: '0.5rem'}}
             />
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowContactModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
-          <Button onClick={() => handleRespondToContact(selectedContact?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Response</Button>
+          <Button onClick={() => handleRespondToContact(selectedContact?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Reply</Button>
         </Modal.Footer>
       </Modal>
 

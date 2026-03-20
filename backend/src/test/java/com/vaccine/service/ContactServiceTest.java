@@ -2,6 +2,7 @@ package com.vaccine.service;
 
 import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.common.dto.ContactRequest;
+import com.vaccine.core.service.CommunicationNotificationService;
 import com.vaccine.domain.Contact;
 import com.vaccine.domain.User;
 import com.vaccine.infrastructure.persistence.repository.ContactRepository;
@@ -28,6 +29,8 @@ class ContactServiceTest {
 
     @Mock
     private ContactRepository contactRepository;
+    @Mock
+    private CommunicationNotificationService communicationNotificationService;
 
     @InjectMocks
     private ContactService contactService;
@@ -308,7 +311,7 @@ class ContactServiceTest {
     @Test
     void respondToContact_AlreadyResponded_UpdatesResponse() {
         testContact.setResponse("Previous response");
-        testContact.setStatus(ContactStatus.RESOLVED);
+        testContact.setStatus(ContactStatus.REPLIED);
         
         when(contactRepository.findById(1L)).thenReturn(Optional.of(testContact));
         when(contactRepository.save(any(Contact.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -322,7 +325,7 @@ class ContactServiceTest {
     @Test
     void getContactById_IncludesAllFields() {
         testContact.setResponse("Test response");
-        testContact.setStatus(ContactStatus.RESOLVED);
+        testContact.setStatus(ContactStatus.REPLIED);
         
         when(contactRepository.findById(1L)).thenReturn(Optional.of(testContact));
 
@@ -335,7 +338,7 @@ class ContactServiceTest {
         assertEquals("General Inquiry", result.get("subject"));
         assertEquals("I have a question about vaccination", result.get("message"));
         assertEquals("Test response", result.get("response"));
-        assertEquals("RESOLVED", result.get("status"));
+        assertEquals("REPLIED", result.get("status"));
     }
 
     @Test
@@ -359,4 +362,3 @@ class ContactServiceTest {
         assertNotNull(result);
     }
 }
-

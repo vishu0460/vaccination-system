@@ -23,10 +23,16 @@ import java.util.Map;
 public class FeedbackService {
     private final FeedbackRepository feedbackRepository;
     private final UserRepository userRepository;
+    private final CommunicationNotificationService communicationNotificationService;
 
-    public FeedbackService(FeedbackRepository feedbackRepository, UserRepository userRepository) {
+    public FeedbackService(
+        FeedbackRepository feedbackRepository,
+        UserRepository userRepository,
+        CommunicationNotificationService communicationNotificationService
+    ) {
         this.feedbackRepository = feedbackRepository;
         this.userRepository = userRepository;
+        this.communicationNotificationService = communicationNotificationService;
     }
 
     public ApiMessage submitFeedback(FeedbackRequest request, User user) {
@@ -84,8 +90,16 @@ public class FeedbackService {
             .orElseThrow(() -> new AppException("Feedback not found"));
 
         feedback.setResponse(response);
-        feedback.setStatus(FeedbackStatus.RESPONDED);
+        feedback.setStatus(FeedbackStatus.REPLIED);
         feedbackRepository.save(feedback);
+        communicationNotificationService.notifyReply(
+            feedback.getUser(),
+            "FEEDBACK",
+            "Reply to your feedback",
+            feedback.getMessage(),
+            response,
+            feedback.getId()
+        );
 
         return new ApiMessage("Response sent successfully");
     }
@@ -95,8 +109,16 @@ public class FeedbackService {
             .orElseThrow(() -> new AppException("Feedback not found"));
 
         feedback.setResponse(response);
-        feedback.setStatus(FeedbackStatus.RESPONDED);
+        feedback.setStatus(FeedbackStatus.REPLIED);
         feedbackRepository.save(feedback);
+        communicationNotificationService.notifyReply(
+            feedback.getUser(),
+            "FEEDBACK",
+            "Reply to your feedback",
+            feedback.getMessage(),
+            response,
+            feedback.getId()
+        );
 
         return toResponse(feedback);
     }
@@ -110,12 +132,15 @@ public class FeedbackService {
     private Map<String, Object> toMap(Feedback feedback) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", feedback.getId());
+        map.put("userName", feedback.getUser() != null ? feedback.getUser().getFullName() : null);
         map.put("userEmail", feedback.getUser() != null ? feedback.getUser().getEmail() : null);
         map.put("rating", feedback.getRating());
         map.put("subject", feedback.getSubject());
         map.put("message", feedback.getMessage());
         map.put("response", feedback.getResponse());
+        map.put("replyMessage", feedback.getResponse());
         map.put("status", feedback.getStatus().name());
+        map.put("type", "FEEDBACK");
         map.put("createdAt", feedback.getCreatedAt());
         return map;
     }
@@ -133,4 +158,3 @@ public class FeedbackService {
         return response;
     }
 }
-

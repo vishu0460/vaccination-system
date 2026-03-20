@@ -85,6 +85,13 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success(notifications));
     }
 
+    @PatchMapping("/notifications/read-all")
+    public ResponseEntity<ApiResponse<Void>> markNotificationsRead(Authentication auth) {
+        log.info("Mark notifications as read for user={}", auth.getName());
+        userService.markNotificationsRead(auth.getName());
+        return ResponseEntity.ok(ApiResponse.success(null, "Notifications marked as read"));
+    }
+
     @GetMapping("/account")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getAccount(Authentication auth) {
         log.info("Get account info for user={}", auth.getName());
