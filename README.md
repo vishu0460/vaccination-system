@@ -28,7 +28,7 @@ npm run dev
 ### Super Admin Login
 ```
 Email: vaxzone.vaccine@gmail.com
-Password: Vaccine@6030
+Password: 
 ```
 
 ## 🔍 Verification Checklist
