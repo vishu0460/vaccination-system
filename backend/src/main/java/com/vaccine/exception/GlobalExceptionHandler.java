@@ -43,7 +43,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage(), errors, 400));
     }
 
-    @ExceptionHandler({AppException.class, IllegalArgumentException.class, BadCredentialsException.class})
+    @ExceptionHandler({AppException.class, com.vaccine.common.exception.AppException.class, IllegalArgumentException.class, BadCredentialsException.class})
     public ResponseEntity<ApiResponse<?>> handleBusiness(RuntimeException ex) {
         return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage(), 400));
     }
@@ -54,7 +54,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
-    public ResponseEntity<ApiResponse<?>> handleNotFound(RuntimeException ex) {
+    public ResponseEntity<ApiResponse<?>> handleNotFound(Exception ex) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error("Resource not found", 404));
     }
 

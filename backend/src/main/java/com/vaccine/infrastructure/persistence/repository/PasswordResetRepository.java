@@ -9,4 +9,5 @@ import java.util.Optional;
 @Repository
 public interface PasswordResetRepository extends JpaRepository<PasswordReset, Long> {
     Optional<PasswordReset> findByTokenAndExpiresAtAfter(String token, java.time.LocalDateTime now);
+    void deleteByUserEmail(String userEmail);
 }

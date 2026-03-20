@@ -2,6 +2,7 @@ package com.vaccine.web.controller;
 
 import com.vaccine.common.dto.ApiResponse;
 import com.vaccine.common.dto.BookingRequest;
+import com.vaccine.common.dto.BookingResponse;
 import com.vaccine.common.dto.NotificationResponse;
 import com.vaccine.domain.Booking;
 import com.vaccine.domain.Slot;
@@ -24,7 +25,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping("/api/v1/user")
+@RequestMapping({"/user", "/api/user"})
 @PreAuthorize("isAuthenticated()")
 public class UserController {
     private final BookingService bookingService;
@@ -38,33 +39,33 @@ public class UserController {
     }
 
     @PostMapping("/bookings")
-    public ResponseEntity<ApiResponse<Booking>> book(@Valid @RequestBody BookingRequest req, Authentication auth) {
+    public ResponseEntity<ApiResponse<BookingResponse>> book(@Valid @RequestBody BookingRequest req, Authentication auth) {
         log.info("Booking slot for user={}, slotId={}", auth.getName(), req.slotId());
         Booking booking = bookingService.book(auth.getName(), req);
-        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(booking, "Booking created successfully"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(BookingResponse.from(booking), "Booking created successfully"));
     }
 
     @GetMapping("/bookings")
-    public ResponseEntity<ApiResponse<List<Booking>>> myBookings(Authentication auth) {
+    public ResponseEntity<ApiResponse<List<BookingResponse>>> myBookings(Authentication auth) {
         log.info("Get bookings for user={}", auth.getName());
-        List<Booking> bookings = bookingService.getMyBookings(auth.getName());
+        List<BookingResponse> bookings = bookingService.getMyBookings(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(bookings));
     }
 
     @PatchMapping("/bookings/{bookingId}/cancel")
-    public ResponseEntity<ApiResponse<Booking>> cancel(@PathVariable Long bookingId, Authentication auth) {
+    public ResponseEntity<ApiResponse<BookingResponse>> cancel(@PathVariable Long bookingId, Authentication auth) {
         log.info("Cancel booking {} for user={}", bookingId, auth.getName());
         Booking booking = bookingService.cancel(auth.getName(), bookingId);
-        return ResponseEntity.ok(ApiResponse.success(booking, "Booking cancelled"));
+        return ResponseEntity.ok(ApiResponse.success(BookingResponse.from(booking), "Booking cancelled"));
     }
 
     @PatchMapping("/bookings/{bookingId}/reschedule")
-    public ResponseEntity<ApiResponse<Booking>> reschedule(@PathVariable Long bookingId,
+    public ResponseEntity<ApiResponse<BookingResponse>> reschedule(@PathVariable Long bookingId,
                                               @Valid @RequestBody BookingRequest req,
                                               Authentication auth) {
         log.info("Reschedule booking {} to slot {} for user={}", bookingId, req.slotId(), auth.getName());
         Booking booking = bookingService.reschedule(auth.getName(), bookingId, req);
-        return ResponseEntity.ok(ApiResponse.success(booking, "Booking rescheduled"));
+        return ResponseEntity.ok(ApiResponse.success(BookingResponse.from(booking), "Booking rescheduled"));
     }
 
     @GetMapping("/recommendations/slots")

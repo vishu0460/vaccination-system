@@ -23,9 +23,9 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@RequestMapping("/admin")
+@RequestMapping({"/admin", "/api/admin"})
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('ADMIN') or hasAuthority('SUPER_ADMIN')")
+@PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
 public class AdminController {
 
     private final AdminService adminService;
@@ -34,8 +34,8 @@ public class AdminController {
     private final ContactService contactService;
 
     @GetMapping("/dashboard/stats")
-    public ResponseEntity<AdminDashboardStatsResponse> getDashboardStats() {
-        return ResponseEntity.ok(adminService.getDashboardStats());
+    public ResponseEntity<ApiResponse<AdminDashboardStatsResponse>> getDashboardStats() {
+        return ResponseEntity.ok(ApiResponse.success(adminService.getDashboardStats()));
     }
 
     @GetMapping("/bookings")
@@ -48,8 +48,13 @@ public class AdminController {
     }
 
     @PatchMapping("/bookings/{bookingId}/{action}")
-    public ResponseEntity<Booking> updateBookingStatus(@PathVariable Long bookingId, @PathVariable String action, HttpServletRequest request) {
+    public ResponseEntity<BookingResponse> updateBookingStatus(@PathVariable Long bookingId, @PathVariable String action, HttpServletRequest request) {
         return ResponseEntity.ok(adminService.updateBookingStatus(bookingId, action, request));
+    }
+
+    @PutMapping({"/booking/{bookingId}/complete", "/bookings/{bookingId}/complete"})
+    public ResponseEntity<BookingResponse> completeBooking(@PathVariable Long bookingId, HttpServletRequest request) {
+        return ResponseEntity.ok(adminService.updateBookingStatus(bookingId, "complete", request));
     }
 
     @GetMapping("/centers")
@@ -64,6 +69,11 @@ public class AdminController {
         return ResponseEntity.ok(adminService.createCenter(req));
     }
 
+    @PutMapping({"/centers/{centerId}", "/center/{centerId}"})
+    public ResponseEntity<VaccinationCenter> updateCenter(@PathVariable Long centerId, @Valid @RequestBody CenterRequest req) {
+        return ResponseEntity.ok(adminService.updateCenter(centerId, req));
+    }
+
     @GetMapping("/drives")
     public ResponseEntity<Map<String, Object>> getAllDrives(
             @RequestParam(defaultValue = "0") int page,
@@ -76,14 +86,43 @@ public class AdminController {
         return ResponseEntity.ok(adminService.createDrive(req));
     }
 
+    @PutMapping({"/drives/{driveId}", "/drive/{driveId}"})
+    public ResponseEntity<VaccinationDrive> updateDrive(@PathVariable Long driveId, @Valid @RequestBody DriveRequest req) {
+        return ResponseEntity.ok(adminService.updateDrive(driveId, req));
+    }
+
+    @DeleteMapping("/drives/{driveId}")
+    public ResponseEntity<Map<String, Object>> deleteDrive(@PathVariable Long driveId, HttpServletRequest request) {
+        adminService.deleteDrive(driveId, request);
+        return ResponseEntity.ok(Map.of("message", "Drive deleted successfully"));
+    }
+
     @PostMapping("/slots")
     public ResponseEntity<Slot> createSlot(@Valid @RequestBody SlotRequest req) {
         return ResponseEntity.ok(adminService.createSlot(req));
     }
 
+    @PutMapping({"/slots/{slotId}", "/slot/{slotId}"})
+    public ResponseEntity<Slot> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
+        return ResponseEntity.ok(adminService.updateSlot(slotId, req));
+    }
+
     @GetMapping("/drives/{driveId}/slots")
     public ResponseEntity<Map<String, Object>> getDriveSlots(@PathVariable Long driveId) {
         return ResponseEntity.ok(adminService.getDriveSlots(driveId));
+    }
+
+    @GetMapping("/slots")
+    public ResponseEntity<Map<String, Object>> getAllSlots(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ResponseEntity.ok(adminService.getAllSlots(PageRequest.of(page, size)));
+    }
+
+    @DeleteMapping({"/slots/{slotId}", "/slot/{slotId}"})
+    public ResponseEntity<Map<String, Object>> deleteSlot(@PathVariable Long slotId, HttpServletRequest request) {
+        adminService.deleteSlot(slotId, request);
+        return ResponseEntity.ok(Map.of("message", "Slot deleted successfully"));
     }
 
     @GetMapping("/users")

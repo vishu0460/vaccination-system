@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { apiClient } from "../api/client";
+import { contactAPI } from "../api/client";
 
 export default function ContactPage() {
   const [formData, setFormData] = useState({
@@ -46,7 +46,7 @@ export default function ContactPage() {
     }
     
     try {
-      const response = await apiClient.post("/contact", formData);
+      const response = await contactAPI.submitContact(formData);
       if (response.status === 200 || response.status === 201) {
         setLoading(false);
         setSubmitted(true);
@@ -256,4 +256,3 @@ export default function ContactPage() {
     </>
   );
 }
-

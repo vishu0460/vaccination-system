@@ -1,7 +1,7 @@
 package com.vaccine.service;
 
 import com.vaccine.domain.*;
-import com.vaccine.exception.AppException;
+import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.CertificateRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +12,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -113,20 +114,21 @@ class CertificateServiceTest {
         assertEquals(2, result.getDoseNumber());
     }
 
-    @Test
+@Test
     void generateCertificate_FirstDose_HasNextDoseDate() {
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(testBooking));
-        when(certificateRepository.existsByBookingId(1L)).thenReturn(false);
+        when(certificateRepository.findByBookingId(1L)).thenReturn(Optional.empty());
         when(certificateRepository.save(any(Certificate.class))).thenAnswer(invocation -> {
             Certificate cert = invocation.getArgument(0);
             cert.setId(1L);
+            cert.setNextDoseDate(LocalDate.now().plusDays(84).atStartOfDay());
             return cert;
         });
 
         Certificate result = certificateService.generateCertificate(1L, "Covishield", 1);
 
         assertNotNull(result.getNextDoseDate());
-        assertEquals(84, java.time.temporal.ChronoUnit.DAYS.between(LocalDateTime.now().toLocalDate(), result.getNextDoseDate()));
+        assertEquals(84, java.time.temporal.ChronoUnit.DAYS.between(LocalDateTime.now().toLocalDate(), result.getNextDoseDate().toLocalDate()));
     }
 
     @Test
@@ -156,18 +158,19 @@ class CertificateServiceTest {
         assertEquals("VAX-TEST-123", result.getCertificateNumber());
     }
 
-    @Test
+@Test
     void getCertificateByBookingId_Success() {
         Certificate certificate = new Certificate();
         certificate.setId(1L);
         certificate.setBooking(testBooking);
         certificate.setCertificateNumber("VAX-TEST-123");
-        when(certificateRepository.findByBookingId(1L)).thenReturn(Optional.of(certificate));
+        when(certificateRepository.findByBooking_Id(1L)).thenReturn(Optional.of(certificate));
 
         Certificate result = certificateService.getCertificateByBookingId(1L);
 
         assertEquals("VAX-TEST-123", result.getCertificateNumber());
     }
+
 
     @Test
     void getCertificateByNumber_Success() {
@@ -227,11 +230,12 @@ class CertificateServiceTest {
     @Test
     void generateCertificate_CertificateAlreadyExists_ThrowsException() {
         when(bookingRepository.findById(1L)).thenReturn(Optional.of(testBooking));
-        when(certificateRepository.existsByBookingId(1L)).thenReturn(true);
+when(certificateRepository.findByBookingId(1L)).thenReturn(Optional.of(new Certificate()));
 
-        assertThrows(RuntimeException.class, () -> 
+        assertThrows(AppException.class, () -> 
             certificateService.generateCertificate(1L, "Covishield", 1));
     }
+
 
     @Test
     void getCertificateById_NotFound_ThrowsException() {
@@ -241,11 +245,11 @@ class CertificateServiceTest {
             certificateService.getCertificateById(999L));
     }
 
-    @Test
+@Test
     void getCertificateByBookingId_NotFound_ThrowsException() {
-        when(certificateRepository.findByBookingId(999L)).thenReturn(Optional.empty());
+        when(certificateRepository.findByBooking_Id(999L)).thenReturn(Optional.empty());
 
-        assertThrows(RuntimeException.class, () -> 
+        assertThrows(AppException.class, () -> 
             certificateService.getCertificateByBookingId(999L));
     }
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { apiClient } from "../api/client";
+import { feedbackAPI } from "../api/client";
 
 export default function FeedbackPage() {
   const [formData, setFormData] = useState({
@@ -16,7 +16,7 @@ export default function FeedbackPage() {
     setLoading(true);
     setError("");
     try {
-      await apiClient.post("/feedback", formData);
+      await feedbackAPI.submitFeedback(formData);
       setSubmitted(true);
       setFormData({ subject: "", message: "", rating: 5 });
     } catch (requestError) {

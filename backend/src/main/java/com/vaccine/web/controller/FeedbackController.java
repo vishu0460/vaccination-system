@@ -22,7 +22,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping("/api/v1/feedback")
+@RequestMapping({"/feedback", "/api/feedback"})
 public class FeedbackController {
     private final FeedbackService feedbackService;
     private final UserRepository userRepository;

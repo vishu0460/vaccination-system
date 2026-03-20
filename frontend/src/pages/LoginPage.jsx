@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import api, { authAPI } from "../api/client";
 import { setAuth } from "../utils/auth";
 
 export default function LoginPage() {
@@ -21,7 +21,8 @@ export default function LoginPage() {
     setLoading(true);
     setMsg("");
     try {
-      const { data } = await api.post("/auth/login", form);
+      const response = await authAPI.login(form);
+      const data = response.data;
       
       if (data.requiresTwoFactor) {
         setShow2FA(true);
@@ -33,6 +34,7 @@ export default function LoginPage() {
       const destination = redirect || (data.role === "USER" ? "/user/bookings" : "/admin/dashboard");
       navigate(destination);
     } catch (err) {
+      console.error('Login error:', err.response?.data || err.message);
       const errorMsg = err.response?.data?.message || "Login failed. Please check your credentials.";
       setMsg(errorMsg);
       
@@ -49,9 +51,9 @@ export default function LoginPage() {
     setLoading(true);
     setMsg("");
     try {
-      const response2FA = await api.post("/auth/2fa/verify", {
+      const response2FA = await authAPI.verifyTwoFactor({
         email: form.email,
-        code: verificationCode
+        twoFactorCode: verificationCode
       });
       const data2FA = response2FA.data;
       setAuth(data2FA);
@@ -70,7 +72,7 @@ export default function LoginPage() {
       return;
     }
     try {
-      const { data } = await api.post("/auth/resend-verification", { email: resendEmail });
+      const { data } = await authAPI.resendVerification(resendEmail);
       setMsg(data.message || "Verification email sent!");
     } catch (err) {
       setMsg(err.response?.data?.message || "Unable to resend verification email");
@@ -249,4 +251,3 @@ export default function LoginPage() {
     </>
   );
 }
-

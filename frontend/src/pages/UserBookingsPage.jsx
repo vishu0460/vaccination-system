@@ -1,17 +1,16 @@
-﻿import React, { useEffect, useState } from "react";
-import api from "../api/client";
+import React, { useEffect, useState } from "react";
+import api, { certificateAPI, publicAPI, unwrapApiData } from "../api/client";
 
 export default function UserBookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [profile, setProfile] = useState(null);
   const [availableSlots, setAvailableSlots] = useState([]);
+  const [certificates, setCertificates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
   const [activeTab, setActiveTab] = useState("bookings");
-  const [forms, setForms] = useState({
-    slotId: ""
-  });
+  const [forms, setForms] = useState({ slotId: "" });
 
   const loadData = async () => {
     setLoading(true);
@@ -19,32 +18,37 @@ export default function UserBookingsPage() {
       const [bookingsRes, notificationsRes, profileRes, drivesRes] = await Promise.all([
         api.get("/user/bookings"),
         api.get("/user/notifications"),
-        api.get("/user/account"),
-        api.get("/public/drives")
+        api.get("/profile"),
+        publicAPI.getDrives(),
+        
       ]);
-      setBookings(bookingsRes.data || []);
-      setNotifications(notificationsRes.data || []);
-      setProfile(profileRes.data || null);
-      
-      // Map backend response to extract available slots
-      const drivesPayload = drivesRes.data;
-      const drives = Array.isArray(drivesPayload)
-        ? drivesPayload
-        : (drivesPayload?.drives || []);
+      const certificatesRes = await certificateAPI.getMyCertificates();
+
+      setBookings(unwrapApiData(bookingsRes) || []);
+      setNotifications(unwrapApiData(notificationsRes) || []);
+      setProfile(unwrapApiData(profileRes) || null);
+      setCertificates(unwrapApiData(certificatesRes) || certificatesRes.data || []);
+
+      const drivesPayload = unwrapApiData(drivesRes) || {};
+      console.log("User drives response:", drivesPayload);
+      const drives = Array.isArray(drivesPayload) ? drivesPayload : (drivesPayload.drives || []);
+      const slotResponses = await Promise.all(drives.map((drive) => publicAPI.getDriveSlots(drive.id)));
       const slots = [];
-      drives.forEach(drive => {
-        if (drive.slots) {
-          drive.slots.forEach(slot => {
-            slots.push({
-              ...slot,
-              driveTitle: drive.title,
-              driveDate: drive.driveDate,
-              centerName: drive.center?.name
-            });
+
+      slotResponses.forEach((slotResponse, index) => {
+        const drive = drives[index];
+        (unwrapApiData(slotResponse) || []).forEach((slot) => {
+          slots.push({
+            ...slot,
+            driveId: drive.id,
+            driveTitle: drive.title,
+            driveDate: drive.driveDate,
+            centerName: drive.center?.name || drive.centerName
           });
-        }
+        });
       });
-      setAvailableSlots(slots.filter(s => s.capacity > (s.bookedCount || 0)));
+
+      setAvailableSlots(slots.filter((slot) => slot.capacity > (slot.bookedCount || 0)));
     } catch (error) {
       console.error("Error loading data:", error);
       setMsg("Unable to load your data. Please try again.");
@@ -57,15 +61,25 @@ export default function UserBookingsPage() {
     loadData();
   }, []);
 
+  const buildBookingPayload = (slotId) => {
+    const selectedSlot = availableSlots.find((slot) => slot.id === slotId);
+    return {
+      slotId,
+      driveId: selectedSlot?.driveId
+    };
+  };
+
   const bookSlot = async (slotId) => {
     try {
-      await api.post("/user/bookings", { slotId });
+      const payload = buildBookingPayload(slotId);
+      console.log("Booking payload:", payload);
+      await api.post("/user/bookings", payload);
       setMsg("Booking request submitted successfully.");
-      setForms({ ...forms, slotId: "" });
+      setForms({ slotId: "" });
       await loadData();
       setActiveTab("bookings");
     } catch (error) {
-      setMsg("Failed to book slot. Please try again.");
+      setMsg(error.response?.data?.message || "Failed to book slot. Please try again.");
     }
   };
 
@@ -76,23 +90,26 @@ export default function UserBookingsPage() {
       setMsg("Booking cancelled successfully.");
       await loadData();
     } catch (error) {
-      setMsg("Failed to cancel booking.");
+      setMsg(error.response?.data?.message || "Failed to cancel booking.");
     }
   };
 
   const getStatusBadge = (status) => {
     const badges = {
       PENDING: "bg-warning text-dark",
-      APPROVED: "bg-success",
-      REJECTED: "bg-danger",
-      CANCELLED: "bg-secondary"
+      CONFIRMED: "bg-info text-dark",
+      COMPLETED: "bg-success",
+      CANCELLED: "bg-danger"
     };
     return <span className={`badge ${badges[status] || "bg-secondary"}`}>{status}</span>;
   };
 
-  const pendingBookings = bookings.filter(b => b.status === "PENDING");
-  const approvedBookings = bookings.filter(b => b.status === "APPROVED");
-  
+  const pendingBookings = bookings.filter((booking) => booking.status === "PENDING");
+  const confirmedBookings = bookings.filter((booking) => booking.status === "CONFIRMED");
+  const completedBookings = bookings.filter((booking) => booking.status === "COMPLETED");
+
+  const getCertificateForBooking = (bookingId) => certificates.find((certificate) => certificate.bookingId === bookingId);
+
   if (loading) {
     return (
       <div className="d-flex justify-content-center align-items-center" style={{ minHeight: "50vh" }}>
@@ -105,7 +122,6 @@ export default function UserBookingsPage() {
 
   return (
     <div className="container py-4">
-      {/* Page Header */}
       <div className="page-header rounded-3 mb-4 p-4">
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
           <div>
@@ -125,7 +141,6 @@ export default function UserBookingsPage() {
         </div>
       )}
 
-      {/* Profile Card */}
       {profile && (
         <div className="card mb-4">
           <div className="card-body d-flex align-items-center gap-3">
@@ -151,7 +166,6 @@ export default function UserBookingsPage() {
         </div>
       )}
 
-      {/* Stats Row */}
       <div className="row g-3 mb-4">
         <div className="col-6 col-lg-3">
           <div className="stats-card">
@@ -166,20 +180,19 @@ export default function UserBookingsPage() {
           </div>
         </div>
         <div className="col-6 col-lg-3">
-          <div className="stats-card bg-success">
-            <div className="stat-number">{approvedBookings.length}</div>
-            <div className="stat-label">Approved</div>
+          <div className="stats-card bg-info">
+            <div className="stat-number">{confirmedBookings.length}</div>
+            <div className="stat-label">Confirmed</div>
           </div>
         </div>
         <div className="col-6 col-lg-3">
-          <div className="stats-card bg-secondary">
-            <div className="stat-number">{notifications.length}</div>
-            <div className="stat-label">Notifications</div>
+          <div className="stats-card bg-success">
+            <div className="stat-number">{completedBookings.length}</div>
+            <div className="stat-label">Completed</div>
           </div>
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <ul className="nav nav-tabs mb-4">
         <li className="nav-item">
           <button className={`nav-link ${activeTab === "bookings" ? "active" : ""}`} onClick={() => setActiveTab("bookings")}>
@@ -200,11 +213,11 @@ export default function UserBookingsPage() {
         <li className="nav-item">
           <button className={`nav-link ${activeTab === "notifications" ? "active" : ""}`} onClick={() => setActiveTab("notifications")}>
             <i className="bi bi-bell me-2"></i>Notifications
+            <span className="badge bg-secondary ms-2">{notifications.length}</span>
           </button>
         </li>
       </ul>
 
-      {/* My Bookings Tab */}
       {activeTab === "bookings" && (
         <div className="card">
           <div className="card-header d-flex justify-content-between align-items-center">
@@ -235,35 +248,24 @@ export default function UserBookingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bookings.map((b) => (
-                      <tr key={b.id}>
-                        <td><strong>#{b.id}</strong></td>
-                        <td>{b.slot?.drive?.title}</td>
-                        <td><small>{new Date(b.slot?.startTime).toLocaleString()}</small></td>
-                        <td><small>{b.slot?.drive?.center?.name}</small></td>
-                        <td>{getStatusBadge(b.status)}</td>
+                    {bookings.map((booking) => (
+                      <tr key={booking.id}>
+                        <td><strong>#{booking.id}</strong></td>
+                        <td>{booking.driveName || "-"}</td>
+                        <td><small>{booking.slotTime ? new Date(booking.slotTime).toLocaleString() : "-"}</small></td>
+                        <td><small>{booking.centerName || "-"}</small></td>
+                        <td>{getStatusBadge(booking.status)}</td>
                         <td>
-                          <div className="btn-group btn-group-sm">
-                            {b.status === "PENDING" && (
-                              <>
-                                <button className="btn btn-outline-danger" title="Cancel" onClick={() => cancelBooking(b.id)}>
-                                  <i className="bi bi-x-circle"></i>
-                                </button>
-                              </>
-                            )}
-                            {b.status === "APPROVED" && (
-                              <>
-                                <button className="btn btn-outline-warning" title="Cancel" onClick={() => cancelBooking(b.id)}>
-                                  <i className="bi bi-x-circle"></i> Cancel
-                                </button>
-                              </>
-                            )}
-                            {["REJECTED", "CANCELLED"].includes(b.status) && (
-                              <button className="btn btn-outline-primary" title="Book Again" onClick={() => setActiveTab("slots")}>
-                                <i className="bi bi-arrow-repeat"></i>
-                              </button>
-                            )}
-                          </div>
+                          {(booking.status === "PENDING" || booking.status === "CONFIRMED") && (
+                            <button className="btn btn-outline-danger btn-sm" title="Cancel" onClick={() => cancelBooking(booking.id)}>
+                              <i className="bi bi-x-circle"></i>
+                            </button>
+                          )}
+                          {booking.status === "COMPLETED" && getCertificateForBooking(booking.id) && (
+                            <button className="btn btn-outline-success btn-sm" title="Download Certificate" onClick={() => window.location.href = `/certificates`}>
+                              <i className="bi bi-download"></i>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -275,7 +277,6 @@ export default function UserBookingsPage() {
         </div>
       )}
 
-      {/* Book New Slot Tab */}
       {activeTab === "book" && (
         <div className="row">
           <div className="col-lg-6">
@@ -284,17 +285,25 @@ export default function UserBookingsPage() {
                 <i className="bi bi-plus-circle me-2"></i>Book a Slot
               </div>
               <div className="card-body">
-                <form onSubmit={bookSlot} className="d-grid gap-3">
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (forms.slotId) {
+                      bookSlot(Number(forms.slotId));
+                    }
+                  }}
+                  className="d-grid gap-3"
+                >
                   <div>
                     <label className="form-label">Enter Slot ID</label>
                     <div className="input-group">
                       <span className="input-group-text"><i className="bi bi-hash"></i></span>
-                      <input 
-                        className="form-control" 
-                        placeholder="e.g., 1" 
+                      <input
+                        className="form-control"
+                        placeholder="e.g., 1"
                         value={forms.slotId}
-                        onChange={(e) => setForms({ ...forms, slotId: e.target.value })}
-                        required 
+                        onChange={(event) => setForms({ slotId: event.target.value })}
+                        required
                       />
                     </div>
                     <small className="text-muted">Enter the Slot ID from the Available Slots tab</small>
@@ -306,24 +315,9 @@ export default function UserBookingsPage() {
               </div>
             </div>
           </div>
-          <div className="col-lg-6">
-            <div className="card bg-info bg-opacity-10 border-0">
-              <div className="card-body">
-                <h5><i className="bi bi-info-circle me-2"></i>How to Book</h5>
-                <ol className="mb-0">
-                  <li className="mb-2">Go to the <strong>Available Slots</strong> tab</li>
-                  <li className="mb-2">Find a slot that works for you</li>
-                  <li className="mb-2">Copy the <strong>Slot ID</strong></li>
-                  <li className="mb-2">Enter the Slot ID above and submit</li>
-                  <li>Wait for admin approval - you'll be notified!</li>
-                </ol>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Available Slots Tab */}
       {activeTab === "slots" && (
         <div className="card">
           <div className="card-header d-flex justify-content-between align-items-center">
@@ -351,18 +345,15 @@ export default function UserBookingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {availableSlots.map((s) => (
-                      <tr key={s.id}>
-                        <td><strong>#{s.id}</strong></td>
-                        <td>{s.driveTitle || s.drive?.title}</td>
-                        <td><small>{new Date(s.startTime).toLocaleString()}</small></td>
-                        <td><small>{s.centerName || s.drive?.center?.name}</small></td>
-                        <td>{s.capacity}</td>
+                    {availableSlots.map((slot) => (
+                      <tr key={slot.id}>
+                        <td><strong>#{slot.id}</strong></td>
+                        <td>{slot.driveTitle || slot.drive?.title}</td>
+                        <td><small>{slot.dateTime ? new Date(slot.dateTime).toLocaleString() : "-"}</small></td>
+                        <td><small>{slot.centerName || slot.drive?.center?.name}</small></td>
+                        <td>{(slot.capacity || 0) - (slot.bookedCount || 0)} / {slot.capacity}</td>
                         <td>
-                          <button 
-                            className="btn btn-primary btn-sm"
-                            onClick={() => bookSlot(s.id)}
-                          >
+                          <button className="btn btn-primary btn-sm" onClick={() => bookSlot(slot.id)}>
                             <i className="bi bi-bookmark-plus me-1"></i>Book
                           </button>
                         </td>
@@ -376,7 +367,6 @@ export default function UserBookingsPage() {
         </div>
       )}
 
-      {/* Notifications Tab */}
       {activeTab === "notifications" && (
         <div className="card">
           <div className="card-header d-flex justify-content-between align-items-center">
@@ -392,18 +382,13 @@ export default function UserBookingsPage() {
               </div>
             ) : (
               <ul className="list-group list-group-flush">
-                {notifications.slice(0, 20).map((n) => (
-                  <li key={n.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
-                    <div className="d-flex gap-3">
-                      <div className={`bg-${n.channel === "EMAIL" ? "primary" : "success"} bg-opacity-10 rounded-circle p-2`}>
-                        <i className={`bi ${n.channel === "EMAIL" ? "bi-envelope" : "bi-phone"} text-${n.channel === "EMAIL" ? "primary" : "success"}`}></i>
-                      </div>
-                      <div>
-                        <div className="fw-semibold">{n.channel === "EMAIL" ? "Email Sent" : "SMS Sent"}</div>
-                        <div className="text-muted small">{n.message}</div>
-                      </div>
+                {notifications.slice(0, 20).map((notification) => (
+                  <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
+                    <div>
+                      <div className="fw-semibold">{notification.channel === "EMAIL" ? "Email Sent" : "SMS Sent"}</div>
+                      <div className="text-muted small">{notification.message}</div>
                     </div>
-                    <small className="text-muted">{new Date(n.createdAt).toLocaleString()}</small>
+                    <small className="text-muted">{notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}</small>
                   </li>
                 ))}
               </ul>

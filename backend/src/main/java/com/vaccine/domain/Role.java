@@ -11,9 +11,7 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 public class Role {
-public RoleName getName() {
-        return name;
-    }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -21,4 +19,6 @@ public RoleName getName() {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private RoleName name;
+
+    // Lombok @Builder/@Getter generates methods
 }

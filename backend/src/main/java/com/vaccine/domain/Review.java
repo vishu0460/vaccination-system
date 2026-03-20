@@ -32,9 +32,10 @@ public class Review {
     private String comment;
 
     @Column(name = "is_approved", nullable = false)
+    @Builder.Default
     private Boolean isApproved = false;
 
-@Column(name = "submitted_at")
+    @Column(name = "submitted_at")
     private LocalDateTime submittedAt;
 
     @Column(name = "created_at")
@@ -44,5 +45,8 @@ public class Review {
     protected void onCreate() {
         submittedAt = LocalDateTime.now();
         createdAt = LocalDateTime.now();
+        if (isApproved == null) {
+            isApproved = false;
+        }
     }
 }

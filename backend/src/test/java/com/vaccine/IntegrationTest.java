@@ -33,7 +33,7 @@ class IntegrationTest {
 
     @Test
     void healthEndpoint_ShouldReturnUp() {
-        ResponseEntity<String> response = restTemplate.getForEntity(apiUrl("/health"), String.class);
+        ResponseEntity<String> response = restTemplate.getForEntity(apiUrl("/v1/health"), String.class);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertNotNull(response.getBody());
@@ -43,7 +43,7 @@ class IntegrationTest {
     @Test
     void publicEndpoints_ShouldBeAccessible() {
         // Test health first - this should always work
-        ResponseEntity<String> health = restTemplate.getForEntity(apiUrl("/health"), String.class);
+        ResponseEntity<String> health = restTemplate.getForEntity(apiUrl("/v1/health"), String.class);
         assertEquals(HttpStatus.OK, health.getStatusCode());
         
         // Test public drives

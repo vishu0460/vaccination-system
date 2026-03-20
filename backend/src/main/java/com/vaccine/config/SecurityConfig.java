@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000}")
+    @Value("${app.cors.allowed-origins:http://localhost:5174,http://localhost:5173,http://localhost:3000}")
     private String corsAllowedOrigins;
 
     @Bean
@@ -51,14 +51,23 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(
-                    "/auth/**", "/api/auth/**",
-                    "/public/**", "/api/public/**",
-                    "/health/**", "/api/health/**",
-                    "/news/**", "/api/news/**",
-                    "/contact/**", "/api/contact/**",
-                    "/feedback/**", "/api/feedback/**",
-                    "/reviews/**", "/api/reviews/**",
-                    "/certificates/verify/**", "/api/certificates/verify/**",
+                    "/api/auth/**",
+                    "/auth/**",
+                    "/api/public/**",
+                    "/api/v1/public/**",
+                    "/api/health/**",
+                    "/api/v1/health/**",
+                    "/health/**",
+                    "/api/news/**",
+                    "/api/v1/news/**",
+                    "/news/**",
+                    "/api/contact/**",
+                    "/contact/**",
+                    "/api/v1/reviews/center/**",
+                    "/api/reviews/center/**",
+                    "/reviews/center/**",
+                    "/api/certificates/verify/**",
+                    "/certificates/verify/**",
                     "/error",
                     "/v3/api-docs/**",
                     "/swagger-ui/**",
@@ -67,6 +76,8 @@ public class SecurityConfig {
                     "/robots.txt",
                     "/sitemap.xml"
                 ).permitAll()
+                .requestMatchers("/admin/**", "/api/admin/**").hasAnyAuthority("ADMIN", "SUPER_ADMIN")
+                .requestMatchers("/super-admin/**", "/api/super-admin/**").hasAuthority("SUPER_ADMIN")
                 .anyRequest().authenticated()
             )
             .headers(headers -> headers

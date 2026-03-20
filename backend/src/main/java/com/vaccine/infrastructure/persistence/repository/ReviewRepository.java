@@ -31,4 +31,8 @@ boolean existsByUserIdAndCenterId(Long userId, Long centerId);
 
     Optional<Review> findByIdAndIsApprovedTrue(Long id);
 
+    void deleteByUserId(Long userId);
+
+    void deleteByCenterId(Long centerId);
+
 }

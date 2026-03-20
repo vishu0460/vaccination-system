@@ -11,11 +11,12 @@ import java.util.List;
 @Repository
 public interface VaccinationDriveRepository extends JpaRepository<VaccinationDrive, Long> {
     List<VaccinationDrive> findByActiveTrue();
+    List<VaccinationDrive> findByCenterId(Long centerId);
     long countByActiveTrue();
     
     @Query("SELECT d FROM VaccinationDrive d WHERE d.active = true " +
            "AND (:city IS NULL OR d.center.city = :city) " +
-           "AND (:fromDate IS NULL OR d.startDate >= :fromDate) " +
+           "AND (:fromDate IS NULL OR d.driveDate >= :fromDate) " +
            "AND (:age IS NULL OR d.minAge <= :age)")
     List<VaccinationDrive> findActiveDrives(@Param("city") String city, 
                                             @Param("fromDate") LocalDate fromDate, 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { newsAPI } from '../api/client';
+import { newsAPI, unwrapApiData } from '../api/client';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 
@@ -15,8 +15,8 @@ export default function NewsPage() {
   const fetchNews = async () => {
     try {
       const response = await newsAPI.getAllNews(0, 20);
-      const payload = response.data;
-      const items = Array.isArray(payload) ? payload : (payload?.content || []);
+      const payload = unwrapApiData(response) || {};
+      const items = Array.isArray(payload) ? payload : (payload.content || []);
       setNews(items);
     } catch (err) {
       console.error('Failed to fetch news');

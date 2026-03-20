@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from "react";
 import { Route, Routes } from "react-router-dom";
 import ProtectedRoute from "../components/ProtectedRoute";
+import PageErrorBoundary from "../components/PageErrorBoundary";
 
 const HomePage = lazy(() => import("../pages/HomePage"));
 const DrivesPage = lazy(() => import("../pages/DrivesPage"));
@@ -112,7 +113,9 @@ export default function AppRoutes() {
           path="/admin/dashboard"
           element={(
             <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
-              <AdminDashboardPage />
+              <PageErrorBoundary resetKey="/admin/dashboard">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
             </ProtectedRoute>
           )}
         />

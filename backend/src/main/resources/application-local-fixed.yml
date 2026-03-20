@@ -1,33 +1,77 @@
 spring:
-  profiles:
-    active: local
   datasource:
-    url: jdbc:h2:mem:vaccination_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=MySQL
-    username: sa
-    password: ''
-    driver-class-name: org.h2.Driver
+    url: jdbc:mysql://localhost:3306/vaccination_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    username: appuser
+    password: apppass456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
   jpa:
     hibernate:
-      ddl-auto: create-drop
-    show-sql: true
-    defer-datasource-initialization: true
+      ddl-auto: update
+    show-sql: false
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.H2Dialect
+        dialect: org.hibernate.dialect.MySQLDialect
+        jdbc:
+          time_zone: UTC
   flyway:
-    enabled: false
+    enabled: true
+    baseline-on-migrate: false
+    locations: classpath:db/migration
   sql:
     init:
-      mode: always
-      data-locations: classpath:data-complete.sql
-  logging:
-    level:
-      root: INFO
-      com.vaccine: DEBUG
+      mode: never
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    time-zone: UTC
+
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
 app:
+  cors:
+    allowed-origins: http://localhost:5174,http://localhost:5173,http://localhost:3000
+  mail:
+    from: noreply@vaccination-system.com
+    base-url: http://localhost:5173
+  admin:
+    email: vaxzone.vaccine@gmail.com
+    password: Vaccine@#6030
+  dev:
+    auto-verify-email: true
   seed:
     enabled: true
+
+logging:
+  level:
+    root: INFO
+    com.vaccine: DEBUG
+    com.vaccine.security: TRACE
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
 security:
   jwt:
-    secret: vax-local-secret
+    secret: myJwtSecretKeyIsVeryLongAndSecureEnoughForHS256Minimum256Bits64BytesVaxAppDevKey2024SuperSecureRandomLikeKeyThatIsLongEnough!!
+    issuer: vaccination-system
+    access-token-minutes: 15
+    refresh-token-days: 7
+
+  rate-limit:
+    requests-per-minute: 60
+
+  brute-force:
+    max-attempts: 5
+    lock-minutes: 15
+

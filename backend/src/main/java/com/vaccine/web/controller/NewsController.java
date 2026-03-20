@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping("/api/v1/news")
+@RequestMapping({"/api/v1/news", "/api/news"})
 public class NewsController {
     private final NewsService newsService;
 

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import { authAPI, unwrapApiMessage } from "../api/client";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -22,15 +22,15 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 6) {
-      setMsg("Password must be at least 6 characters");
+    if (newPassword.length < 8) {
+      setMsg("Password must be at least 8 characters");
       return;
     }
 
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/reset-password", { token: resetToken, newPassword });
-      setMsg(data.message || "Password reset successful!");
+      const response = await authAPI.resetPassword({ token: resetToken, password: newPassword });
+      setMsg(unwrapApiMessage(response, "Password reset successful!"));
       setSuccess(true);
     } catch (err) {
       setMsg(err.response?.data?.message || "Reset failed. Please check your token.");

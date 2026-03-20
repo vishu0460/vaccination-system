@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import { publicAPI, unwrapApiData } from "../api/client";
 
 export default function CentersPage() {
   const [city, setCity] = useState("");
@@ -9,23 +9,26 @@ export default function CentersPage() {
   const [loading, setLoading] = useState(true);
   const [uniqueCities, setUniqueCities] = useState([]);
 
-  const load = () => {
+  const load = async () => {
     setLoading(true);
-    const url = city ? `/public/centers?city=${encodeURIComponent(city)}` : "/public/centers";
-    api.get(url)
-      .then((res) => {
-        const payload = res.data;
-        const data = Array.isArray(payload)
-          ? payload
-          : (payload?.centers || payload?.content || []);
-        setCenters(data);
-        if (data.length > 0) {
-          const cities = [...new Set(data.map(c => c.city).filter(Boolean))].sort();
-          setUniqueCities(cities);
-        }
-      })
-      .catch(() => setCenters([]))
-      .finally(() => setLoading(false));
+    try {
+      console.log("Fetching centers for city:", city || "all");
+      const response = await publicAPI.getCenters(city);
+      const payload = unwrapApiData(response) || {};
+      const data = Array.isArray(payload)
+        ? payload
+        : (payload.centers || payload.content || []);
+      setCenters(data);
+      if (data.length > 0) {
+        const cities = [...new Set(data.map(c => c.city).filter(Boolean))].sort();
+        setUniqueCities(cities);
+      }
+    } catch (error) {
+      console.error("Error fetching centers:", error);
+      setCenters([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);

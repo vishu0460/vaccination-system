@@ -5,7 +5,7 @@ import com.vaccine.common.dto.FeedbackRequest;
 import com.vaccine.common.dto.FeedbackResponse;
 import com.vaccine.domain.Feedback;
 import com.vaccine.domain.User;
-import com.vaccine.exception.AppException;
+import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.FeedbackRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -184,8 +184,9 @@ class FeedbackServiceTest {
 
         assertNotNull(result);
         assertEquals("Thank you!", result.getAdminResponse());
-        assertEquals("APPROVED", result.getStatus());
+        assertEquals("RESPONDED", result.getStatus());
     }
+
 
     @Test
     void getUserIdByEmail_Success() {

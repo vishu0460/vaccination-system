@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, Spinner, Alert, Button } from 'react-bootstrap';
-import { apiClient } from '../api/client';
+import { feedbackAPI, unwrapApiData } from '../api/client';
 
 export default function MyFeedbackPage() {
   const [feedback, setFeedback] = useState([]);
@@ -14,8 +14,8 @@ export default function MyFeedbackPage() {
   const fetchMyFeedback = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get('/feedback/my-feedback');
-      setFeedback(response.data);
+      const response = await feedbackAPI.getMyFeedback();
+      setFeedback(unwrapApiData(response) || []);
     } catch (err) {
       setError('Failed to load feedback. Please try again.');
       console.error('Error fetching feedback:', err);

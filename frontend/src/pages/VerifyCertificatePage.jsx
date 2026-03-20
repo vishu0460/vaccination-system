@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { apiClient } from "../api/client";
+import { certificateAPI } from "../api/client";
 import QRCode from "qrcode";
 
 export default function VerifyCertificatePage() {
@@ -48,7 +48,7 @@ export default function VerifyCertificatePage() {
     setVerified(false);
 
     try {
-      const response = await apiClient.get(`/certificates/verify/${certNum.trim()}`);
+      const response = await certificateAPI.verifyCertificate(certNum.trim());
       
       if (response.data) {
         setCertificate(response.data);
@@ -298,4 +298,3 @@ This certificate is issued by a registered vaccination center and is verified th
     </>
   );
 }
-

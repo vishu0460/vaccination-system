@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import { publicAPI, unwrapApiData } from "../api/client";
 
 export default function HomePage() {
   const [stats, setStats] = useState({ centers: 0, drives: 0, bookings: 0 });
@@ -9,51 +9,67 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const fetchData = async () => {
+    try {
+      console.log("Fetching home page summary and drives");
+      const [statsRes, drivesRes] = await Promise.all([
+        publicAPI.getSummary(),
+        publicAPI.getDrives()
+      ]);
+      const summaryData = unwrapApiData(statsRes) || {};
+      console.log("Home summary response:", summaryData);
+      setStats({
+        centers: summaryData.totalCenters || summaryData.centersCount || 0,
+        drives: summaryData.activeDrives || summaryData.drivesCount || 0,
+        bookings: summaryData.availableSlots || 0
+      });
+      const drivesPayload = unwrapApiData(drivesRes) || {};
+      console.log("Home drives response:", drivesPayload);
+      const drivesData = Array.isArray(drivesPayload)
+        ? drivesPayload
+        : (drivesPayload.drives || []);
+      const mappedDrives = drivesData.map(drive => {
+        return {
+          ...drive,
+          name: drive.title,
+          date: drive.driveDate,
+          centerName: drive.center?.name || drive.centerName,
+          availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
+          totalSlots: drive.totalSlots || 0,
+          startTime: drive.startTime || 'N/A',
+          endTime: drive.endTime || 'N/A'
+        };
+      });
+      setRecentDrives(mappedDrives.slice(0, 6));
+      setError(null);
+    } catch (error) {
+      console.error("Error fetching home data:", error);
+      setError(error.message || 'Failed to load data. Please check your connection.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [statsRes, drivesRes] = await Promise.all([
-          api.get("/public/summary"),
-          api.get("/public/drives")
-        ]);
-        // Map summary response to stats format
-        const summaryData = statsRes.data || {};
-        setStats({
-          centers: summaryData.totalCenters || 0,
-          drives: summaryData.activeDrives || 0,
-          bookings: summaryData.availableSlots || 0
-        });
-        // Map backend response to frontend format
-        const drivesPayload = drivesRes.data;
-        const drivesData = Array.isArray(drivesPayload)
-          ? drivesPayload
-          : (drivesPayload?.drives || []);
-        const mappedDrives = drivesData.map(drive => {
-          const slots = drive.slots || [];
-          const totalCapacity = slots.reduce((sum, slot) => sum + (slot.capacity || 0), 0);
-          const totalBooked = slots.reduce((sum, slot) => sum + (slot.bookedCount || 0), 0);
-          
-          return {
-            ...drive,
-            name: drive.title,
-            date: drive.driveDate,
-            centerName: drive.center?.name,
-            availableSlots: totalCapacity - totalBooked,
-            totalSlots: totalCapacity,
-            startTime: slots.length > 0 ? new Date(slots[0].startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
-            endTime: slots.length > 0 ? new Date(slots[slots.length - 1].endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'
-          };
-        });
-        // Take first 6 drives for display
-        setRecentDrives(mappedDrives.slice(0, 6));
-      } catch (error) {
-        console.error("Error fetching home data:", error);
-        setError(error.message || 'Failed to load data. Please check your connection.');
-      } finally {
-        setLoading(false);
+    fetchData();
+
+    const handleRefresh = () => fetchData();
+    const handleVisibilityRefresh = () => {
+      if (document.visibilityState === "visible") {
+        fetchData();
       }
     };
-    fetchData();
+    const intervalId = window.setInterval(fetchData, 30000);
+    window.addEventListener('focus', handleRefresh);
+    window.addEventListener('vaxzone:data-updated', handleRefresh);
+    document.addEventListener('visibilitychange', handleVisibilityRefresh);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleRefresh);
+      window.removeEventListener('vaxzone:data-updated', handleRefresh);
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh);
+    };
   }, []);
 
   return (
@@ -311,7 +327,7 @@ export default function HomePage() {
                           <div 
                             className="progress-bar" 
                             style={{
-                              width: `${((drive.totalSlots - drive.availableSlots) / drive.totalSlots) * 100}%`
+                              width: `${drive.totalSlots > 0 ? ((drive.totalSlots - drive.availableSlots) / drive.totalSlots) * 100 : 0}%`
                             }}
                           ></div>
                         </div>

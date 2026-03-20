@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import { publicAPI, unwrapApiData } from "../api/client";
 
 export default function DrivesPage() {
   const [searchParams] = useSearchParams();
@@ -19,37 +19,38 @@ export default function DrivesPage() {
       if (filters.fromDate) params.set("fromDate", filters.fromDate);
       if (filters.age) params.set("age", filters.age);
 
-      const drivesUrl = params.toString() ? `/public/drives?${params.toString()}` : "/public/drives";
+      console.log("Fetching drives with params:", params.toString());
+      console.log("Fetching summary stats");
       const [drivesRes, summaryRes] = await Promise.all([
-        api.get(drivesUrl),
-        api.get("/public/summary")
+        publicAPI.getDrives(Object.fromEntries(params)),
+        publicAPI.getSummary()
       ]);
-      // Map backend response to frontend format
-      const drivesPayload = drivesRes.data;
+      const drivesPayload = unwrapApiData(drivesRes) || {};
+      console.log("Drives API response:", drivesPayload);
       const drivesData = Array.isArray(drivesPayload)
         ? drivesPayload
-        : (drivesPayload?.drives || []);
+        : (drivesPayload.drives || []);
       const mappedDrives = drivesData.map(drive => {
-        // Calculate slots from the drive's slots array
-        const slots = drive.slots || [];
-        const totalCapacity = slots.reduce((sum, slot) => sum + (slot.capacity || 0), 0);
-        const totalBooked = slots.reduce((sum, slot) => sum + (slot.bookedCount || 0), 0);
-        const hasSlots = slots.length > 0;
-        
         return {
           ...drive,
           name: drive.title,
           date: drive.driveDate,
-          centerName: drive.center?.name,
-          hasSlots: hasSlots,  // Flag to check if drive has any slots
-          availableSlots: totalCapacity - totalBooked,
-          totalSlots: totalCapacity,
-          startTime: hasSlots ? new Date(slots[0].startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A',
-          endTime: hasSlots ? new Date(slots[slots.length - 1].endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'N/A'
+          centerName: drive.center?.name || drive.centerName,
+          hasSlots: (drive.availableSlots ?? drive.totalSlots ?? 0) > 0,
+          availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
+          totalSlots: drive.totalSlots || 0,
+          startTime: drive.startTime || 'N/A',
+          endTime: drive.endTime || 'N/A'
         };
       });
       setDrives(mappedDrives);
-      setSummary(summaryRes.data || summary);
+      const summaryPayload = unwrapApiData(summaryRes) || {};
+      console.log("Drives summary response:", summaryPayload);
+      setSummary({
+        totalCenters: summaryPayload.totalCenters || summaryPayload.centersCount || 0,
+        activeDrives: summaryPayload.activeDrives || summaryPayload.drivesCount || 0,
+        availableSlots: summaryPayload.availableSlots || 0
+      });
     } catch (error) {
       console.error("Error fetching drives:", error);
     } finally {
@@ -305,7 +306,7 @@ export default function DrivesPage() {
                           <div className="slots-progress">
                             <div 
                               className="progress-bar" 
-                              style={{ width: `${((d.totalSlots - d.availableSlots) / d.totalSlots) * 100}%` }}
+                              style={{ width: `${d.totalSlots > 0 ? ((d.totalSlots - d.availableSlots) / d.totalSlots) * 100 : 0}%` }}
                             ></div>
                           </div>
                         </div>

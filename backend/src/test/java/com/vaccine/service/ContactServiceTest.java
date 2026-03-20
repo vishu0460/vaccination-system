@@ -291,6 +291,11 @@ class ContactServiceTest {
         contact2.setUser(testUser);
         contact2.setName("Test User 2");
         contact2.setEmail("test@example.com");
+        contact2.setPhone("1234567890");
+        contact2.setStatus(ContactStatus.PENDING);
+        contact2.setSubject("Test Subject");
+        contact2.setMessage("Test Message");
+        contact2.setCreatedAt(LocalDateTime.now());
         
         when(contactRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(testContact, contact2));
 
@@ -298,6 +303,7 @@ class ContactServiceTest {
 
         assertEquals(2, result.size());
     }
+
 
     @Test
     void respondToContact_AlreadyResponded_UpdatesResponse() {

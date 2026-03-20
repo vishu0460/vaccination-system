@@ -4,6 +4,7 @@ import com.vaccine.common.dto.SummaryResponse;
 import com.vaccine.domain.VaccinationCenter;
 import com.vaccine.domain.VaccinationDrive;
 import com.vaccine.domain.Slot;
+import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationCenterRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
@@ -29,6 +30,7 @@ public class PublicService {
     private final VaccinationCenterRepository centerRepository;
     private final VaccinationDriveRepository driveRepository;
     private final SlotRepository slotRepository;
+    private final BookingRepository bookingRepository;
 
     @Cacheable(value = "public-centers", key = "T(java.lang.String).valueOf(#city) + ':' + #page + ':' + #size")
     public Map<String, Object> getCenters(String city, int page, int size) {
@@ -49,19 +51,42 @@ public class PublicService {
     public Map<String, Object> getDrives(String city, LocalDate fromDate, Integer age, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
         List<VaccinationDrive> drives = driveRepository.findActiveDrives(city, fromDate, age);
+        List<Map<String, Object>> driveViews = drives.stream()
+            .map(drive -> {
+                long totalSlots = slotRepository.sumCapacityByDriveId(drive.getId());
+                long availableSlots = slotRepository.sumAvailableCapacityByDriveId(drive.getId());
+
+                Map<String, Object> view = new HashMap<>();
+                view.put("id", drive.getId());
+                view.put("title", drive.getTitle());
+                view.put("description", drive.getDescription());
+                view.put("vaccineType", drive.getVaccineType());
+                view.put("driveDate", drive.getDriveDate());
+                view.put("minAge", drive.getMinAge());
+                view.put("maxAge", drive.getMaxAge());
+                view.put("startTime", drive.getStartTime());
+                view.put("endTime", drive.getEndTime());
+                view.put("active", drive.getActive());
+                view.put("centerName", drive.getCenter() != null ? drive.getCenter().getName() : null);
+                view.put("centerCity", drive.getCenter() != null ? drive.getCenter().getCity() : null);
+                view.put("totalSlots", totalSlots);
+                view.put("availableSlots", availableSlots);
+                return view;
+            })
+            .toList();
         Map<String, Object> result = new HashMap<>();
-        result.put("drives", drives);
+        result.put("drives", driveViews);
         result.put("totalPages", 1);
-        result.put("totalElements", drives.size());
+        result.put("totalElements", driveViews.size());
         return result;
     }
 
-@Cacheable("public-summary")
+    @Cacheable("public-summary")
     public SummaryResponse getSummary() {
         long totalCenters = centerRepository.count();
         long activeDrives = driveRepository.countByActiveTrue();
-        long totalSlots = slotRepository.count();
-        long totalBookings = 0L;
+        long totalSlots = slotRepository.sumAvailableCapacity();
+        long totalBookings = bookingRepository.count();
         return new SummaryResponse(totalCenters, activeDrives, totalSlots, totalBookings);
     }
 

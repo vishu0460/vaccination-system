@@ -4,7 +4,7 @@ import com.vaccine.common.dto.*;
 import com.vaccine.core.service.AuditService;
 import com.vaccine.core.service.INotificationService;
 import com.vaccine.domain.*;
-import com.vaccine.exception.AppException;
+import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -562,17 +562,21 @@ testContact.setMessage("This is a test inquiry message");
 
     @Test
     void testPastBookingDate() {
-        testSlot.setStartTime(LocalDateTime.now().minusDays(1).toLocalTime());
+        LocalDateTime now = LocalDateTime.now();
+        testSlot.setStartTime(now.minusMinutes(1).toLocalTime());
         
-        assertTrue(testSlot.getStartTime().isBefore(LocalDateTime.now().toLocalTime()));
+        assertTrue(testSlot.getStartTime().isBefore(now.toLocalTime()));
     }
 
     @Test
     void testFutureBookingDate() {
-        testSlot.setStartTime(LocalDateTime.now().plusMonths(1).toLocalTime());
+        LocalDateTime now = LocalDateTime.now();
+        testSlot.setStartTime(now.plusMinutes(1).toLocalTime());
         
-        assertTrue(testSlot.getStartTime().isAfter(LocalDateTime.now().toLocalTime()));
+        assertTrue(testSlot.getStartTime().isAfter(now.toLocalTime()));
     }
+
+
 
     // ========== CONCURRENCY TESTS ==========
 
@@ -816,6 +820,4 @@ testContact.setMessage("This is a test inquiry message");
         assertEquals(testCenter.getId(), testReview.getCenter().getId());
     }
 }
-
-
 

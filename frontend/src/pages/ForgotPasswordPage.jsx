@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import { authAPI, unwrapApiMessage } from "../api/client";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -12,8 +12,8 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/forgot-password", { email });
-      setMsg(data.message || "Password reset link sent to your email!");
+      const response = await authAPI.forgotPassword(email);
+      setMsg(unwrapApiMessage(response, "Password reset link sent to your email!"));
     } catch (err) {
       setMsg(err.response?.data?.message || "Failed to send reset link");
     } finally {

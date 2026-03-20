@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/contact")
+@RequestMapping({"/contact", "/api/contact"})
 public class ContactController {
     private final ContactService contactService;
     private final UserRepository userRepository;

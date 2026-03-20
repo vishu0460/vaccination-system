@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiClient } from '../api/client';
-import { getEmail, getName } from '../utils/auth';
+import { userAPI, unwrapApiData } from '../api/client';
 import Skeleton from '../components/Skeleton';
 
 export default function ProfilePage() {
@@ -18,9 +17,10 @@ export default function ProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      const response = await apiClient.get('/user/account');
-      setProfile(response.data);
-      setFormData({ fullName: response.data.fullName, age: response.data.age });
+      const response = await userAPI.getProfile();
+      const profileData = unwrapApiData(response) || {};
+      setProfile(profileData);
+      setFormData({ fullName: profileData.fullName || '', age: profileData.age || '' });
     } catch (err) {
       setError('Failed to load profile');
     } finally {
@@ -31,7 +31,7 @@ export default function ProfilePage() {
   const handleUpdate = async (e) => {
     e.preventDefault();
     try {
-      await apiClient.put('/user/account', formData);
+      await userAPI.updateProfile({ fullName: formData.fullName, age: Number(formData.age) });
       setMessage({ type: 'success', text: 'Profile updated successfully' });
       setEditing(false);
       fetchProfile();
@@ -43,7 +43,7 @@ export default function ProfilePage() {
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     try {
-      await apiClient.post('/user/account/change-password', passwordData);
+      await userAPI.changePassword(passwordData);
       setMessage({ type: 'success', text: 'Password changed successfully' });
       setPasswordData({ currentPassword: '', newPassword: '' });
     } catch (err) {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, Spinner, Alert, Button, Form } from 'react-bootstrap';
-import { apiClient } from '../api/client';
+import { contactAPI } from '../api/client';
 
 export default function MyContactPage() {
   const [contacts, setContacts] = useState([]);
@@ -23,7 +23,7 @@ export default function MyContactPage() {
   const fetchMyContacts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get('/contact/my-inquiries');
+      const response = await contactAPI.getMyInquiries();
       setContacts(response.data);
     } catch (err) {
       setError('Failed to load your inquiries.');
@@ -39,7 +39,7 @@ export default function MyContactPage() {
     setError('');
     
     try {
-      await apiClient.post('/contact', formData);
+      await contactAPI.submitContact(formData);
       setSuccess('Your inquiry has been submitted successfully!');
       setShowForm(false);
       setFormData({ name: '', email: '', subject: '', message: '' });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { apiClient } from '../api/client';
+import { certificateAPI } from '../api/client';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import { jsPDF } from 'jspdf';
@@ -18,7 +18,7 @@ export default function CertificatePage() {
 
   const fetchCertificates = async () => {
     try {
-      const response = await apiClient.get('/certificates/my-certificates');
+      const response = await certificateAPI.getMyCertificates();
       setCertificates(response.data);
     } catch (err) {
       console.error('Failed to fetch certificates');
@@ -378,4 +378,3 @@ export default function CertificatePage() {
     </div>
   );
 }
-

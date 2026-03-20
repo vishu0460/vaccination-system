@@ -22,7 +22,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping("/api/v1/reviews")
+@RequestMapping({"/api/v1/reviews", "/api/reviews"})
 public class ReviewController {
     private final ReviewService reviewService;
 

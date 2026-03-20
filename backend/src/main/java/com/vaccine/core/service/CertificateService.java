@@ -1,7 +1,7 @@
 package com.vaccine.core.service;
 
 import com.vaccine.domain.*;
-import com.vaccine.exception.AppException;
+import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.CertificateRepository;
 import org.springframework.stereotype.Service;
@@ -9,7 +9,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
@@ -32,12 +31,14 @@ public class CertificateService {
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
 
-        if (booking.getStatus() != BookingStatus.APPROVED && booking.getStatus() != BookingStatus.COMPLETED) {
-            throw new AppException("Booking must be approved or completed to generate certificate");
+        if (booking.getStatus() != BookingStatus.COMPLETED) {
+            throw new AppException("Booking must be completed to generate certificate");
         }
 
-        Optional<Certificate> existing = certificateRepository.findByBookingId(bookingId);
-        if (existing.isPresent()) {
+        boolean exists = certificateRepository.existsByBookingId(bookingId);
+        Optional<Certificate> existing = Optional.ofNullable(certificateRepository.findByBookingId(bookingId))
+            .orElse(Optional.empty());
+        if (exists || existing.isPresent()) {
             throw new AppException("Certificate already exists for this booking");
         }
 
@@ -74,6 +75,14 @@ public class CertificateService {
 
     public List<Certificate> getUserCertificates(Long userId) {
         return certificateRepository.findByBookingUserIdOrderByIssuedAtDesc(userId);
+    }
+
+    public List<Certificate> getAllCertificates() {
+        return certificateRepository.findAll();
+    }
+
+    public boolean certificateExistsForBooking(Long bookingId) {
+        return certificateRepository.existsByBookingId(bookingId);
     }
 
     private String generateCertificateNumber() {

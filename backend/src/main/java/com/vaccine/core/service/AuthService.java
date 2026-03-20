@@ -17,6 +17,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.*;
 
 @Service
@@ -56,7 +57,7 @@ public class AuthService {
             AuthenticationManager authenticationManager,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-            NotificationService notificationService,
+        NotificationService notificationService,
             AuditService auditService,
             PhoneVerificationService phoneVerificationService
     ) {
@@ -73,7 +74,7 @@ public class AuthService {
         this.phoneVerificationService = phoneVerificationService;
     }
 
-    public ApiMessage register(RegisterRequest req, HttpServletRequest request) {
+    public AuthResponse registerAndLogin(RegisterRequest req, HttpServletRequest request) {
         if (userRepository.existsByEmail(req.email().toLowerCase())) {
             throw new AppException("Email already registered");
         }
@@ -93,7 +94,7 @@ public class AuthService {
                 .emailVerified(shouldAutoVerify)
                 .phoneVerified(false)
                 .twoFactorEnabled(false)
-                .roles(Set.of(role))
+                .roles(new HashSet<>(Set.of(role)))
                 .failedLoginAttempts(0)
                 .build();
 
@@ -114,7 +115,9 @@ public class AuthService {
 
         auditService.log(user.getEmail(),"REGISTER","AUTH","User registered",request);
 
-        return new ApiMessage("Registration successful! " + (shouldAutoVerify ? "You can now login." : "Please check your email to verify your account."));
+        // Auto-login after registration (since password known and email verified)
+        LoginRequest loginReq = new LoginRequest(req.email().toLowerCase(), req.password());
+        return login(loginReq, request);
     }
 
     public AuthResponse login(LoginRequest req, HttpServletRequest request) {
@@ -215,6 +218,7 @@ public class AuthService {
         EmailVerification verification =
                 emailVerificationRepository.findByTokenAndExpiresAtAfter(token, LocalDateTime.now())
                         .filter(v -> !v.isVerified())
+                        .filter(v -> v.getExpiresAt() != null && v.getExpiresAt().isAfter(LocalDateTime.now()))
                         .orElseThrow(() -> new AppException("Invalid or expired verification token"));
 
         User user = userRepository.findByEmail(verification.getUserEmail())
@@ -329,6 +333,7 @@ public class AuthService {
     public void resetPassword(ResetPasswordRequest req) {
         PasswordReset reset = passwordResetRepository.findByTokenAndExpiresAtAfter(req.token(), LocalDateTime.now())
                 .filter(r -> !r.isUsed())
+                .filter(r -> r.getExpiresAt() != null && r.getExpiresAt().isAfter(LocalDateTime.now()))
                 .orElseThrow(() -> new AppException("Invalid or expired reset token"));
 
         User user = userRepository.findByEmail(reset.getUserEmail())
@@ -349,4 +354,3 @@ public class AuthService {
                 .orElse("USER");
     }
 }
-

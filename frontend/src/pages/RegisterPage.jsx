@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import api from "../api/client";
+import { authAPI } from "../api/client";
 
 export default function RegisterPage() {
   const [form, setForm] = useState({ 
@@ -42,7 +42,7 @@ export default function RegisterPage() {
     setLoading(true);
     setMsg("");
     try {
-      const { data } = await api.post("/auth/register", { 
+      const { data } = await authAPI.register({
         email: form.email, 
         fullName: form.fullName, 
         password: form.password, 
@@ -50,7 +50,7 @@ export default function RegisterPage() {
         phoneNumber: form.phoneNumber.replace(/\s/g, "")
       });
       setSuccess(true);
-      setMsg(data.message || "Registration successful! Please check your email to verify your account.");
+      setMsg(data.accessToken ? "Registration successful! You can now continue into your account." : "Registration successful! Please check your email to verify your account.");
     } catch (err) {
       console.error("Registration error:", err);
       console.error("Response data:", err.response?.data);

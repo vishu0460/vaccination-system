@@ -4,6 +4,7 @@ import java.time.LocalDateTime;
 
 public record CertificateResponse(
     Long id,
+    Long bookingId,
     String certificateNumber,
     String vaccineName,
     Integer doseNumber,

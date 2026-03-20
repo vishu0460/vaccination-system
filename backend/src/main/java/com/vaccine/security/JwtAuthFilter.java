@@ -36,25 +36,51 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        
-        String[] publicPaths = {
-            "/health", "/api/health", "/api/health/", "/actuator/",
-            "/auth/", "/api/auth/",
-            "/public/", "/api/public/",
-            "/api/contact/", "/api/news/", "/api/reviews/", 
-            "/api/feedback/",
-            "/certificates/verify/",
-            "/v3/api-docs/", "/swagger-ui/", "/h2-console/",
+
+        String[] exactPublicPaths = {
+            "/",
             "/error",
-            "/", "/robots.txt", "/sitemap.xml"
+            "/robots.txt",
+            "/sitemap.xml",
+            "/health",
+            "/api/health",
+            "/api/v1/health"
         };
-        
-        for (String publicPath : publicPaths) {
-            if (path.equals(publicPath) || path.startsWith(publicPath)) {
+
+        for (String exactPublicPath : exactPublicPaths) {
+            if (path.equals(exactPublicPath)) {
                 return true;
             }
         }
-        
+
+        String[] publicPathPrefixes = {
+            "/actuator/",
+            "/auth/",
+            "/api/auth/",
+            "/public/",
+            "/api/public/",
+            "/api/v1/public/",
+            "/api/contact/",
+            "/contact/",
+            "/api/news/",
+            "/api/v1/news/",
+            "/news/",
+            "/api/reviews/center/",
+            "/api/v1/reviews/center/",
+            "/reviews/center/",
+            "/api/certificates/verify/",
+            "/certificates/verify/",
+            "/v3/api-docs/",
+            "/swagger-ui/",
+            "/h2-console/"
+        };
+
+        for (String publicPathPrefix : publicPathPrefixes) {
+            if (path.startsWith(publicPathPrefix)) {
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -109,4 +135,3 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         filterChain.doFilter(request, response);
     }
 }
-

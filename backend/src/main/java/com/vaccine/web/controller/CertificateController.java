@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/certificates")
+@RequestMapping({"/certificates", "/api/certificates"})
 public class CertificateController {
     private final CertificateService certificateService;
     private final UserRepository userRepository;
@@ -50,6 +50,15 @@ public class CertificateController {
         return ResponseEntity.ok(toResponse(cert));
     }
 
+    @GetMapping
+    public ResponseEntity<List<CertificateResponse>> getAllCertificates() {
+        List<CertificateResponse> certs = certificateService.getAllCertificates()
+            .stream()
+            .map(this::toResponse)
+            .collect(Collectors.toList());
+        return ResponseEntity.ok(certs);
+    }
+
     @GetMapping("/verify/{certificateNumber}")
     public ResponseEntity<CertificateResponse> verifyCertificate(@PathVariable String certificateNumber) {
         Certificate cert = certificateService.getCertificateByNumber(certificateNumber);
@@ -59,6 +68,7 @@ public class CertificateController {
     private CertificateResponse toResponse(Certificate cert) {
         return new CertificateResponse(
             cert.getId(),
+            cert.getBooking().getId(),
             cert.getCertificateNumber(),
             cert.getVaccineName(),
             cert.getDoseNumber(),

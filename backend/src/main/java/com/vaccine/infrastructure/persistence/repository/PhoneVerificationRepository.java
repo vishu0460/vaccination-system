@@ -10,4 +10,5 @@ import java.util.Optional;
 @Repository
 public interface PhoneVerificationRepository extends JpaRepository<PhoneVerification, Long> {
     Optional<PhoneVerification> findByPhoneNumberAndOtpCodeAndExpiresAtAfterAndUsedFalse(String phoneNumber, String otpCode, LocalDateTime now);
+    void deleteByPhoneNumber(String phoneNumber);
 }

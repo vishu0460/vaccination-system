@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { apiClient } from '../api/client';
+import { publicAPI, reviewAPI, unwrapApiData } from '../api/client';
 import Rating from '../components/Rating';
 import Skeleton from '../components/Skeleton';
 
@@ -19,10 +19,11 @@ export default function CenterDetailPage() {
 
   const fetchCenter = async () => {
     try {
-      const response = await apiClient.get(`/public/centers/${id}`);
-      setCenter(response.data);
+      console.log("Fetching center detail for ID:", id);
+      const response = await publicAPI.getCenterDetail(id);
+      setCenter(unwrapApiData(response));
     } catch (err) {
-      console.error('Failed to fetch center');
+      console.error('Failed to fetch center:', err);
     } finally {
       setLoading(false);
     }
@@ -30,8 +31,8 @@ export default function CenterDetailPage() {
 
   const fetchReviews = async () => {
     try {
-      const response = await apiClient.get(`/reviews/center/${id}`);
-      setReviews(response.data);
+      const response = await reviewAPI.getCenterReviews(id);
+      setReviews(unwrapApiData(response) || []);
     } catch (err) {
       console.error('Failed to fetch reviews');
     }
@@ -40,7 +41,7 @@ export default function CenterDetailPage() {
   const submitReview = async (e) => {
     e.preventDefault();
     try {
-      await apiClient.post('/reviews', {
+      await reviewAPI.submitReview({
         centerId: Number(id),
         rating: reviewData.rating,
         comment: reviewData.comment
@@ -78,7 +79,7 @@ export default function CenterDetailPage() {
               {center.rating && (
                 <div className="mb-3">
                   <Rating value={Math.round(center.rating)} readonly size="lg" />
-                  <span className="ms-2">({center.reviewCount} reviews)</span>
+                  <span className="ms-2">({center.reviewCount || reviews.length} reviews)</span>
                 </div>
               )}
               <hr />
