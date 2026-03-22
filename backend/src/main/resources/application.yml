@@ -1,37 +1,6 @@
 spring:
   profiles:
-    active: local-fixed
-
-  datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:vaccination_db}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    driver-class-name: com.mysql.cj.jdbc.Driver
-    username: ${DB_USER:appuser}
-    password: ${DB_PASSWORD:apppass}
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 5
-      idle-timeout: 300000
-      connection-timeout: 20000
-
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        dialect: org.hibernate.dialect.MySQLDialect
-        jdbc:
-          time_zone: UTC
-
-  flyway:
-    enabled: true
-    baseline-on-migrate: false
-    locations: classpath:db/migration
-
-  sql:
-    init:
-      mode: always
+    active: ${SPRING_PROFILES_ACTIVE:dev}
 
   jackson:
     serialization:
@@ -70,7 +39,7 @@ app:
   dev:
     auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:true}
   seed:
-    enabled: ${APP_SEED_ENABLED:true}
+    enabled: ${APP_SEED_ENABLED:false}
   
   # SMS Configuration (Twilio)
   sms:

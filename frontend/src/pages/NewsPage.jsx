@@ -8,16 +8,34 @@ export default function NewsPage() {
   const [loading, setLoading] = useState(true);
   const [selectedNews, setSelectedNews] = useState(null);
 
+  const formatNewsDate = (item) => {
+    const value = item?.publishedAt || item?.updatedAt || item?.createdAt;
+    if (!value) {
+      return "";
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
+  };
+
   useEffect(() => {
     fetchNews();
+  }, []);
+
+  useEffect(() => {
+    const handleDataUpdated = () => {
+      fetchNews();
+    };
+
+    window.addEventListener('vaxzone:data-updated', handleDataUpdated);
+    return () => window.removeEventListener('vaxzone:data-updated', handleDataUpdated);
   }, []);
 
   const fetchNews = async () => {
     try {
       const response = await newsAPI.getAllNews(0, 20);
-      const payload = unwrapApiData(response) || {};
-      const items = Array.isArray(payload) ? payload : (payload.content || []);
-      setNews(items);
+      const payload = unwrapApiData(response) || [];
+      setNews(Array.isArray(payload) ? payload : []);
     } catch (err) {
       console.error('Failed to fetch news');
       setNews([]);
@@ -66,7 +84,7 @@ export default function NewsPage() {
                 <h5 className="card-title">{item.title}</h5>
                 <p className="card-text text-muted">{item.content?.substring(0, 100)}...</p>
                 <small className="text-muted">
-                  {new Date(item.publishedAt).toLocaleDateString()}
+                  {item.createdAt ? new Date(item.createdAt).toLocaleString() : formatNewsDate(item)}
                 </small>
               </div>
             </div>
@@ -88,7 +106,7 @@ export default function NewsPage() {
                 )}
                 <p>{selectedNews.content}</p>
                 <small className="text-muted">
-                  Published: {new Date(selectedNews.publishedAt).toLocaleDateString()}
+                  Published: {selectedNews.createdAt ? new Date(selectedNews.createdAt).toLocaleString() : formatNewsDate(selectedNews)}
                 </small>
               </div>
             </div>

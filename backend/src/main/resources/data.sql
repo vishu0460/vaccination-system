@@ -25,11 +25,11 @@ INSERT INTO vaccination_centers (name, address, city, state, pincode, phone, ema
 ON DUPLICATE KEY UPDATE name=name;
 
 -- 5. Drives
-INSERT INTO vaccination_drives (title, description, center_id, drive_date, min_age, max_age, vaccine_type, start_time, end_time, active, total_slots) VALUES
-('COVID Booster Drive 1', 'Booster dose for adults 18+', 1, '2024-12-15', 18, 60, 'Covishield', '09:00:00', '17:00:00', true, 100),
-('Pediatric Vaccination Drive', 'Vaccination for children 5-12 years', 2, '2024-12-16', 5, 12, 'Covaxin Pediatric', '10:00:00', '16:00:00', true, 50),
-('Senior Citizens Drive', 'Special drive for 60+ age group', 3, '2024-12-17', 60, 100, 'Covishield Booster', '08:00:00', '14:00:00', true, 80),
-('General COVID Vaccination', 'Covishield and Covaxin available', 4, '2024-12-18', 18, 100, 'Covishield', '09:00:00', '17:00:00', true, 120)
+INSERT INTO vaccination_drives (title, description, center_id, drive_date, min_age, max_age, vaccine_type, start_time, end_time, active, total_slots, status) VALUES
+('COVID Booster Drive 1', 'Booster dose for adults 18+', 1, '2026-12-15', 18, 60, 'Covishield', '09:00:00', '17:00:00', true, 100, 'UPCOMING'),
+('Pediatric Vaccination Drive', 'Vaccination for children 5-12 years', 2, '2026-12-16', 5, 12, 'Covaxin Pediatric', '10:00:00', '16:00:00', true, 50, 'UPCOMING'),
+('Senior Citizens Drive', 'Special drive for 60+ age group', 3, '2026-12-17', 60, 100, 'Covishield Booster', '08:00:00', '14:00:00', true, 80, 'LIVE'),
+('General COVID Vaccination', 'Covishield and Covaxin available', 4, '2026-12-18', 18, 100, 'Covishield', '09:00:00', '17:00:00', true, 120, 'EXPIRED')
 ON DUPLICATE KEY UPDATE title=title;
 
 -- 6. News (fixed FK)
@@ -38,4 +38,3 @@ INSERT INTO news (title, content, category, is_active, created_by_id) VALUES
 ('COVID Booster Eligibility', 'All adults eligible for booster after 6 months.', 'HEALTH', true, 1),
 ('New Vaccination Center Opened', 'New center now open in Bangalore with 250 slots.', 'VACCINATION', true, 1)
 ON DUPLICATE KEY UPDATE title=title;
-

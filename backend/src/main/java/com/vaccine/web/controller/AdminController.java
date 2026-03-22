@@ -109,12 +109,16 @@ public class AdminController {
 
     @PostMapping("/slots")
     public ResponseEntity<Slot> createSlot(@Valid @RequestBody SlotRequest req) {
-        return ResponseEntity.ok(adminService.createSlot(req));
+        log.info("Create slot for driveId={} startDate={} endDate={}", req.getDriveId(), req.getStartDate(), req.getEndDate());
+        Slot createdSlot = adminService.createSlot(req);
+        return ResponseEntity.ok(createdSlot);
     }
 
     @PutMapping({"/slots/{slotId}", "/slot/{slotId}"})
     public ResponseEntity<Slot> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
-        return ResponseEntity.ok(adminService.updateSlot(slotId, req));
+        log.info("Update slot id={} driveId={} startDate={} endDate={}", slotId, req.getDriveId(), req.getStartDate(), req.getEndDate());
+        Slot updatedSlot = adminService.updateSlot(slotId, req);
+        return ResponseEntity.ok(updatedSlot);
     }
 
     @GetMapping("/drives/{driveId}/slots")

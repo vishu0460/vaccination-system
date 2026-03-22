@@ -23,6 +23,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 
 @Slf4j
@@ -133,7 +134,13 @@ public class SuperAdminController {
 
     @PutMapping({"/slots/{slotId}", "/slot/{slotId}"})
     public ResponseEntity<ApiResponse<Slot>> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
+        log.info("Super admin update slot id={} driveId={} startDate={} endDate={}", slotId, req.getDriveId(), req.getStartDate(), req.getEndDate());
         return ResponseEntity.ok(ApiResponse.success(adminService.updateSlot(slotId, req), "Slot updated successfully"));
+    }
+
+    @GetMapping("/drives/{driveId}/slots")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getDriveSlots(@PathVariable Long driveId) {
+        return ResponseEntity.ok(ApiResponse.success(adminService.getDriveSlots(driveId)));
     }
 
     @DeleteMapping({"/slots/{slotId}", "/slot/{slotId}"})

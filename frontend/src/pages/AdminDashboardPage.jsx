@@ -6,6 +6,7 @@ import { adminAPI, newsAPI, certificateAPI, superAdminAPI, unwrapApiData } from 
 import ErrorState from '../components/ErrorState';
 import { getRole } from '../utils/auth';
 import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaSearch, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaDownload, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
+import useDebounce from '../hooks/useDebounce';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -18,6 +19,8 @@ const EMPTY_STATS = {
   bookingsToday: 0,
   completedVaccinations: 0
 };
+
+const DRIVE_STATUS_OPTIONS = ['UPCOMING', 'LIVE', 'EXPIRED'];
 
 const ensureArray = (payload) => {
   if (Array.isArray(payload)) {
@@ -61,6 +64,26 @@ const formatDateTime = (value) => {
   return Number.isNaN(parsed.getTime()) ? 'N/A' : parsed.toLocaleString();
 };
 
+const getSlotStatusPreview = (startValue, endValue) => {
+  const start = new Date(startValue);
+  const end = new Date(endValue);
+  const now = new Date();
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+
+  if (end <= start || now > end) {
+    return 'EXPIRED';
+  }
+
+  if (now >= start && now <= end) {
+    return 'LIVE';
+  }
+
+  return 'UPCOMING';
+};
+
 const formatDateTimeLocal = (value) => {
   if (!value) {
     return '';
@@ -75,9 +98,29 @@ const formatDateTimeLocal = (value) => {
   return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
 };
 
-const combineSlotDateTime = (baseDateTime, timeValue) => {
-  if (!baseDateTime) {
+const formatApiDateTime = (value) => {
+  if (!value) {
     return '';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  const pad = (part) => String(part).padStart(2, '0');
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
+};
+
+const isDateTimeValue = (value) => typeof value === 'string' && value.includes('T');
+
+const combineSlotDateTime = (baseDateTime, timeValue) => {
+  if (!timeValue && !baseDateTime) {
+    return '';
+  }
+
+  if (isDateTimeValue(timeValue)) {
+    return formatDateTimeLocal(timeValue);
   }
 
   const parsed = new Date(baseDateTime);
@@ -86,9 +129,61 @@ const combineSlotDateTime = (baseDateTime, timeValue) => {
   }
 
   const [hours = '0', minutes = '0'] = String(timeValue || '').split(':');
-  parsed.setHours(Number(hours), Number(minutes), 0, 0);
-  return formatDateTimeLocal(parsed.toISOString());
+  const parsedHours = Number(hours);
+  const parsedMinutes = Number(minutes);
+
+  if (Number.isNaN(parsedHours) || Number.isNaN(parsedMinutes)) {
+    return '';
+  }
+
+  parsed.setHours(parsedHours, parsedMinutes, 0, 0);
+  return formatDateTimeLocal(parsed);
 };
+
+const normalizeSlotForEditing = (slot) => {
+  const baseStart = slot?.startDate || slot?.dateTime || slot?.time || slot?.startTime || '';
+  const rawEnd = slot?.endDate || slot?.endTime || slot?.dateEndTime || slot?.endDateTime || '';
+  const normalizedDriveId = slot?.driveId || slot?.drive?.id || '';
+  const normalizedStartTime = formatDateTimeLocal(baseStart);
+  let normalizedEndTime = formatDateTimeLocal(rawEnd) || combineSlotDateTime(baseStart, rawEnd);
+
+  if (!normalizedEndTime && normalizedStartTime) {
+    const fallbackEnd = new Date(normalizedStartTime);
+    if (!Number.isNaN(fallbackEnd.getTime())) {
+      fallbackEnd.setHours(fallbackEnd.getHours() + 1);
+      normalizedEndTime = formatDateTimeLocal(fallbackEnd);
+    }
+  }
+
+  return {
+    ...slot,
+    startDate: slot?.startDate || baseStart || null,
+    endDate: slot?.endDate || rawEnd || null,
+    driveId: normalizedDriveId,
+    editStartTime: slot?.editStartTime || normalizedStartTime,
+    editEndTime: slot?.editEndTime || normalizedEndTime,
+  };
+};
+
+const formatSlotEndDisplay = (slot) => {
+  const endDateTime = slot?.endDate || combineSlotDateTime(slot?.startDate || slot?.dateTime || slot?.time || slot?.startTime, slot?.endTime);
+  return formatDateTime(endDateTime);
+};
+
+const buildSlotPayload = (formState) => {
+  const startDate = formatApiDateTime(formState.startTime) || formState.startTime;
+  const endDate = formatApiDateTime(formState.endTime) || formState.endTime;
+
+  return {
+    driveId: Number(formState.driveId),
+    startDate,
+    endDate,
+    capacity: Number(formState.capacity)
+  };
+};
+
+const mergeUpdatedSlot = (currentSlots, updatedSlot) =>
+  currentSlots.map((slot) => (Number(slot.id) === Number(updatedSlot.id) ? normalizeSlotForEditing(updatedSlot) : slot));
 
 const notifyDataUpdated = () => {
   if (typeof window !== 'undefined') {
@@ -120,6 +215,7 @@ export default function AdminDashboardPage() {
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearchTerm = useDebounce(searchTerm, 250);
   
   // Modal states
   const [showNewsModal, setShowNewsModal] = useState(false);
@@ -151,10 +247,11 @@ export default function AdminDashboardPage() {
 
   const [centerForm, setCenterForm] = useState({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
   const [editCenterForm, setEditCenterForm] = useState({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
-  const [driveForm, setDriveForm] = useState({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, active: true });
-  const [editDriveForm, setEditDriveForm] = useState({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, active: true });
+  const [driveForm, setDriveForm] = useState({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
+  const [editDriveForm, setEditDriveForm] = useState({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
   const [slotForm, setSlotForm] = useState({ driveId: '', startTime: '', endTime: '', capacity: 50 });
   const [editSlotForm, setEditSlotForm] = useState({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+  const [slotActionLoading, setSlotActionLoading] = useState(false);
   const [certificateForm, setCertificateForm] = useState({ bookingId: '', vaccineName: '', doseNumber: 1 });
   const [editUserForm, setEditUserForm] = useState({ email: '', fullName: '', age: 0, phoneNumber: '', enabled: true });
   const [slotFilters, setSlotFilters] = useState({ status: 'ALL', centerId: '', driveId: '', date: '' });
@@ -168,9 +265,38 @@ export default function AdminDashboardPage() {
   const [selectedContact, setSelectedContact] = useState(null);
   const [responseText, setResponseText] = useState('');
 
+  const refreshActiveTabData = async () => {
+    await loadDashboardData();
+
+    if (activeTab === 'users') await loadUsers();
+    if (activeTab === 'bookings') await loadBookings();
+    if (activeTab === 'centers') await loadCenters();
+    if (activeTab === 'drives') await loadDrives();
+    if (activeTab === 'slots') await loadSlots();
+    if (activeTab === 'news') await loadNews();
+    if (activeTab === 'certificates') await loadCertificates();
+    if (activeTab === 'feedback') await loadFeedbacks();
+    if (activeTab === 'contacts') await loadContacts();
+
+    if (selectedDrive?.id) {
+      await loadDriveSlots(selectedDrive.id, showManageSlotsModal);
+    }
+  };
+
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useEffect(() => {
+    const handleDataUpdated = () => {
+      refreshActiveTabData().catch((err) => {
+        setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
+      });
+    };
+
+    window.addEventListener('vaxzone:data-updated', handleDataUpdated);
+    return () => window.removeEventListener('vaxzone:data-updated', handleDataUpdated);
+  }, [activeTab, selectedDrive?.id, showManageSlotsModal, slotFilters]);
 
   useEffect(() => {
     if (activeTab === 'users') loadUsers();
@@ -198,8 +324,6 @@ export default function AdminDashboardPage() {
         adminAPI.getDashboardStats(),
         adminAPI.getAllBookings()
       ]);
-      console.debug('Admin dashboard stats response:', statsRes?.data);
-      console.debug('Admin dashboard bookings response:', bookingsRes?.data);
       setStats(ensureStats(unwrapApiData(statsRes)));
       setBookings(ensureArray(unwrapApiData(bookingsRes)));
     } catch (err) {
@@ -289,18 +413,28 @@ export default function AdminDashboardPage() {
   const loadSlots = async () => {
     try {
       setLoading(true);
-      const [slotsResponse, centersResponse, drivesResponse] = await Promise.all([
-        adminAPI.getAllSlotsList(buildSlotFilterParams()),
-        centers.length === 0 ? adminAPI.getAllCenters() : Promise.resolve({ data: { data: centers } }),
-        drives.length === 0 ? adminAPI.getAllDrives() : Promise.resolve({ data: { data: drives } })
-      ]);
-      setSlots(ensureArray(unwrapApiData(slotsResponse)));
+      setError(null);
+
+      const slotsResponse = await adminAPI.getAllSlotsList(buildSlotFilterParams());
+      setSlots(ensureArray(unwrapApiData(slotsResponse)).map(normalizeSlotForEditing));
+
+      const metadataRequests = [];
       if (centers.length === 0) {
-        setCenters(ensureArray(unwrapApiData(centersResponse)));
+        metadataRequests.push(
+          adminAPI.getAllCenters()
+            .then((response) => setCenters(ensureArray(unwrapApiData(response))))
+            .catch(() => {})
+        );
       }
       if (drives.length === 0) {
-        setDrives(ensureArray(unwrapApiData(drivesResponse)));
+        metadataRequests.push(
+          adminAPI.getAllDrives()
+            .then((response) => setDrives(ensureArray(unwrapApiData(response))))
+            .catch(() => {})
+        );
       }
+
+      await Promise.all(metadataRequests);
     } catch (err) {
       setError('Failed to load slots');
       setSlots([]);
@@ -312,8 +446,9 @@ export default function AdminDashboardPage() {
   const loadNews = async () => {
     try {
       setLoading(true);
-      const response = await newsAPI.getAllNews(0, 100);
-      setNews(ensureArray(unwrapApiData(response)));
+      const response = await newsAPI.getAdminNews(0, 100);
+      const payload = unwrapApiData(response) || {};
+      setNews(ensureArray(payload));
     } catch (err) {
       setNews([]);
     } finally {
@@ -341,6 +476,7 @@ export default function AdminDashboardPage() {
       setShowNewsModal(false);
       setNewsForm({ title: '', content: '', category: 'GENERAL' });
       setSuccess('News posted successfully!');
+      notifyDataUpdated();
       loadNews();
     } catch (err) {
       setError('Failed to create news');
@@ -365,6 +501,7 @@ export default function AdminDashboardPage() {
       setEditingNews(null);
       setEditNewsForm({ title: '', content: '', category: 'GENERAL' });
       setSuccess('News updated successfully!');
+      notifyDataUpdated();
       loadNews();
     } catch (err) {
       setError('Failed to update news');
@@ -376,6 +513,7 @@ export default function AdminDashboardPage() {
     try {
       await newsAPI.deleteNews(id);
       setSuccess('News deleted successfully!');
+      notifyDataUpdated();
       loadNews();
     } catch (err) {
       setError('Failed to delete news');
@@ -440,9 +578,9 @@ export default function AdminDashboardPage() {
   const handleCreateDrive = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.createDrive(driveForm);
+      await adminAPI.createDrive({ ...driveForm, centerId: Number(driveForm.centerId) });
       setShowDriveModal(false);
-      setDriveForm({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, active: true });
+      setDriveForm({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
       setSuccess('Drive created successfully!');
       notifyDataUpdated();
       loadDashboardData();
@@ -466,7 +604,7 @@ export default function AdminDashboardPage() {
       minAge: drive.minAge || 0,
       maxAge: drive.maxAge || 100,
       totalSlots: drive.totalSlots || 100,
-      active: !!drive.active
+      status: drive.status || 'UPCOMING'
     });
     setShowEditDriveModal(true);
   };
@@ -474,7 +612,7 @@ export default function AdminDashboardPage() {
   const handleUpdateDrive = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.updateDrive(editingDrive.id, editDriveForm);
+      await adminAPI.updateDrive(editingDrive.id, { ...editDriveForm, centerId: Number(editDriveForm.centerId) });
       setShowEditDriveModal(false);
       setEditingDrive(null);
       setSuccess('Drive updated successfully!');
@@ -483,6 +621,17 @@ export default function AdminDashboardPage() {
       loadDrives();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update drive');
+    }
+  };
+
+  const handleDriveStatusChange = async (driveId, status) => {
+    try {
+      await adminAPI.updateDrive(driveId, { status });
+      setDrives((current) => current.map((drive) => (drive.id === driveId ? { ...drive, status } : drive)));
+      setSuccess(`Drive status updated to ${status}.`);
+      notifyDataUpdated();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to update drive status');
     }
   };
 
@@ -498,13 +647,9 @@ export default function AdminDashboardPage() {
 
   const handleCreateSlot = async (e) => {
     e.preventDefault();
+    setSlotActionLoading(true);
     try {
-      const slotData = {
-        driveId: slotForm.driveId,
-        startTime: slotForm.startTime,
-        endTime: slotForm.endTime,
-        capacity: slotForm.capacity
-      };
+      const slotData = buildSlotPayload(slotForm);
       await adminAPI.createSlot(slotData);
       setShowSlotModal(false);
       setSlotForm({ driveId: '', startTime: '', endTime: '', capacity: 50 });
@@ -518,23 +663,23 @@ export default function AdminDashboardPage() {
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create slot');
+    } finally {
+      setSlotActionLoading(false);
     }
   };
 
   const loadDriveSlots = async (driveId, keepOpen = false) => {
     try {
-      const response = await adminAPI.getDriveSlots(driveId);
+      setError(null);
+      const response = await (isSuperAdmin ? superAdminAPI.getDriveSlots(driveId) : adminAPI.getDriveSlots(driveId));
       const payload = unwrapApiData(response) || {};
-      const slots = (Array.isArray(payload) ? payload : (payload.slots || [])).map((slot) => ({
-        ...slot,
-        editStartTime: formatDateTimeLocal(slot.dateTime || slot.startTime),
-        editEndTime: combineSlotDateTime(slot.dateTime || slot.startTime, slot.endTime)
-      }));
+      const slots = (Array.isArray(payload) ? payload : (payload.slots || [])).map(normalizeSlotForEditing);
       setDriveSlots(slots);
       if (keepOpen) {
         setShowManageSlotsModal(true);
       }
     } catch (err) {
+      console.error('Failed to load drive slots:', err.response?.data || err.message);
       setDriveSlots([]);
       setError('Failed to load slots');
     }
@@ -546,13 +691,14 @@ export default function AdminDashboardPage() {
   };
 
   const openEditSlotModal = (slot) => {
-    setEditingSlot(slot);
-    const isExpired = slot.slotStatus === 'EXPIRED';
+    const normalizedSlot = normalizeSlotForEditing(slot);
+    setEditingSlot(normalizedSlot);
+    const isExpired = normalizedSlot.slotStatus === 'EXPIRED';
     setEditSlotForm({
-      driveId: selectedDrive?.id || slot.drive?.id || slot.driveId || '',
-      startTime: slot.editStartTime || formatDateTimeLocal(slot.dateTime || slot.startTime || slot.time),
-      endTime: slot.editEndTime || combineSlotDateTime(slot.dateTime || slot.startTime || slot.time, slot.endTime),
-      capacity: slot.capacity || 50
+      driveId: normalizedSlot.driveId || '',
+      startTime: normalizedSlot.editStartTime || '',
+      endTime: normalizedSlot.editEndTime || '',
+      capacity: normalizedSlot.capacity || 50
     });
     if (isExpired) {
       setSuccess('Warning: you are editing an expired slot.');
@@ -562,20 +708,44 @@ export default function AdminDashboardPage() {
 
   const handleUpdateSlot = async (e) => {
     e.preventDefault();
+    setSlotActionLoading(true);
     try {
-      await adminAPI.updateSlot(editingSlot.id, editSlotForm);
+      const slotPayload = buildSlotPayload(editSlotForm);
+      const nextStatus = getSlotStatusPreview(slotPayload.startDate, slotPayload.endDate);
+      if (!editingSlot?.id) {
+        throw new Error('Slot ID is missing');
+      }
+      const response = await (isSuperAdmin ? superAdminAPI.updateSlot(editingSlot.id, slotPayload) : adminAPI.updateSlot(editingSlot.id, slotPayload));
+      const updatedSlot = normalizeSlotForEditing(unwrapApiData(response));
+
+      setSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
+      setDriveSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
+
       setShowEditSlotModal(false);
       setEditingSlot(null);
-      setSuccess('Slot updated successfully!');
+      setEditSlotForm({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+
+      const updatedDriveId = Number(slotPayload.driveId);
+      const updatedDrive = drives.find((drive) => Number(drive.id) === updatedDriveId) || selectedDrive;
+      setSelectedDrive(updatedDrive || null);
+
+      await Promise.all([
+        loadDashboardData(),
+        loadDrives(),
+        loadSlots(),
+        updatedDriveId ? loadDriveSlots(updatedDriveId, true) : Promise.resolve()
+      ]);
+
+      setSuccess(
+        nextStatus === 'EXPIRED'
+          ? 'Slot updated successfully, but the selected date/time is still in the past so it remains EXPIRED.'
+          : `Slot updated successfully. New status: ${nextStatus || 'UPDATED'}.`
+      );
       notifyDataUpdated();
-      loadDashboardData();
-      loadDrives();
-      loadSlots();
-      if (selectedDrive?.id) {
-        loadDriveSlots(selectedDrive.id, true);
-      }
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update slot');
+    } finally {
+      setSlotActionLoading(false);
     }
   };
 
@@ -736,11 +906,11 @@ export default function AdminDashboardPage() {
 
   // Chart data
   const chartData = stats ? {
-    labels: ['Total Users', 'Total Bookings', 'Active Drives', 'Centers'],
+    labels: ['Users', 'Active Users', 'Bookings', 'Active Drives', 'Centers'],
     datasets: [{
       label: 'System Statistics',
-      data: [stats.totalUsers || 0, stats.totalBookings || 0, stats.activeDrives || 0, stats.totalCenters || 0],
-      backgroundColor: ['#0ea5e9', '#10b981', '#ef4444', '#f59e0b'],
+      data: [stats.totalUsers || 0, stats.activeUsers || 0, stats.totalBookings || 0, stats.activeDrives || 0, stats.totalCenters || 0],
+      backgroundColor: ['#0ea5e9', '#38bdf8', '#10b981', '#ef4444', '#f59e0b'],
       borderRadius: 8
     }]
   } : null;
@@ -769,13 +939,13 @@ export default function AdminDashboardPage() {
   };
 
   const filteredUsers = users.filter(user => 
-    user.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchTerm.toLowerCase())
+    user.fullName?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+    user.email?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
   );
 
   const filteredBookings = bookings.filter(booking => 
-    booking.userName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    booking.status?.toLowerCase().includes(searchTerm.toLowerCase())
+    booking.userName?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+    booking.status?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
   );
 
   const getSlotStatusBadge = (status) => {
@@ -1362,13 +1532,18 @@ export default function AdminDashboardPage() {
               <tr key={drive.id}>
                 <td className="ps-4">#{drive.id}</td>
                 <td className="fw-medium">{drive.title}</td>
-                <td>{drive.centerName || 'N/A'}</td>
+                <td>{drive.center?.name || drive.centerName || 'N/A'}</td>
                 <td>{drive.driveDate}</td>
                 <td>{drive.minAge} - {drive.maxAge}</td>
                 <td>
-                  <Badge bg={drive.active ? 'success' : 'secondary'} style={drive.active ? {background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'} : {background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)'}}>
-                    {drive.active ? 'Active' : 'Inactive'}
-                  </Badge>
+                  <Form.Select
+                    size="sm"
+                    value={drive.status || 'UPCOMING'}
+                    onChange={(e) => handleDriveStatusChange(drive.id, e.target.value)}
+                    style={{borderRadius: '0.5rem', minWidth: '140px'}}
+                  >
+                    {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                  </Form.Select>
                 </td>
                 <td className="text-end pe-4">
                   <div className="d-flex justify-content-end gap-2">
@@ -1478,8 +1653,8 @@ export default function AdminDashboardPage() {
               {slots.map((slot) => (
                 <tr key={slot.id}>
                   <td className="ps-4">
-                    <div className="fw-medium">{formatDateTime(slot.time)}</div>
-                    <small className="text-muted">Ends {formatDateTime(slot.endTime)}</small>
+                    <div className="fw-medium">{formatDateTime(slot.startDate || slot.time || slot.dateTime)}</div>
+                    <small className="text-muted">Ends {formatDateTime(slot.endDate || slot.endTime)}</small>
                   </td>
                   <td>{slot.centerName || 'N/A'}</td>
                   <td>{slot.driveName || 'N/A'}</td>
@@ -2000,8 +2175,10 @@ export default function AdminDashboardPage() {
               </Col>
               <Col md={4}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Active</Form.Label>
-                  <Form.Check type="switch" checked={driveForm.active} onChange={e => setDriveForm({...driveForm, active: e.target.checked})} label={driveForm.active ? 'Yes' : 'No'} />
+                  <Form.Label>Status</Form.Label>
+                  <Form.Select value={driveForm.status} onChange={e => setDriveForm({...driveForm, status: e.target.value})} style={{borderRadius: '0.5rem'}}>
+                    {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                  </Form.Select>
                 </Form.Group>
               </Col>
             </Row>
@@ -2073,8 +2250,10 @@ export default function AdminDashboardPage() {
               </Col>
             </Row>
             <Form.Group className="mb-3">
-              <Form.Label>Active</Form.Label>
-              <Form.Check type="switch" checked={editDriveForm.active} onChange={e => setEditDriveForm({...editDriveForm, active: e.target.checked})} label={editDriveForm.active ? 'Yes' : 'No'} />
+              <Form.Label>Status</Form.Label>
+              <Form.Select value={editDriveForm.status} onChange={e => setEditDriveForm({...editDriveForm, status: e.target.value})} style={{borderRadius: '0.5rem'}}>
+                {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+              </Form.Select>
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
@@ -2136,7 +2315,7 @@ export default function AdminDashboardPage() {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowSlotModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
-            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Create Slot</Button>
+            <Button type="submit" disabled={slotActionLoading} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>{slotActionLoading ? 'Saving...' : 'Create Slot'}</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -2164,8 +2343,8 @@ export default function AdminDashboardPage() {
                 {driveSlots.map(slot => (
                   <tr key={slot.id}>
                     <td>#{slot.id}</td>
-                    <td>{formatDate(slot.dateTime || slot.startTime)}</td>
-                    <td>{formatDate(slot.endTime)}</td>
+                    <td>{formatDateTime(slot.startDate || slot.dateTime || slot.time || slot.startTime)}</td>
+                    <td>{formatSlotEndDisplay(slot)}</td>
                     <td>{slot.capacity}</td>
                     <td>{slot.bookedCount || 0}</td>
                     <td className="text-end">
@@ -2195,11 +2374,21 @@ export default function AdminDashboardPage() {
         </Modal.Header>
         <Form onSubmit={handleUpdateSlot}>
           <Modal.Body>
-            {editingSlot?.slotStatus === 'EXPIRED' && (
-              <Alert variant="warning" style={{borderRadius: '0.5rem'}}>
-                This slot is expired. Update it carefully before saving changes.
-              </Alert>
-            )}
+            <Alert variant={getSlotStatusPreview(editSlotForm.startTime, editSlotForm.endTime) === 'EXPIRED' ? 'warning' : 'info'} style={{borderRadius: '0.5rem'}}>
+              {(() => {
+                const previewStatus = getSlotStatusPreview(editSlotForm.startTime, editSlotForm.endTime);
+                if (previewStatus === 'EXPIRED') {
+                  return 'This slot is editable, but the selected date/time is still before March 22, 2026, so it will remain EXPIRED after saving.';
+                }
+                if (previewStatus === 'LIVE') {
+                  return 'Saving these values will make this slot LIVE immediately.';
+                }
+                if (previewStatus === 'UPCOMING') {
+                  return 'Saving these values will make this slot UPCOMING.';
+                }
+                return 'Edit the slot date/time and capacity, then save your changes.';
+              })()}
+            </Alert>
             <Form.Group className="mb-3">
               <Form.Label>Drive</Form.Label>
               <Form.Select value={editSlotForm.driveId} onChange={e => setEditSlotForm({...editSlotForm, driveId: e.target.value})} required style={{borderRadius: '0.5rem'}}>
@@ -2222,7 +2411,7 @@ export default function AdminDashboardPage() {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowEditSlotModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
-            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Update Slot</Button>
+            <Button type="submit" disabled={slotActionLoading} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>{slotActionLoading ? 'Saving...' : 'Update Slot'}</Button>
           </Modal.Footer>
         </Form>
       </Modal>

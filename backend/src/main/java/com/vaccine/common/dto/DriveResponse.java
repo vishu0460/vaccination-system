@@ -1,5 +1,6 @@
 package com.vaccine.common.dto;
 
+import com.vaccine.domain.Status;
 import com.vaccine.domain.VaccinationDrive;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -14,7 +15,7 @@ public record DriveResponse(
     LocalDateTime startTime,
     LocalDateTime endTime,
     int availableSlots,
-    boolean active
+    Status status
 ) {
     public static DriveResponse from(VaccinationDrive drive) {
         return new DriveResponse(
@@ -26,7 +27,7 @@ public record DriveResponse(
             drive.getStartTime().atDate(drive.getDriveDate()),
             drive.getEndTime().atDate(drive.getDriveDate()),
             drive.getTotalSlots(),
-            drive.getActive()
+            drive.getStatus()
         );
     }
     

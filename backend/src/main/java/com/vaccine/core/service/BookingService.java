@@ -7,11 +7,14 @@ import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
+import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
 import com.vaccine.util.SlotStatusResolver;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import lombok.extern.slf4j.Slf4j;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
@@ -19,46 +22,72 @@ import java.util.stream.Collectors;
 
 @Service
 @Transactional
+@Slf4j
 public class BookingService {
+    private static final List<Status> BOOKABLE_DRIVE_STATUSES = List.of(Status.LIVE, Status.UPCOMING);
+
     private final BookingRepository bookingRepository;
     private final SlotRepository slotRepository;
     private final UserRepository userRepository;
+    private final VaccinationDriveRepository driveRepository;
     private final INotificationService notificationService;
 
     public BookingService(BookingRepository bookingRepository, SlotRepository slotRepository,
-                          UserRepository userRepository, INotificationService notificationService) {
+                          UserRepository userRepository, VaccinationDriveRepository driveRepository,
+                          INotificationService notificationService) {
         this.bookingRepository = bookingRepository;
         this.slotRepository = slotRepository;
         this.userRepository = userRepository;
+        this.driveRepository = driveRepository;
         this.notificationService = notificationService;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Booking book(String email, BookingRequest req) {
+        log.info("Creating booking for user={}, slotId={}, driveId={}", email, req.slotId(), req.driveId());
         User user = userRepository.findByEmail(email).orElseThrow(() -> new AppException("User not found"));
+        if (req.userId() != null && !req.userId().equals(user.getId())) {
+            throw new AppException("Booking request user does not match the logged-in user");
+        }
         Slot slot = slotRepository.findById(req.slotId()).orElseThrow(() -> new AppException("Slot not found"));
+        VaccinationDrive requestedDrive = req.driveId() == null
+            ? null
+            : driveRepository.findById(req.driveId()).orElseThrow(() -> new AppException("Drive not found"));
 
         VaccinationDrive drive = slot.getDrive();
-        if (req.driveId() != null && !req.driveId().equals(drive.getId())) {
+        if (drive == null) {
+            throw new AppException("Selected slot is not linked to a drive");
+        }
+        if (requestedDrive != null && !requestedDrive.getId().equals(drive.getId())) {
             throw new AppException("Selected slot does not belong to the requested drive");
         }
-        if (!Boolean.TRUE.equals(drive.getActive())) {
-            throw new AppException("Drive is not active");
+        if (!BOOKABLE_DRIVE_STATUSES.contains(drive.getStatus())) {
+            throw new AppException("Booking is only allowed for drives marked LIVE or UPCOMING");
         }
         if (SlotStatusResolver.resolve(slot) == SlotStatus.EXPIRED) {
             throw new AppException("Cannot book an expired slot");
+        }
+        if (user.getAge() == null) {
+            throw new AppException("Please complete your profile age before booking");
         }
         if (user.getAge() < drive.getMinAge() || user.getAge() > drive.getMaxAge()) {
             throw new AppException("Age not eligible for this drive");
         }
 
-        // Skip conflict check for now to avoid repository issue
-        boolean hasConflict = false;
+        LocalDateTime slotDateTime = slot.getDateTime();
+        boolean hasConflict = slotDateTime != null && bookingRepository.existsByUserIdAndSlotDateTimeBetweenAndStatusIn(
+            user.getId(),
+            slotDateTime.minusHours(2),
+            slotDateTime.plusHours(2),
+            Arrays.asList(BookingStatus.PENDING, BookingStatus.CONFIRMED)
+        );
         if (hasConflict) {
             throw new AppException("You already have a nearby slot booking");
         }
 
-        if (slot.getBookedCount() >= slot.getCapacity()) {
+        int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
+        int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
+        if (bookedCount >= capacity) {
             throw new AppException("Slot is full");
         }
 
@@ -71,25 +100,28 @@ public class BookingService {
             throw new AppException("You have already booked this slot");
         }
 
-        slot.setBookedCount(slot.getBookedCount() + 1);
-        slotRepository.save(slot);
+        LocalDateTime assignedTime = calculateAssignedTime(slot, bookedCount);
 
         Booking booking = Booking.builder()
             .user(user)
             .slot(slot)
             .status(BookingStatus.PENDING)
+            .assignedTime(assignedTime)
             .notes(req.notes())
             .build();
 
+        slot.setBookedCount(bookedCount + 1);
+        slotRepository.save(slot);
+
         Booking saved = bookingRepository.save(booking);
-        notificationService.sendEmail(user, "Booking Confirmation", 
-            "Your booking has been created with status PENDING. Booking ID: " + saved.getId());
-        notificationService.sendSms(user, "Booking request submitted. ID=" + saved.getId());
+        notificationService.sendBookingNotification(saved);
+        log.info("Booking created successfully for user={}, bookingId={}, status={}, assignedTime={}", email, saved.getId(), saved.getStatus(), saved.getAssignedTime());
         return saved;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Booking cancel(String email, Long bookingId) {
+        log.info("Cancelling bookingId={} for user={}", bookingId, email);
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
         if (!booking.getUser().getEmail().equalsIgnoreCase(email)) {
@@ -99,44 +131,65 @@ public class BookingService {
             throw new AppException("Already cancelled");
         }
         booking.setStatus(BookingStatus.CANCELLED);
+        booking.setCancelledAt(LocalDateTime.now());
         Slot slot = booking.getSlot();
-        slot.setBookedCount(Math.max(0, slot.getBookedCount() - 1));
-        slotRepository.save(slot);
+        if (slot != null) {
+            int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
+            slot.setBookedCount(Math.max(0, bookedCount - 1));
+            slotRepository.save(slot);
+        }
         notificationService.sendEmail(booking.getUser(), "Booking Cancelled", 
-            "Your booking has been cancelled. Booking ID: " + booking.getId());
+            buildCancellationMessage(booking));
+        notificationService.sendSms(booking.getUser(), buildShortCancellationMessage(booking));
+        log.info("Booking cancelled successfully for bookingId={}", bookingId);
         return bookingRepository.save(booking);
     }
 
     public List<BookingResponse> getMyBookings(String email) {
-        return bookingRepository.findAll().stream()
-            .filter(b -> b.getUser().getEmail().equals(email))
+        return bookingRepository.findByUserEmailOrderByBookedAtDesc(email).stream()
             .map(BookingResponse::from)
             .collect(Collectors.toList());
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Booking reschedule(String email, Long bookingId, BookingRequest req) {
+        log.info("Rescheduling bookingId={} for user={} to slotId={}", bookingId, email, req.slotId());
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
         if (!booking.getUser().getEmail().equalsIgnoreCase(email)) {
             throw new AppException("You can only reschedule your own booking");
         }
         Slot newSlot = slotRepository.findById(req.slotId()).orElseThrow(() -> new AppException("Slot not found"));
+        if (req.userId() != null && !req.userId().equals(booking.getUser().getId())) {
+            throw new AppException("Booking request user does not match the logged-in user");
+        }
+        if (req.driveId() != null && (newSlot.getDrive() == null || !req.driveId().equals(newSlot.getDrive().getId()))) {
+            throw new AppException("Selected slot does not belong to the requested drive");
+        }
+        if (newSlot.getDrive() == null || !BOOKABLE_DRIVE_STATUSES.contains(newSlot.getDrive().getStatus())) {
+            throw new AppException("Selected slot is not available for booking");
+        }
         if (SlotStatusResolver.resolve(newSlot) == SlotStatus.EXPIRED) {
             throw new AppException("Cannot reschedule to an expired slot");
         }
-        if (newSlot.getBookedCount() >= newSlot.getCapacity()) {
+        int newSlotBookedCount = newSlot.getBookedCount() == null ? 0 : newSlot.getBookedCount();
+        int newSlotCapacity = newSlot.getCapacity() == null ? 0 : newSlot.getCapacity();
+        if (newSlotBookedCount >= newSlotCapacity) {
             throw new AppException("Selected slot is full");
         }
         Slot previousSlot = booking.getSlot();
         if (previousSlot != null && !previousSlot.getId().equals(newSlot.getId())) {
-            previousSlot.setBookedCount(Math.max(0, previousSlot.getBookedCount() - 1));
+            int previousBookedCount = previousSlot.getBookedCount() == null ? 0 : previousSlot.getBookedCount();
+            previousSlot.setBookedCount(Math.max(0, previousBookedCount - 1));
             slotRepository.save(previousSlot);
-            newSlot.setBookedCount((newSlot.getBookedCount() == null ? 0 : newSlot.getBookedCount()) + 1);
+            LocalDateTime assignedTime = calculateAssignedTime(newSlot, newSlotBookedCount);
+            newSlot.setBookedCount(newSlotBookedCount + 1);
             slotRepository.save(newSlot);
+            booking.setAssignedTime(assignedTime);
         }
         booking.setSlot(newSlot);
         booking.setNotes(req.notes());
+        log.info("Booking rescheduled successfully for bookingId={} to slotId={}", bookingId, newSlot.getId());
         return bookingRepository.save(booking);
     }
 
@@ -147,5 +200,52 @@ public class BookingService {
             .filter(s -> user.getAge() >= s.getDrive().getMinAge() && user.getAge() <= s.getDrive().getMaxAge())
             .limit(limit)
             .collect(Collectors.toList());
+    }
+
+    private String buildCancellationMessage(Booking booking) {
+        String centerName = booking.getSlot() != null && booking.getSlot().getDrive() != null && booking.getSlot().getDrive().getCenter() != null
+            ? booking.getSlot().getDrive().getCenter().getName()
+            : "your selected center";
+        String slotTime = booking.getAssignedTime() != null
+            ? booking.getAssignedTime().toString()
+            : "the selected time";
+        return "Your vaccination booking at " + centerName + " for " + slotTime + " has been cancelled.";
+    }
+
+    private String buildShortCancellationMessage(Booking booking) {
+        String centerName = booking.getSlot() != null && booking.getSlot().getDrive() != null && booking.getSlot().getDrive().getCenter() != null
+            ? booking.getSlot().getDrive().getCenter().getName()
+            : "the selected center";
+        return "Booking cancelled for " + centerName + ". Booking ID: " + booking.getId();
+    }
+
+    private LocalDateTime calculateAssignedTime(Slot slot, int alreadyBookedCount) {
+        LocalDateTime slotStart = slot.getDateTime();
+        if (slotStart == null) {
+            throw new AppException("Slot start time is not configured");
+        }
+
+        if (slot.getEndTime() == null) {
+            throw new AppException("Slot end time is not configured");
+        }
+
+        int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
+        if (capacity < 1) {
+            throw new AppException("Slot capacity must be at least 1");
+        }
+
+        LocalDateTime slotEnd = slotStart.toLocalDate().atTime(slot.getEndTime());
+        if (!slotEnd.isAfter(slotStart)) {
+            throw new AppException("Slot end time must be after slot start time");
+        }
+
+        Duration duration = Duration.between(slotStart, slotEnd);
+        long intervalMinutes = duration.toMinutes() / capacity;
+        if (intervalMinutes > 0) {
+            return slotStart.plusMinutes(intervalMinutes * alreadyBookedCount);
+        }
+
+        long intervalSeconds = Math.max(1, duration.getSeconds() / capacity);
+        return slotStart.plusSeconds(intervalSeconds * alreadyBookedCount);
     }
 }

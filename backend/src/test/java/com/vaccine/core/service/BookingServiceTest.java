@@ -7,6 +7,7 @@ import com.vaccine.domain.*;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
+import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +36,9 @@ class BookingServiceTest {
     private UserRepository userRepository;
 
     @Mock
+    private VaccinationDriveRepository driveRepository;
+
+    @Mock
     private INotificationService notificationService;
 
     @InjectMocks
@@ -58,6 +62,7 @@ class BookingServiceTest {
             .title("COVID-19 Drive")
             .minAge(18)
             .maxAge(60)
+            .status(Status.LIVE)
             .active(true)
             .center(testCenter)
             .build();
@@ -83,10 +88,11 @@ class BookingServiceTest {
 
     @Test
     void book_Success() {
-        BookingRequest request = new BookingRequest(1L, 1L, null);
+        BookingRequest request = new BookingRequest(1L, 1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
+        when(driveRepository.findById(1L)).thenReturn(Optional.of(testDrive));
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> {
             Booking b = invocation.getArgument(0);
             b.setId(1L);
@@ -103,10 +109,11 @@ class BookingServiceTest {
     @Test
     void book_AgeNotEligible() {
         testUser.setAge(15);
-        BookingRequest request = new BookingRequest(1L, 1L, null);
+        BookingRequest request = new BookingRequest(1L, 1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
+        when(driveRepository.findById(1L)).thenReturn(Optional.of(testDrive));
 
         assertThrows(AppException.class, () -> 
             bookingService.book("test@example.com", request));
@@ -115,10 +122,11 @@ class BookingServiceTest {
     @Test
     void book_SlotFull() {
         testSlot.setBookedCount(10);
-        BookingRequest request = new BookingRequest(1L, 1L, null);
+        BookingRequest request = new BookingRequest(1L, 1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
+        when(driveRepository.findById(1L)).thenReturn(Optional.of(testDrive));
 
         assertThrows(AppException.class, () -> 
             bookingService.book("test@example.com", request));
@@ -130,10 +138,11 @@ class BookingServiceTest {
         testSlot.setDateTime(slotDateTime);
         testSlot.setStartTime(slotDateTime.toLocalTime());
         testSlot.setEndTime(slotDateTime.plusHours(1).toLocalTime());
-        BookingRequest request = new BookingRequest(1L, 1L, null);
+        BookingRequest request = new BookingRequest(1L, 1L, 1L, null);
 
         when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
         when(slotRepository.findById(1L)).thenReturn(Optional.of(testSlot));
+        when(driveRepository.findById(1L)).thenReturn(Optional.of(testDrive));
 
         assertThrows(AppException.class, () ->
             bookingService.book("test@example.com", request));
@@ -163,7 +172,7 @@ class BookingServiceTest {
         when(slotRepository.findById(2L)).thenReturn(Optional.of(expiredSlot));
 
         assertThrows(AppException.class, () ->
-            bookingService.reschedule("test@example.com", 1L, new BookingRequest(1L, 2L, null)));
+            bookingService.reschedule("test@example.com", 1L, new BookingRequest(1L, 1L, 2L, null)));
     }
 
     @Test

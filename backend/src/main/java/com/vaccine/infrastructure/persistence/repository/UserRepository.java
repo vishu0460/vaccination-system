@@ -14,6 +14,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
     Optional<User> findByPhoneNumber(String phoneNumber);
     boolean existsByEmail(String email);
+    long countByEnabledTrue();
     
     @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt >= :since")
     long countUsersSince(LocalDateTime since);

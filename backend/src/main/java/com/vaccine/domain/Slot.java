@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "slots")
@@ -21,6 +23,11 @@ public class Slot {
     @ManyToOne
     @JoinColumn(name = "drive_id")
     private VaccinationDrive drive;
+
+    @OneToMany(mappedBy = "slot", cascade = CascadeType.ALL, orphanRemoval = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Builder.Default
+    private List<Booking> bookings = new ArrayList<>();
 
     @Column(nullable = false)
     private LocalDateTime dateTime;

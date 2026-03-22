@@ -50,34 +50,15 @@ public class SecurityConfig {
             .exceptionHandling(ex -> ex.authenticationEntryPoint(restAuthenticationEntryPoint))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers(
-                    "/api/auth/**",
-                    "/auth/**",
-                    "/api/public/**",
-                    "/api/v1/public/**",
-                    "/api/health/**",
-                    "/api/v1/health/**",
-                    "/health/**",
-                    "/api/news/**",
-                    "/api/v1/news/**",
-                    "/news/**",
-                    "/api/contact/**",
-                    "/contact/**",
-                    "/api/v1/reviews/center/**",
-                    "/api/reviews/center/**",
-                    "/reviews/center/**",
-                    "/api/certificates/verify/**",
-                    "/certificates/verify/**",
-                    "/error",
-                    "/v3/api-docs/**",
-                    "/swagger-ui/**",
-                    "/h2-console/**",
-                    "/actuator/**",
-                    "/robots.txt",
-                    "/sitemap.xml"
-                ).permitAll()
-                .requestMatchers("/admin/**", "/api/admin/**").hasAnyAuthority("ADMIN", "SUPER_ADMIN")
-                .requestMatchers("/super-admin/**", "/api/super-admin/**").hasAuthority("SUPER_ADMIN")
+                .requestMatchers("/api/auth/**", "/auth/**").permitAll()
+                .requestMatchers("/api/public/**", "/api/v1/public/**").permitAll()
+                .requestMatchers("/api/health/**", "/api/v1/health/**", "/health/**").permitAll()
+                .requestMatchers("/api/contact/**", "/contact/**").permitAll()
+                .requestMatchers("/api/v1/reviews/center/**", "/api/reviews/center/**", "/reviews/center/**").permitAll()
+                .requestMatchers("/api/certificates/verify/**", "/certificates/verify/**").permitAll()
+                .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**", "/h2-console/**", "/actuator/**", "/robots.txt", "/sitemap.xml").permitAll()
+                .requestMatchers("/admin/**", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                .requestMatchers("/super-admin/**", "/api/super-admin/**").hasRole("SUPER_ADMIN")
                 .anyRequest().authenticated()
             )
             .headers(headers -> headers

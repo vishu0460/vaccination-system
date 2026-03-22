@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
-import api, { certificateAPI, publicAPI, unwrapApiData } from "../api/client";
+import api, { certificateAPI, newsAPI, publicAPI, unwrapApiData } from "../api/client";
+import ModalPopup from "../components/ModalPopup";
+import Seo from "../components/Seo";
 
 export default function UserBookingsPage() {
   const [bookings, setBookings] = useState([]);
@@ -11,26 +13,56 @@ export default function UserBookingsPage() {
   const [msg, setMsg] = useState("");
   const [activeTab, setActiveTab] = useState("bookings");
   const [forms, setForms] = useState({ slotId: "" });
+  const [bookingToCancel, setBookingToCancel] = useState(null);
+
+  const formatAppointmentTime = (value) => {
+    if (!value) {
+      return "-";
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime())
+      ? "-"
+      : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  };
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [bookingsRes, notificationsRes, profileRes, drivesRes] = await Promise.all([
+      const [bookingsRes, notificationsRes, profileRes, drivesRes, newsRes] = await Promise.all([
         api.get("/user/bookings"),
         api.get("/user/notifications"),
         api.get("/profile"),
         publicAPI.getDrives(),
-        
+        newsAPI.getAllNews(0, 10)
       ]);
       const certificatesRes = await certificateAPI.getMyCertificates();
 
       setBookings(unwrapApiData(bookingsRes) || []);
-      setNotifications(unwrapApiData(notificationsRes) || []);
       setProfile(unwrapApiData(profileRes) || null);
       setCertificates(unwrapApiData(certificatesRes) || certificatesRes.data || []);
 
+      const baseNotifications = unwrapApiData(notificationsRes) || [];
+      const latestNews = unwrapApiData(newsRes) || [];
+      const newsNotifications = (Array.isArray(latestNews) ? latestNews : []).map((item) => ({
+        id: `news-${item.id}`,
+        title: `New update: ${item.title}`,
+        type: "NEWS",
+        message: item.content,
+        reply: null,
+        createdAt: item.createdAt || item.publishedAt || item.updatedAt,
+        read: true
+      }));
+
+      const mergedNotifications = [...newsNotifications, ...baseNotifications]
+        .sort((left, right) => {
+          const leftTime = left?.createdAt ? new Date(left.createdAt).getTime() : 0;
+          const rightTime = right?.createdAt ? new Date(right.createdAt).getTime() : 0;
+          return rightTime - leftTime;
+        });
+      setNotifications(mergedNotifications);
+
       const drivesPayload = unwrapApiData(drivesRes) || {};
-      console.log("User drives response:", drivesPayload);
       const drives = Array.isArray(drivesPayload) ? drivesPayload : (drivesPayload.drives || []);
       const slotResponses = await Promise.all(drives.map((drive) => publicAPI.getDriveSlots(drive.id)));
       const slots = [];
@@ -61,6 +93,15 @@ export default function UserBookingsPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    const handleDataUpdated = () => {
+      loadData();
+    };
+
+    window.addEventListener("vaxzone:data-updated", handleDataUpdated);
+    return () => window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
+  }, []);
+
   const buildBookingPayload = (slotId) => {
     const selectedSlot = availableSlots.find((slot) => slot.id === slotId);
     return {
@@ -72,9 +113,14 @@ export default function UserBookingsPage() {
   const bookSlot = async (slotId) => {
     try {
       const payload = buildBookingPayload(slotId);
-      console.log("Booking payload:", payload);
-      await api.post("/user/bookings", payload);
-      setMsg("Booking request submitted successfully.");
+      const response = await api.post("/user/bookings", payload);
+      const booking = unwrapApiData(response);
+      const assignedTime = booking?.assignedTime;
+      setMsg(
+        assignedTime
+          ? `Booking request submitted successfully. Your appointment time: ${formatAppointmentTime(assignedTime)}`
+          : "Booking request submitted successfully."
+      );
       setForms({ slotId: "" });
       await loadData();
       setActiveTab("bookings");
@@ -84,10 +130,10 @@ export default function UserBookingsPage() {
   };
 
   const cancelBooking = async (id) => {
-    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
     try {
       await api.patch(`/user/bookings/${id}/cancel`);
       setMsg("Booking cancelled successfully.");
+      setBookingToCancel(null);
       await loadData();
     } catch (error) {
       setMsg(error.response?.data?.message || "Failed to cancel booking.");
@@ -122,6 +168,12 @@ export default function UserBookingsPage() {
 
   return (
     <div className="container py-4">
+      <Seo
+        title="My Vaccination Bookings | VaxZone"
+        description="Manage your vaccination bookings, slot availability, notifications, and certificate access from one secure dashboard."
+        path="/user/bookings"
+        noIndex
+      />
       <div className="page-header rounded-3 mb-4 p-4">
         <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
           <div>
@@ -242,6 +294,7 @@ export default function UserBookingsPage() {
                       <th><i className="bi bi-hash"></i> ID</th>
                       <th><i className="bi bi-calendar-event me-1"></i>Drive</th>
                       <th><i className="bi bi-clock me-1"></i>Slot Time</th>
+                      <th><i className="bi bi-alarm me-1"></i>Appointment</th>
                       <th><i className="bi bi-building me-1"></i>Center</th>
                       <th><i className="bi bi-info-circle me-1"></i>Status</th>
                       <th><i className="bi bi-gear me-1"></i>Actions</th>
@@ -253,11 +306,12 @@ export default function UserBookingsPage() {
                         <td><strong>#{booking.id}</strong></td>
                         <td>{booking.driveName || "-"}</td>
                         <td><small>{booking.slotTime ? new Date(booking.slotTime).toLocaleString() : "-"}</small></td>
+                        <td><small>{booking.assignedTime ? formatAppointmentTime(booking.assignedTime) : "-"}</small></td>
                         <td><small>{booking.centerName || "-"}</small></td>
                         <td>{getStatusBadge(booking.status)}</td>
                         <td>
                           {(booking.status === "PENDING" || booking.status === "CONFIRMED") && (
-                            <button className="btn btn-outline-danger btn-sm" title="Cancel" onClick={() => cancelBooking(booking.id)}>
+                            <button className="btn btn-outline-danger btn-sm" title="Cancel" onClick={() => setBookingToCancel(booking)}>
                               <i className="bi bi-x-circle"></i>
                             </button>
                           )}
@@ -386,8 +440,16 @@ export default function UserBookingsPage() {
                   <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
                     <div>
                       <div className="fw-semibold">{notification.title || `${notification.type} Reply`}</div>
-                      <div className="text-muted small">Your message: {notification.message || "No message"}</div>
-                      <div className="small mt-1">Reply: {notification.reply || "No reply yet"}</div>
+                      <div className="text-muted small">
+                        {notification.type === "NEWS"
+                          ? `Announcement: ${notification.message || "No details available"}`
+                          : `Your message: ${notification.message || "No message"}`}
+                      </div>
+                      <div className="small mt-1">
+                        {notification.type === "NEWS"
+                          ? "Stay informed by checking the latest announcements."
+                          : `Reply: ${notification.reply || "No reply yet"}`}
+                      </div>
                     </div>
                     <small className="text-muted">{notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}</small>
                   </li>
@@ -397,6 +459,16 @@ export default function UserBookingsPage() {
           </div>
         </div>
       )}
+      <ModalPopup
+        show={Boolean(bookingToCancel)}
+        title="Cancel booking"
+        body={bookingToCancel ? `Cancel booking #${bookingToCancel.id} for ${bookingToCancel.driveName || "this drive"}?` : ""}
+        confirmLabel="Yes, cancel"
+        cancelLabel="Keep booking"
+        confirmVariant="danger"
+        onConfirm={() => cancelBooking(bookingToCancel.id)}
+        onCancel={() => setBookingToCancel(null)}
+      />
     </div>
   );
 }

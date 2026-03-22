@@ -1,10 +1,12 @@
 import axios from "axios";
 import { clearAuth, getAccessToken, setAuth } from "../utils/auth";
 
+const DEFAULT_DEV_BACKEND_PORTS = [8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089];
+
 const normalizeApiBaseUrl = (rawValue) => {
   const value = typeof rawValue === "string" ? rawValue.trim() : "";
 
-  if (!value) {
+  if (!value || value.toLowerCase() === "auto") {
     return "http://localhost:8080/api";
   }
 
@@ -20,7 +22,104 @@ const normalizeApiBaseUrl = (rawValue) => {
   return withoutTrailingSlash.startsWith("/api") ? withoutTrailingSlash : `/api${withoutTrailingSlash}`;
 };
 
-const apiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const getDevBackendPorts = () => {
+  const configuredPorts = typeof import.meta.env.VITE_API_PORT_CANDIDATES === "string"
+    ? import.meta.env.VITE_API_PORT_CANDIDATES
+        .split(",")
+        .map((port) => Number.parseInt(port.trim(), 10))
+        .filter((port) => Number.isInteger(port) && port > 0)
+    : [];
+
+  const ports = configuredPorts.length > 0 ? configuredPorts : DEFAULT_DEV_BACKEND_PORTS;
+  return [...ports].sort((a, b) => b - a);
+};
+
+const shouldAutoDetectApiBaseUrl = () => {
+  const value = typeof import.meta.env.VITE_API_BASE_URL === "string"
+    ? import.meta.env.VITE_API_BASE_URL.trim()
+    : "";
+
+  return !value || value.toLowerCase() === "auto";
+};
+
+const resolveApiOrigin = (origin, includePort = true) => {
+  try {
+    const parsed = new URL(origin);
+    if (includePort) {
+      return parsed.origin;
+    }
+
+    return `${parsed.protocol}//${parsed.hostname}`;
+  } catch (error) {
+    return origin;
+  }
+};
+
+const buildCandidateApiBaseUrls = () => {
+  if (typeof window === "undefined") {
+    return [normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL)];
+  }
+
+  const currentOrigin = window.location.origin;
+  const currentHostOrigin = resolveApiOrigin(currentOrigin, false);
+  const candidates = [];
+
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    getDevBackendPorts().forEach((port) => {
+      candidates.push(`${currentHostOrigin}:${port}/api`);
+    });
+  }
+
+  candidates.push(`${currentOrigin}/api`);
+
+  return [...new Set(candidates)];
+};
+
+const candidateApiBaseUrls = buildCandidateApiBaseUrls();
+let resolvedApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+let apiBaseUrlPromise = null;
+
+const pingApiBaseUrl = async (baseUrl) => {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 1200);
+
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      method: "GET",
+      signal: controller.signal
+    });
+
+    return response.status < 500 || response.status === 503;
+  } catch (error) {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+};
+
+const getApiBaseUrl = async () => {
+  if (!shouldAutoDetectApiBaseUrl() || typeof window === "undefined") {
+    return resolvedApiBaseUrl;
+  }
+
+  if (apiBaseUrlPromise) {
+    return apiBaseUrlPromise;
+  }
+
+  apiBaseUrlPromise = (async () => {
+    for (const baseUrl of candidateApiBaseUrls) {
+      if (await pingApiBaseUrl(baseUrl)) {
+        resolvedApiBaseUrl = baseUrl;
+        return resolvedApiBaseUrl;
+      }
+    }
+
+    resolvedApiBaseUrl = candidateApiBaseUrls[0] || resolvedApiBaseUrl;
+    return resolvedApiBaseUrl;
+  })();
+
+  return apiBaseUrlPromise;
+};
 
 export const unwrapApiData = (responseOrPayload) => {
   const payload = responseOrPayload?.data ?? responseOrPayload;
@@ -33,21 +132,28 @@ export const unwrapApiMessage = (responseOrPayload, fallback = "") => {
 };
 
 const apiClient = axios.create({
-  baseURL: apiBaseUrl,
+  baseURL: resolvedApiBaseUrl,
   timeout: 15000
 });
+
+const buildAuthHeaders = () => {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 const publicEndpoints = [
   "/auth/",
   "/public/",
   "/health",
-  "/news",
+  "/public/news",
   "/contact",
   "/reviews/center/",
   "/certificates/verify/"
 ];
 
-apiClient.interceptors.request.use((config) => {
+apiClient.interceptors.request.use(async (config) => {
+  config.baseURL = await getApiBaseUrl();
+
   const token = getAccessToken();
   const urlPath = config.url?.split("?")[0] || "";
   const isPublic = publicEndpoints.some((endpoint) => urlPath.startsWith(endpoint));
@@ -76,7 +182,8 @@ apiClient.interceptors.response.use(
 
       if (refreshToken) {
         try {
-          const refreshResponse = await axios.post(`${apiBaseUrl}/auth/refresh`, { refreshToken });
+          const refreshBaseUrl = await getApiBaseUrl();
+          const refreshResponse = await axios.post(`${refreshBaseUrl}/auth/refresh`, { refreshToken });
           const refreshedAuth = refreshResponse.data;
           setAuth(refreshedAuth);
           originalRequest.headers = originalRequest.headers || {};
@@ -85,7 +192,8 @@ apiClient.interceptors.response.use(
         } catch (refreshError) {
           clearAuth();
           if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-            window.location.href = "/login";
+            const redirect = `${window.location.pathname}${window.location.search}`;
+            window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
           }
           return Promise.reject(refreshError);
         }
@@ -189,6 +297,7 @@ export const superAdminAPI = {
   deleteCenter: (centerId) => apiClient.delete(`/super-admin/centers/${centerId}`),
   updateDrive: (driveId, data) => apiClient.put(`/super-admin/drives/${driveId}`, data),
   deleteDrive: (driveId) => apiClient.delete(`/super-admin/drives/${driveId}`),
+  getDriveSlots: (driveId) => apiClient.get(`/super-admin/drives/${driveId}/slots`),
   updateSlot: (slotId, data) => apiClient.put(`/super-admin/slots/${slotId}`, data),
   deleteSlot: (slotId) => apiClient.delete(`/super-admin/slots/${slotId}`)
 };
@@ -209,11 +318,18 @@ export const contactAPI = {
 };
 
 export const newsAPI = {
-  getAllNews: (page = 0, size = 10) => apiClient.get("/news", { params: { page, size } }),
-  getNewsById: (id) => apiClient.get(`/news/${id}`),
-  createNews: (data) => apiClient.post("/news", data),
-  updateNews: (id, data) => apiClient.put(`/news/${id}`, data),
-  deleteNews: (id) => apiClient.delete(`/news/${id}`)
+  getAllNews: (page = 0, size = 10) => apiClient.get("/public/news", {
+    params: { page, size, _: Date.now() },
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache"
+    }
+  }),
+  getAdminNews: (page = 0, size = 100) => apiClient.get("/admin/news", { params: { page, size } }),
+  getNewsById: (id) => apiClient.get(`/public/news/${id}`),
+  createNews: (data) => apiClient.post("/admin/news", data, { headers: buildAuthHeaders() }),
+  updateNews: (id, data) => apiClient.put(`/admin/news/${id}`, data, { headers: buildAuthHeaders() }),
+  deleteNews: (id) => apiClient.delete(`/admin/news/${id}`, { headers: buildAuthHeaders() })
 };
 
 export const certificateAPI = {

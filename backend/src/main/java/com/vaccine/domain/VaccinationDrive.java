@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "vaccination_drives")
@@ -21,6 +23,11 @@ public class VaccinationDrive {
     @ManyToOne
     @JoinColumn(name = "center_id")
     private VaccinationCenter center;
+
+    @OneToMany(mappedBy = "drive", cascade = CascadeType.ALL, orphanRemoval = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @Builder.Default
+    private List<Slot> slots = new ArrayList<>();
 
     @Column(nullable = false)
     private String title;
@@ -46,6 +53,12 @@ public class VaccinationDrive {
     @Column(nullable = false)
     private Integer totalSlots;
 
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Status status = Status.UPCOMING;
+
+    @Builder.Default
     @Column(nullable = false)
     private Boolean active = true;
 

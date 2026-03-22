@@ -12,7 +12,6 @@ export default function CentersPage() {
   const load = async () => {
     setLoading(true);
     try {
-      console.log("Fetching centers for city:", city || "all");
       const response = await publicAPI.getCenters(city);
       const payload = unwrapApiData(response) || {};
       const data = Array.isArray(payload)
@@ -32,6 +31,15 @@ export default function CentersPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    const handleDataUpdated = () => {
+      load();
+    };
+
+    window.addEventListener("vaxzone:data-updated", handleDataUpdated);
+    return () => window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
+  }, [city]);
 
   return (
     <>

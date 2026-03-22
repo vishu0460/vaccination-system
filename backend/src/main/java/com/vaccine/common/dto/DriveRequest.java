@@ -1,8 +1,8 @@
 package com.vaccine.common.dto;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.vaccine.domain.Status;
 import java.time.LocalDate;
-import java.time.LocalTime;
 
 public record DriveRequest(
     String title,
@@ -14,5 +14,6 @@ public record DriveRequest(
     Integer minAge,
     Integer maxAge,
     Integer totalSlots,
+    Status status,
     Boolean active
 ) {}

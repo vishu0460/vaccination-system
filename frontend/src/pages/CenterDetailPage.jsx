@@ -19,7 +19,6 @@ export default function CenterDetailPage() {
 
   const fetchCenter = async () => {
     try {
-      console.log("Fetching center detail for ID:", id);
       const response = await publicAPI.getCenterDetail(id);
       setCenter(unwrapApiData(response));
     } catch (err) {

@@ -50,14 +50,19 @@ public class News {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        updatedAt = createdAt;
         if (active && publishedAt == null) publishedAt = LocalDateTime.now();
     }
 
     @PreUpdate
     protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
         if (active && publishedAt == null) publishedAt = LocalDateTime.now();
     }
 }

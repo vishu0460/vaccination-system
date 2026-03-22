@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class AdminDashboardStatsResponse {
     private Long totalUsers;
+    private Long activeUsers;
     private Long totalBookings;
     private Long pendingBookings;
     private Long approvedBookings;
@@ -26,4 +27,3 @@ public class AdminDashboardStatsResponse {
     private Long bookingsToday;
     private Long totalNews;
 }
-

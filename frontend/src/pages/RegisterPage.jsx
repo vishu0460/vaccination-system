@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { authAPI } from "../api/client";
+import { setAuth } from "../utils/auth";
 
 export default function RegisterPage() {
+  const navigate = useNavigate();
   const [form, setForm] = useState({ 
     email: "", 
     fullName: "", 
@@ -49,8 +51,15 @@ export default function RegisterPage() {
         age: Number(form.age),
         phoneNumber: form.phoneNumber.replace(/\s/g, "")
       });
+
+      if (data?.accessToken) {
+        setAuth(data);
+        navigate(data.role === "USER" ? "/user/bookings" : "/admin/dashboard", { replace: true });
+        return;
+      }
+
       setSuccess(true);
-      setMsg(data.accessToken ? "Registration successful! You can now continue into your account." : "Registration successful! Please check your email to verify your account.");
+      setMsg("Registration successful! Please check your email to verify your account.");
     } catch (err) {
       console.error("Registration error:", err);
       console.error("Response data:", err.response?.data);

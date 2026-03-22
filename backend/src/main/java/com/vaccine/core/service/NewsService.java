@@ -9,6 +9,7 @@ import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +29,18 @@ public class NewsService {
     public Page<NewsResponse> getActiveNews(Pageable pageable) {
         return newsRepository.findActiveNews(LocalDateTime.now(), pageable)
             .map(this::toResponse);
+    }
+
+    public List<NewsResponse> getPublicNews() {
+        return newsRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+            .filter(news -> Boolean.TRUE.equals(news.getActive()))
+            .filter(news -> news.getExpiresAt() == null || news.getExpiresAt().isAfter(LocalDateTime.now()))
+            .map(this::toResponse)
+            .toList();
+    }
+
+    public Page<NewsResponse> getAllNews(Pageable pageable) {
+        return newsRepository.findAll(pageable).map(this::toResponse);
     }
 
     public NewsResponse getNewsById(Long id) {
@@ -98,7 +111,9 @@ public class NewsService {
             news.getActive(),
             news.getPublishedAt(),
             news.getExpiresAt(),
-            news.getCategory()
+            news.getCategory(),
+            news.getCreatedAt(),
+            news.getUpdatedAt()
         );
     }
 

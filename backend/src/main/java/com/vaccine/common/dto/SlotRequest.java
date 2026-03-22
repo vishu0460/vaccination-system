@@ -1,13 +1,28 @@
 package com.vaccine.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.time.LocalDateTime;
 
-public record SlotRequest(
-    Long driveId,
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+public class SlotRequest {
+    private Long driveId;
+
+    @JsonAlias({"startTime"})
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm[:ss]")
-    LocalDateTime startTime,
+    private LocalDateTime startDate;
+
+    @JsonAlias({"endTime"})
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm[:ss]")
-    LocalDateTime endTime,
-    Integer capacity
-) {}
+    private LocalDateTime endDate;
+
+    private Integer capacity;
+}

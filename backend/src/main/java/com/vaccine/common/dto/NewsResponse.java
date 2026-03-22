@@ -12,5 +12,7 @@ public record NewsResponse(
     Boolean active,
     LocalDateTime publishedAt,
     LocalDateTime expiresAt,
-    String category
+    String category,
+    LocalDateTime createdAt,
+    LocalDateTime updatedAt
 ) {}

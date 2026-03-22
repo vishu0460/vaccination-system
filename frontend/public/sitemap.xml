@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://vaccination.example.com/</loc></url>
+  <url><loc>https://vaccination.example.com/drives</loc></url>
+  <url><loc>https://vaccination.example.com/centers</loc></url>
+  <url><loc>https://vaccination.example.com/news</loc></url>
+  <url><loc>https://vaccination.example.com/about</loc></url>
+  <url><loc>https://vaccination.example.com/contact</loc></url>
+  <url><loc>https://vaccination.example.com/verify/certificate</loc></url>
+</urlset>

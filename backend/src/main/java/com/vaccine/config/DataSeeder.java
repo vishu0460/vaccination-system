@@ -202,6 +202,7 @@ public class DataSeeder implements CommandLineRunner {
                         .startTime(LocalTime.of(9, 0))
                         .endTime(LocalTime.of(17, 0))
                         .totalSlots(100)
+                        .status(Status.UPCOMING)
                         .active(true)
                         .build());
                 drives.add(VaccinationDrive.builder()
@@ -214,6 +215,7 @@ public class DataSeeder implements CommandLineRunner {
                         .startTime(LocalTime.of(10, 0))
                         .endTime(LocalTime.of(16, 0))
                         .totalSlots(80)
+                        .status(Status.UPCOMING)
                         .active(true)
                         .build());
             }

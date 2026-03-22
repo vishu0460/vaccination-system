@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { Helmet } from "react-helmet-async";
-import { certificateAPI } from "../api/client";
+import { certificateAPI, unwrapApiData } from "../api/client";
 import QRCode from "qrcode";
+import ModalPopup from "../components/ModalPopup";
+import Seo from "../components/Seo";
 
 export default function VerifyCertificatePage() {
   const [searchParams] = useSearchParams();
@@ -12,6 +13,7 @@ export default function VerifyCertificatePage() {
   const [certificate, setCertificate] = useState(null);
   const [verified, setVerified] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState(null);
+  const [showCopiedModal, setShowCopiedModal] = useState(false);
 
   // Check if certificate number is in URL params (from QR code scan)
   useEffect(() => {
@@ -49,12 +51,12 @@ export default function VerifyCertificatePage() {
 
     try {
       const response = await certificateAPI.verifyCertificate(certNum.trim());
-      
-      if (response.data) {
-        setCertificate(response.data);
+      const payload = unwrapApiData(response);
+
+      if (payload) {
+        setCertificate(payload);
         setVerified(true);
-        // Generate QR code for the certificate
-        const qrUrl = await generateQRCode(response.data);
+        const qrUrl = await generateQRCode(payload);
         setQrCodeUrl(qrUrl);
       }
     } catch (err) {
@@ -88,15 +90,16 @@ export default function VerifyCertificatePage() {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(certificate?.digitalVerificationCode || certificate?.certificateNumber);
-    alert("Copied to clipboard!");
+    setShowCopiedModal(true);
   };
 
   return (
     <>
-      <Helmet>
-        <title>Verify Certificate - VaxZone</title>
-        <meta name="description" content="Verify the authenticity of your vaccination certificate by entering the certificate number." />
-      </Helmet>
+      <Seo
+        title="Verify Vaccination Certificate | VaxZone"
+        description="Verify the authenticity of a vaccination certificate using its certificate number and QR-ready validation flow."
+        path="/verify/certificate"
+      />
 
       {/* Page Header */}
       <section className="page-header">
@@ -295,6 +298,14 @@ This certificate is issued by a registered vaccination center and is verified th
           </div>
         </div>
       </div>
+      <ModalPopup
+        show={showCopiedModal}
+        title="Copied"
+        body="The verification code has been copied to your clipboard."
+        confirmLabel="Done"
+        onConfirm={() => setShowCopiedModal(false)}
+        onCancel={() => setShowCopiedModal(false)}
+      />
     </>
   );
 }

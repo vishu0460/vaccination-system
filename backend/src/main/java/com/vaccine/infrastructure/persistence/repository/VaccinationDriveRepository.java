@@ -1,5 +1,6 @@
 package com.vaccine.infrastructure.persistence.repository;
 
+import com.vaccine.domain.Status;
 import com.vaccine.domain.VaccinationDrive;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -10,15 +11,16 @@ import java.util.List;
 
 @Repository
 public interface VaccinationDriveRepository extends JpaRepository<VaccinationDrive, Long> {
-    List<VaccinationDrive> findByActiveTrue();
+    List<VaccinationDrive> findByStatusIn(List<Status> statuses);
     List<VaccinationDrive> findByCenterId(Long centerId);
-    long countByActiveTrue();
+    long countByStatusIn(List<Status> statuses);
     
-    @Query("SELECT d FROM VaccinationDrive d WHERE d.active = true " +
+    @Query("SELECT d FROM VaccinationDrive d WHERE d.status IN :statuses " +
            "AND (:city IS NULL OR d.center.city = :city) " +
            "AND (:fromDate IS NULL OR d.driveDate >= :fromDate) " +
            "AND (:age IS NULL OR d.minAge <= :age)")
-    List<VaccinationDrive> findActiveDrives(@Param("city") String city, 
-                                            @Param("fromDate") LocalDate fromDate, 
+    List<VaccinationDrive> findVisibleDrives(@Param("statuses") List<Status> statuses,
+                                            @Param("city") String city,
+                                            @Param("fromDate") LocalDate fromDate,
                                             @Param("age") Integer age);
 }

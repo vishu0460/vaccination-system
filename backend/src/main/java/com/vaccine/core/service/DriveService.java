@@ -1,6 +1,7 @@
 package com.vaccine.core.service;
 
 import com.vaccine.common.dto.DriveResponse;
+import com.vaccine.domain.Status;
 import com.vaccine.domain.VaccinationDrive;
 import com.vaccine.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
@@ -12,6 +13,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class DriveService {
+    private static final List<Status> BOOKABLE_DRIVE_STATUSES = List.of(Status.UPCOMING, Status.LIVE);
 
     private final VaccinationDriveRepository driveRepository;
 
@@ -20,7 +22,7 @@ public class DriveService {
     }
 
     public List<DriveResponse> getActiveDrives(String city, LocalDate fromDate, Integer age) {
-        return driveRepository.findActiveDrives(city, fromDate, age)
+        return driveRepository.findVisibleDrives(BOOKABLE_DRIVE_STATUSES, city, fromDate, age)
                 .stream()
                 .map(DriveResponse::from)
                 .collect(Collectors.toList());
@@ -33,7 +35,7 @@ public class DriveService {
     }
 
     public List<DriveResponse> getAllActiveDrives() {
-        return driveRepository.findByActiveTrue()
+        return driveRepository.findByStatusIn(BOOKABLE_DRIVE_STATUSES)
                 .stream()
                 .map(DriveResponse::from)
                 .collect(Collectors.toList());

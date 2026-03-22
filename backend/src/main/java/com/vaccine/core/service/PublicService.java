@@ -1,6 +1,7 @@
 package com.vaccine.core.service;
 
 import com.vaccine.common.dto.SummaryResponse;
+import com.vaccine.domain.Status;
 import com.vaccine.domain.VaccinationCenter;
 import com.vaccine.domain.VaccinationDrive;
 import com.vaccine.domain.Slot;
@@ -26,6 +27,7 @@ import java.util.Optional;
 @RequiredArgsConstructor
 @Slf4j
 public class PublicService {
+    private static final List<Status> BOOKABLE_DRIVE_STATUSES = List.of(Status.UPCOMING, Status.LIVE);
 
     private final VaccinationCenterRepository centerRepository;
     private final VaccinationDriveRepository driveRepository;
@@ -50,7 +52,7 @@ public class PublicService {
 
     public Map<String, Object> getDrives(String city, LocalDate fromDate, Integer age, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        List<VaccinationDrive> drives = driveRepository.findActiveDrives(city, fromDate, age);
+        List<VaccinationDrive> drives = driveRepository.findVisibleDrives(BOOKABLE_DRIVE_STATUSES, city, fromDate, age);
         List<Map<String, Object>> driveViews = drives.stream()
             .map(drive -> {
                 long totalSlots = slotRepository.sumCapacityByDriveId(drive.getId());
@@ -66,7 +68,7 @@ public class PublicService {
                 view.put("maxAge", drive.getMaxAge());
                 view.put("startTime", drive.getStartTime());
                 view.put("endTime", drive.getEndTime());
-                view.put("active", drive.getActive());
+                view.put("status", drive.getStatus());
                 view.put("centerName", drive.getCenter() != null ? drive.getCenter().getName() : null);
                 view.put("centerCity", drive.getCenter() != null ? drive.getCenter().getCity() : null);
                 view.put("totalSlots", totalSlots);
@@ -84,7 +86,7 @@ public class PublicService {
     @Cacheable("public-summary")
     public SummaryResponse getSummary() {
         long totalCenters = centerRepository.count();
-        long activeDrives = driveRepository.countByActiveTrue();
+        long activeDrives = driveRepository.countByStatusIn(BOOKABLE_DRIVE_STATUSES);
         long totalSlots = slotRepository.sumAvailableCapacity();
         long totalBookings = bookingRepository.count();
         return new SummaryResponse(totalCenters, activeDrives, totalSlots, totalBookings);

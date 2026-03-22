@@ -18,6 +18,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query("SELECT b FROM Booking b WHERE b.user.id = :userId")
     List<Booking> findByUserId(Long userId);
 
+    @Query("SELECT b FROM Booking b WHERE lower(b.user.email) = lower(:email) ORDER BY b.bookedAt DESC")
+    List<Booking> findByUserEmailOrderByBookedAtDesc(String email);
+
     List<Booking> findBySlotId(Long slotId);
 
     boolean existsByUserIdAndSlotIdAndStatusIn(Long userId, Long slotId, List<BookingStatus> statuses);
@@ -29,7 +32,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     @Query("SELECT CASE WHEN COUNT(b) > 0 THEN true ELSE false END FROM Booking b " +
            "WHERE b.user.id = :userId " +
-           "AND b.slot.startTime BETWEEN :start AND :end " +
+           "AND b.slot.dateTime BETWEEN :start AND :end " +
            "AND b.status IN :statuses")
-    boolean existsByUserIdAndSlotStartTimeBetweenAndStatusIn(Long userId, LocalDateTime start, LocalDateTime end, List<BookingStatus> statuses);
+    boolean existsByUserIdAndSlotDateTimeBetweenAndStatusIn(Long userId, LocalDateTime start, LocalDateTime end, List<BookingStatus> statuses);
+
+    default boolean existsByUserIdAndSlotStartTimeBetweenAndStatusIn(Long userId, LocalDateTime start, LocalDateTime end, List<BookingStatus> statuses) {
+        return existsByUserIdAndSlotDateTimeBetweenAndStatusIn(userId, start, end, statuses);
+    }
 }

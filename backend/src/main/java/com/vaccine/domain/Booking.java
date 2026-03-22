@@ -32,6 +32,9 @@ public class Booking {
     @Column(name = "booked_at")
     private LocalDateTime bookedAt;
 
+    @Column(name = "assigned_time")
+    private LocalDateTime assignedTime;
+
     @Column(length = 500)
     private String notes;
 

@@ -6,6 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class VaccinationApplication {
     public static void main(String[] args) {
-        SpringApplication.run(VaccinationApplication.class, args);
+        SpringApplication application = new SpringApplication(VaccinationApplication.class);
+        application.run(args);
     }
 }
