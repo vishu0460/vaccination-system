@@ -47,6 +47,9 @@ public class News {
     @Column(name = "created_by_id")
     private Long createdBy;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

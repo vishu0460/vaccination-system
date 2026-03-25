@@ -7,6 +7,7 @@ import com.vaccine.domain.Feedback;
 import com.vaccine.domain.FeedbackStatus;
 import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
+import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.FeedbackRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import org.springframework.data.domain.Page;
@@ -22,15 +23,18 @@ import java.util.Map;
 @Service
 public class FeedbackService {
     private final FeedbackRepository feedbackRepository;
+    private final BookingRepository bookingRepository;
     private final UserRepository userRepository;
     private final CommunicationNotificationService communicationNotificationService;
 
     public FeedbackService(
         FeedbackRepository feedbackRepository,
+        BookingRepository bookingRepository,
         UserRepository userRepository,
         CommunicationNotificationService communicationNotificationService
     ) {
         this.feedbackRepository = feedbackRepository;
+        this.bookingRepository = bookingRepository;
         this.userRepository = userRepository;
         this.communicationNotificationService = communicationNotificationService;
     }
@@ -50,6 +54,7 @@ public class FeedbackService {
         feedback.setMessage(request.message());
         feedback.setSubject(request.subject());
         feedback.setStatus(FeedbackStatus.PENDING);
+        feedback.setAdminId(resolveFeedbackOwnerAdminId(user));
 
         feedbackRepository.save(feedback);
         return new ApiMessage("Feedback submitted successfully");
@@ -63,7 +68,14 @@ public class FeedbackService {
     }
 
     public List<Map<String, Object>> getAllFeedback() {
-        return feedbackRepository.findAll().stream()
+        return getAllFeedback((Long) null);
+    }
+
+    public List<Map<String, Object>> getAllFeedback(Long adminId) {
+        List<Feedback> feedbackList = adminId == null
+            ? feedbackRepository.findAll()
+            : feedbackRepository.findByAdminId(adminId);
+        return feedbackList.stream()
             .map(this::toMap)
             .toList();
     }
@@ -132,6 +144,7 @@ public class FeedbackService {
     private Map<String, Object> toMap(Feedback feedback) {
         Map<String, Object> map = new HashMap<>();
         map.put("id", feedback.getId());
+        map.put("adminId", feedback.getAdminId());
         map.put("userName", feedback.getUser() != null ? feedback.getUser().getFullName() : null);
         map.put("userEmail", feedback.getUser() != null ? feedback.getUser().getEmail() : null);
         map.put("rating", feedback.getRating());
@@ -156,5 +169,33 @@ public class FeedbackService {
         response.setAdminResponse(feedback.getResponse());
         response.setCreatedAt(feedback.getCreatedAt());
         return response;
+    }
+
+    private Long resolveFeedbackOwnerAdminId(User user) {
+        if (user == null) {
+            return null;
+        }
+        if (bookingRepository == null) {
+            return null;
+        }
+        if (user.isAdmin() && !user.isSuperAdmin()) {
+            return user.getId();
+        }
+        return bookingRepository.findByUserId(user.getId()).stream()
+            .map(booking -> {
+                if (booking.getAdminId() != null) {
+                    return booking.getAdminId();
+                }
+                if (booking.getSlot() != null && booking.getSlot().getAdminId() != null) {
+                    return booking.getSlot().getAdminId();
+                }
+                if (booking.getSlot() != null && booking.getSlot().getDrive() != null) {
+                    return booking.getSlot().getDrive().getAdminId();
+                }
+                return null;
+            })
+            .filter(java.util.Objects::nonNull)
+            .findFirst()
+            .orElse(null);
     }
 }

@@ -68,38 +68,66 @@ public class ContactController {
 
     @GetMapping("/analytics")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<ContactAnalyticsResponse>> getContactAnalytics() {
-        return ResponseEntity.ok(ApiResponse.success(contactService.getContactAnalytics()));
+    public ResponseEntity<ApiResponse<ContactAnalyticsResponse>> getContactAnalytics(Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.success(contactService.getContactAnalytics(resolveAdminScope(authentication))));
     }
 
     @GetMapping("/all")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<List<Map<String, Object>>> getAllContactsForAdmin() {
-        return ResponseEntity.ok(contactService.getAllContacts());
+    public ResponseEntity<List<Map<String, Object>>> getAllContactsForAdmin(Authentication authentication) {
+        return ResponseEntity.ok(contactService.getAllContacts(resolveAdminScope(authentication)));
     }
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<List<Map<String, Object>>> getAllContacts() {
-        return ResponseEntity.ok(contactService.getAllContacts());
+    public ResponseEntity<List<Map<String, Object>>> getAllContacts(Authentication authentication) {
+        return ResponseEntity.ok(contactService.getAllContacts(resolveAdminScope(authentication)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<Map<String, Object>> getContactById(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Object>> getContactById(@PathVariable Long id, Authentication authentication) {
+        ensureContactAccess(id, authentication);
         return ResponseEntity.ok(contactService.getContactById(id));
     }
 
     @PatchMapping("/{id}/respond")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<ApiMessage> respondToContact(@PathVariable Long id,
+                                                         Authentication authentication,
                                                          @RequestBody Map<String, String> request) {
+        ensureContactAccess(id, authentication);
         return ResponseEntity.ok(contactService.respondToContact(id, request.get("response")));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<ApiMessage> deleteContact(@PathVariable Long id) {
+    public ResponseEntity<ApiMessage> deleteContact(@PathVariable Long id, Authentication authentication) {
+        ensureContactAccess(id, authentication);
         return ResponseEntity.ok(contactService.deleteContact(id));
+    }
+
+    private Long resolveAdminScope(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return null;
+        }
+        User currentUser = userRepository.findByEmail(authentication.getName())
+            .orElseThrow(() -> new AppException("User not found"));
+        if (currentUser.isAdmin() && !currentUser.isSuperAdmin()) {
+            return currentUser.getId();
+        }
+        return null;
+    }
+
+    private void ensureContactAccess(Long contactId, Authentication authentication) {
+        Long adminScope = resolveAdminScope(authentication);
+        if (adminScope == null) {
+            return;
+        }
+        Map<String, Object> contact = contactService.getContactById(contactId);
+        Object adminId = contact.get("adminId");
+        if (!(adminId instanceof Number numberValue) || numberValue.longValue() != adminScope) {
+            throw new AppException("You can only access your own contacts");
+        }
     }
 }

@@ -133,6 +133,17 @@ public class DataSeeder implements CommandLineRunner {
             users.get(8).setRoles(new HashSet<>(Set.of(adminRole)));
             users.get(9).setRoles(new HashSet<>(Set.of(centerAdminRole)));
             users.get(10).setRoles(new HashSet<>(Set.of(superAdminRole)));
+            users.get(0).setRole(RoleName.USER.name());
+            users.get(1).setRole(RoleName.USER.name());
+            users.get(2).setRole(RoleName.USER.name());
+            users.get(3).setRole(RoleName.USER.name());
+            users.get(4).setRole(RoleName.USER.name());
+            users.get(5).setRole(RoleName.USER.name());
+            users.get(6).setRole(RoleName.USER.name());
+            users.get(7).setRole(RoleName.USER.name());
+            users.get(8).setRole(RoleName.ADMIN.name());
+            users.get(9).setRole(RoleName.CENTER_ADMIN.name());
+            users.get(10).setRole(RoleName.SUPER_ADMIN.name());
 
             userRepository.saveAll(users);
             log.info("Seeded {} users", users.size());
@@ -159,6 +170,7 @@ public class DataSeeder implements CommandLineRunner {
         superAdmin.setPhoneVerified(true);
         superAdmin.setIsAdmin(true);
         superAdmin.setIsSuperAdmin(true);
+        superAdmin.setRole(RoleName.SUPER_ADMIN.name());
         superAdmin.setRoles(new HashSet<>(Set.of(superAdminRole)));
 
         userRepository.save(superAdmin);
@@ -235,6 +247,7 @@ public class DataSeeder implements CommandLineRunner {
                 for (int i = 0; i < 3; i++) {
                     slots.add(Slot.builder()
                             .drive(drive)
+                            .adminId(drive.getAdminId())
                             .dateTime(slotDateTime.plusHours(i * 2))
                             .capacity(30)
                             .startTime(slotDateTime.toLocalTime())
@@ -263,6 +276,7 @@ public class DataSeeder implements CommandLineRunner {
                 bookings.add(Booking.builder()
                         .user(user)
                         .slot(slot)
+                        .adminId(slot.getAdminId())
                         .status(statuses[random.nextInt(statuses.length)])
                         .notes("Dose 1 - " + slot.getDrive().getVaccineType())
                         .build());

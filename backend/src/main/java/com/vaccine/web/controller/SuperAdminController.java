@@ -6,6 +6,7 @@ import com.vaccine.common.dto.CenterRequest;
 import com.vaccine.common.dto.DriveRequest;
 import com.vaccine.common.dto.SlotDetailResponse;
 import com.vaccine.common.dto.SlotRequest;
+import com.vaccine.common.dto.SuperAdminCreateAdminRequest;
 import com.vaccine.common.dto.UserUpdateRequest;
 import com.vaccine.domain.RoleName;
 import com.vaccine.domain.Slot;
@@ -29,7 +30,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping({"/super-admin", "/api/super-admin"})
+@RequestMapping({"/super-admin", "/api/super-admin", "/superadmin", "/api/superadmin"})
 @PreAuthorize("hasAuthority('SUPER_ADMIN')")
 public class SuperAdminController {
     private final AdminService adminService;
@@ -42,6 +43,20 @@ public class SuperAdminController {
     public ResponseEntity<ApiResponse<Void>> createAdmin(@Valid @RequestBody AdminCreateRequest req, HttpServletRequest request) {
         log.info("Create admin for email={}", req.email());
         adminService.createAdmin(req, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null, "Admin created successfully"));
+    }
+
+    @PostMapping("/create-admin")
+    public ResponseEntity<ApiResponse<Void>> createAdminFromSimpleForm(@Valid @RequestBody SuperAdminCreateAdminRequest req, HttpServletRequest request) {
+        log.info("Create admin via simple endpoint for email={}", req.email());
+        AdminCreateRequest createRequest = new AdminCreateRequest(
+            req.email(),
+            req.name(),
+            req.password(),
+            null,
+            30
+        );
+        adminService.createAdmin(createRequest, request);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null, "Admin created successfully"));
     }
 

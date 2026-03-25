@@ -64,6 +64,9 @@ public class VaccinationDrive {
     @Column(nullable = false)
     private Boolean active = true;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Builder.Default
     @Column(name = "second_dose_required", nullable = false)
     private Boolean secondDoseRequired = false;

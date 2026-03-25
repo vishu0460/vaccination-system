@@ -30,10 +30,12 @@ public class NewsController {
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Page<NewsResponse>>> getAllNewsForAdmin(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            Authentication authentication) {
         log.info("Fetching admin news page={} size={}", page, size);
         Page<NewsResponse> newsPage = newsService.getAllNews(PageRequest.of(page, size,
-            Sort.by(Sort.Direction.DESC, "updatedAt").and(Sort.by(Sort.Direction.DESC, "createdAt"))));
+            Sort.by(Sort.Direction.DESC, "updatedAt").and(Sort.by(Sort.Direction.DESC, "createdAt"))),
+            authentication != null ? authentication.getName() : null);
         return ResponseEntity.ok(ApiResponse.success(newsPage));
     }
 
@@ -64,17 +66,17 @@ public class NewsController {
 
     @PutMapping({"/admin/news/{id}", "/news/{id}"})
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<NewsResponse>> updateNews(@PathVariable Long id, @Valid @RequestBody NewsRequest request) {
+    public ResponseEntity<ApiResponse<NewsResponse>> updateNews(@PathVariable Long id, @Valid @RequestBody NewsRequest request, Authentication authentication) {
         log.info("Updating news ID={}, title={}", id, request.title());
-        NewsResponse news = newsService.updateNews(id, request);
+        NewsResponse news = newsService.updateNews(id, request, authentication != null ? authentication.getName() : null);
         return ResponseEntity.ok(ApiResponse.success(news, "News updated successfully"));
     }
 
     @DeleteMapping({"/admin/news/{id}", "/news/{id}"})
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<Void>> deleteNews(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Void>> deleteNews(@PathVariable Long id, Authentication authentication) {
         log.info("Deleting news ID={}", id);
-        newsService.deleteNews(id);
+        newsService.deleteNews(id, authentication != null ? authentication.getName() : null);
         return ResponseEntity.noContent().build();
     }
 }

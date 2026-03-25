@@ -56,6 +56,9 @@ public class Booking {
     @Builder.Default
     private Boolean secondDoseRequired = false;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 

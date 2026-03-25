@@ -58,8 +58,16 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
 
-        if (("POST".equalsIgnoreCase(method) && ("/contact".equals(path) || "/api/contact".equals(path)))
-            || ("OPTIONS".equalsIgnoreCase(method) && (path.startsWith("/contact") || path.startsWith("/api/contact")))) {
+        boolean isContactPost = "POST".equalsIgnoreCase(method) && ("/contact".equals(path) || "/api/contact".equals(path));
+        boolean isContactOptions = "OPTIONS".equalsIgnoreCase(method) && (path.startsWith("/contact") || path.startsWith("/api/contact"));
+        if (isContactPost) {
+            String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+            // Keep anonymous contact submissions public, but honor JWT context when token is present.
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+                return true;
+            }
+        }
+        if (isContactOptions) {
             return true;
         }
 

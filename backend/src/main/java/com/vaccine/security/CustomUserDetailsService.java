@@ -1,6 +1,7 @@
 package com.vaccine.security;
 
 import com.vaccine.domain.Role;
+import com.vaccine.domain.RoleName;
 import com.vaccine.domain.User;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import org.springframework.security.core.userdetails.*;
@@ -28,6 +29,11 @@ public class CustomUserDetailsService implements UserDetailsService {
             authorities.add(roleName);
             authorities.add("ROLE_" + roleName);
         }
+        String effectiveRole = user.getEffectiveRole();
+        if (effectiveRole != null && !effectiveRole.isBlank()) {
+            authorities.add(effectiveRole);
+            authorities.add("ROLE_" + effectiveRole);
+        }
         if (user.isSuperAdmin()) {
             authorities.add("SUPER_ADMIN");
             authorities.add("ROLE_SUPER_ADMIN");
@@ -36,8 +42,10 @@ public class CustomUserDetailsService implements UserDetailsService {
             authorities.add("ADMIN");
             authorities.add("ROLE_ADMIN");
         }
-        authorities.add("USER"); // fallback
-        authorities.add("ROLE_USER");
+        if (!authorities.contains(RoleName.USER.name())) {
+            authorities.add("USER"); // fallback
+            authorities.add("ROLE_USER");
+        }
 
         return org.springframework.security.core.userdetails.User.builder()
             .username(user.getEmail())

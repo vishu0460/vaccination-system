@@ -41,6 +41,9 @@ public class Feedback {
     @Column(name = "status")
     private FeedbackStatus status = FeedbackStatus.PENDING;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

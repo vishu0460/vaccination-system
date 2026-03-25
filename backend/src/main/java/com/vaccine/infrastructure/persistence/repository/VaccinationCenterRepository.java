@@ -16,6 +16,7 @@ public interface VaccinationCenterRepository extends JpaRepository<VaccinationCe
 Optional<VaccinationCenter> findByNameIgnoreCase(String name);
     
     List<VaccinationCenter> findByCityIgnoreCase(String city);
+    List<VaccinationCenter> findByAdminId(Long adminId);
     
     Page<VaccinationCenter> findByCityContainingIgnoreCase(String city, Pageable pageable);
 

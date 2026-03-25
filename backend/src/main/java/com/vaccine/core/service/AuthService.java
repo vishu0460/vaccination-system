@@ -95,6 +95,7 @@ public class AuthService {
                 .password(passwordEncoder.encode(req.password()))
                 .phoneNumber(normalizedPhone)
                 .age(normalizedAge)
+                .role(RoleName.USER.name())
                 .enabled(true)
                 .emailVerified(shouldAutoVerify)
                 .phoneVerified(false)
@@ -354,11 +355,7 @@ public class AuthService {
     }
 
     private String getUserRole(User user) {
-        return user.getRoles().stream()
-                .map(Role::getName)
-                .map(RoleName::name)
-                .findFirst()
-                .orElse("USER");
+        return user.getEffectiveRole();
     }
 
     private String normalizeEmail(String email) {

@@ -45,6 +45,9 @@ public class Slot {
     @Column(nullable = false)
     private LocalTime endTime;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 

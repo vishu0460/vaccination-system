@@ -21,6 +21,10 @@ spring:
     init:
       mode: never
 
+server:
+  servlet:
+    context-path: /api
+
 security:
   jwt:
     issuer: test-issuer

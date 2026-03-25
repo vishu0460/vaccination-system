@@ -19,4 +19,6 @@ public interface NewsRepository extends JpaRepository<News, Long> {
     
     @Query("SELECT n FROM News n WHERE n.publishedAt IS NOT NULL AND (n.expiresAt IS NULL OR n.expiresAt > :now)")
     Page<News> findByPublishedTrueAndExpiresAtIsNullOrExpiresAtAfter(@Param("now") LocalDateTime now, Pageable pageable);
+
+    Page<News> findByAdminId(Long adminId, Pageable pageable);
 }

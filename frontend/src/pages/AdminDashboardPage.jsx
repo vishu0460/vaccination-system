@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Container, Row, Col, Card, Table, Badge, Button, Spinner, Modal, Form, Alert, Tab, Tabs } from 'react-bootstrap';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -264,8 +264,10 @@ const upsertDrive = (currentDrives, nextDrive) => {
   return [nextDrive, ...remainingDrives];
 };
 
+const DASHBOARD_SYNC_SOURCE = `admin-dashboard-${Math.random().toString(36).slice(2)}`;
+
 const notifyDataUpdated = () => {
-  broadcastDataUpdated({ source: 'admin-dashboard' });
+  broadcastDataUpdated({ source: DASHBOARD_SYNC_SOURCE });
 };
 
 const communicationBadge = (status) => {
@@ -276,7 +278,7 @@ const communicationBadge = (status) => {
 export default function AdminDashboardPage() {
   const currentRole = getRole();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN';
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'dashboard' : 'bookings');
   const [stats, setStats] = useState(EMPTY_STATS);
   const [searchAnalytics, setSearchAnalytics] = useState(EMPTY_SEARCH_ANALYTICS);
   const [dashboardAnalytics, setDashboardAnalytics] = useState(EMPTY_DASHBOARD_ANALYTICS);
@@ -343,63 +345,90 @@ export default function AdminDashboardPage() {
   const [selectedFeedback, setSelectedFeedback] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [responseText, setResponseText] = useState('');
+  const [createAdminForm, setCreateAdminForm] = useState({ name: '', email: '', password: '' });
+  const [createAdminLoading, setCreateAdminLoading] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+  const refreshInFlightRef = useRef(false);
 
-  const refreshActiveTabData = async () => {
-    await Promise.all([
-      loadDashboardData(),
-      loadCenters({ silent: true }),
-      loadDrives({ silent: true }),
-      loadSlots({ silent: true })
-    ]);
+  const requestRefresh = useCallback(() => {
+    setRefreshTick((current) => current + 1);
+  }, []);
 
-    if (activeTab === 'users') await loadUsers();
-    if (activeTab === 'bookings') await loadBookings();
-    if (activeTab === 'news') await loadNews();
-    if (activeTab === 'feedback') await loadFeedbacks();
-    if (activeTab === 'contacts') await loadContacts();
+  const refreshActiveTabData = async (options = {}) => {
+    const { silent = true } = options;
+    const tasks = [];
 
-    if (selectedDrive?.id) {
-      await loadDriveSlots(selectedDrive.id, showManageSlotsModal);
+    if (isSuperAdmin && activeTab === 'dashboard') tasks.push(loadDashboardData({ silent }));
+    if (isSuperAdmin && activeTab === 'users') tasks.push(loadUsers({ silent }));
+    if (activeTab === 'bookings') tasks.push(loadBookings({ silent }));
+    if (activeTab === 'slots') tasks.push(loadSlots({ silent }));
+    if (activeTab === 'centers') tasks.push(loadCenters({ silent }));
+    if (activeTab === 'drives') tasks.push(loadDrives({ silent }));
+    if (activeTab === 'news') tasks.push(loadNews({ silent }));
+    if (activeTab === 'feedback') tasks.push(loadFeedbacks({ silent }));
+    if (activeTab === 'contacts') tasks.push(loadContacts({ silent }));
+    if (selectedDrive?.id && showManageSlotsModal) tasks.push(loadDriveSlots(selectedDrive.id, true));
+
+    if (tasks.length === 0) {
+      tasks.push(loadBookings({ silent }));
     }
+    await Promise.all(tasks);
   };
 
+  const executeRefresh = useCallback(async (options = {}) => {
+    if (refreshInFlightRef.current) {
+      return;
+    }
+
+    refreshInFlightRef.current = true;
+    try {
+      await refreshActiveTabData(options);
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [activeTab, isSuperAdmin, selectedDrive?.id, showManageSlotsModal, slotFilters]);
+
   useEffect(() => {
-    const unsubscribe = subscribeToDataUpdates(() => {
-      refreshActiveTabData().catch((err) => {
-        setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
-      });
+    const unsubscribe = subscribeToDataUpdates((eventData) => {
+      if (eventData?.source === DASHBOARD_SYNC_SOURCE) {
+        return;
+      }
+      requestRefresh();
     });
 
     return unsubscribe;
-  }, [activeTab, selectedDrive?.id, showManageSlotsModal, slotFilters]);
+  }, [requestRefresh]);
 
   useEffect(() => {
-    const refresh = () => {
-      refreshActiveTabData().catch((err) => {
-        setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
-      });
-    };
-
-    const intervalId = window.setInterval(refresh, 30000);
-    window.addEventListener('focus', refresh);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('focus', refresh);
-    };
-  }, [activeTab, selectedDrive?.id, showManageSlotsModal, slotFilters]);
-
-  useEffect(() => {
-    refreshActiveTabData().catch((err) => {
+    executeRefresh({ silent: false }).catch((err) => {
       setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
     });
-  }, [activeTab]);
+  }, []);
+
+  useEffect(() => {
+    if (refreshTick === 0) {
+      return;
+    }
+    executeRefresh({ silent: true }).catch((err) => {
+      setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
+    });
+  }, [refreshTick, executeRefresh]);
 
   useEffect(() => {
     if (activeTab === 'slots') {
-      loadSlots();
+      executeRefresh({ silent: false }).catch((err) => {
+        setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
+      });
     }
-  }, [slotFilters]);
+  }, [slotFilters, activeTab, executeRefresh]);
+
+  const handleTabSelect = useCallback((nextTab) => {
+    if (!nextTab || nextTab === activeTab) {
+      return;
+    }
+    setActiveTab(nextTab);
+    requestRefresh();
+  }, [activeTab, requestRefresh]);
 
   useEffect(() => {
     debugDataSync('admin drives state', drives);
@@ -408,10 +437,6 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     debugDataSync('admin slots state', slots);
   }, [slots]);
-
-  useEffect(() => {
-    debugDataSync('admin drive state for render', drives);
-  }, [drives]);
 
   useEffect(() => {
     debugDataSync('edit slot start date', editSlotStartDate);
@@ -429,9 +454,11 @@ export default function AdminDashboardPage() {
     }));
   };
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       setError(null);
       const [statsRes, bookingsRes, searchAnalyticsRes, dashboardAnalyticsRes, contactAnalyticsRes] = await Promise.all([
         adminAPI.getDashboardStats(),
@@ -453,13 +480,17 @@ export default function AdminDashboardPage() {
       setContactAnalytics(EMPTY_CONTACT_ANALYTICS);
       setError(err.response?.data?.message || 'Failed to load dashboard stats');
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadUsers = async () => {
+  const loadUsers = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await adminAPI.getAllUsers();
       const payload = unwrapApiData(response) || {};
       const items = ensureArray(payload);
@@ -469,20 +500,26 @@ export default function AdminDashboardPage() {
       setError('Failed to load users');
       setUsers([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadBookings = async () => {
+  const loadBookings = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await adminAPI.getAllBookings();
       setBookings(ensureArray(unwrapApiData(response)));
     } catch (err) {
       setError('Failed to load bookings');
       setBookings([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -552,11 +589,6 @@ export default function AdminDashboardPage() {
 
       const slotsResponse = await adminAPI.getAllSlotsList(buildSlotFilterParams());
       const slotItems = ensureArray(unwrapApiData(slotsResponse)).map(normalizeSlotForEditing);
-      slotItems.forEach((slot) => {
-        console.log('Slot:', slot);
-        console.log('Start:', slot.startDate);
-        console.log('End:', slot.endDate);
-      });
       debugDataSync('admin slots response', slotItems);
       setSlots(slotItems);
 
@@ -587,16 +619,20 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const loadNews = async () => {
+  const loadNews = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await newsAPI.getAdminNews(0, 100);
       const payload = unwrapApiData(response) || {};
       setNews(ensureArray(payload));
     } catch (err) {
       setNews([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -808,11 +844,6 @@ export default function AdminDashboardPage() {
       const response = await (isSuperAdmin ? superAdminAPI.getDriveSlots(driveId) : adminAPI.getDriveSlots(driveId));
       const payload = unwrapApiData(response) || {};
       const slots = (Array.isArray(payload) ? payload : (payload.slots || [])).map(normalizeSlotForEditing);
-      slots.forEach((slot) => {
-        console.log('Slot:', slot);
-        console.log('Start:', slot.startDate);
-        console.log('End:', slot.endDate);
-      });
       setDriveSlots(slots);
       if (keepOpen) {
         setShowManageSlotsModal(true);
@@ -860,9 +891,6 @@ export default function AdminDashboardPage() {
       }
       const response = await (isSuperAdmin ? superAdminAPI.updateSlot(editingSlot.id, slotPayload) : adminAPI.updateSlot(editingSlot.id, slotPayload));
       const updatedSlot = normalizeSlotForEditing(unwrapApiData(response));
-      console.log('Slot:', updatedSlot);
-      console.log('Start:', updatedSlot.startDate);
-      console.log('End:', updatedSlot.endDate);
 
       setSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
       setDriveSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
@@ -1028,6 +1056,31 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleCreateAdmin = async (event) => {
+    event.preventDefault();
+    if (!isSuperAdmin) {
+      setError('Only super admin can create new admins.');
+      return;
+    }
+
+    setCreateAdminLoading(true);
+    setError(null);
+    try {
+      await superAdminAPI.createAdmin({
+        name: createAdminForm.name.trim(),
+        email: createAdminForm.email.trim().toLowerCase(),
+        password: createAdminForm.password
+      });
+      setCreateAdminForm({ name: '', email: '', password: '' });
+      setSuccess('Admin created successfully.');
+      await loadUsers();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Failed to create admin.');
+    } finally {
+      setCreateAdminLoading(false);
+    }
+  };
+
   const openEditBooking = (booking) => {
     setSelectedBooking(booking);
     setShowEditBookingModal(true);
@@ -1044,7 +1097,7 @@ export default function AdminDashboardPage() {
     }]
   } : null;
 
-  const bookingsByStatus = {
+  const bookingsByStatus = useMemo(() => ({
     labels: ['Pending', 'Confirmed', 'Completed', 'Cancelled'],
     datasets: [{
       data: [
@@ -1055,7 +1108,7 @@ export default function AdminDashboardPage() {
       ],
       backgroundColor: ['#f59e0b', '#0ea5e9', '#10b981', '#ef4444']
     }]
-  };
+  }), [bookings]);
 
   const getStatusBadge = (status) => {
     const colors = {
@@ -1067,15 +1120,16 @@ export default function AdminDashboardPage() {
     return <Badge bg={colors[status] || 'secondary'}>{status}</Badge>;
   };
 
-  const filteredUsers = users.filter(user => 
-    user.fullName?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-    user.email?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-  );
+  const normalizedSearchTerm = debouncedSearchTerm.toLowerCase();
+  const filteredUsers = useMemo(() => users.filter(user =>
+    user.fullName?.toLowerCase().includes(normalizedSearchTerm) ||
+    user.email?.toLowerCase().includes(normalizedSearchTerm)
+  ), [users, normalizedSearchTerm]);
 
-  const filteredBookings = bookings.filter(booking => 
-    booking.userName?.toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
-    booking.status?.toLowerCase().includes(debouncedSearchTerm.toLowerCase())
-  );
+  const filteredBookings = useMemo(() => bookings.filter(booking =>
+    booking.userName?.toLowerCase().includes(normalizedSearchTerm) ||
+    booking.status?.toLowerCase().includes(normalizedSearchTerm)
+  ), [bookings, normalizedSearchTerm]);
 
   const getSlotStatusBadge = (status) => {
     const styles = {
@@ -1115,7 +1169,7 @@ export default function AdminDashboardPage() {
     setter(normalizedRange.endDate);
   };
 
-const searchTrendChartData = {
+const searchTrendChartData = useMemo(() => ({
     labels: searchAnalytics.trends?.map((item) => item.day) || [],
     datasets: [{
       label: 'Searches',
@@ -1124,9 +1178,9 @@ const searchTrendChartData = {
       borderColor: '#0ea5e9',
       borderWidth: 2
     }]
-  };
+  }), [searchAnalytics]);
 
-  const contactTrendChartData = {
+  const contactTrendChartData = useMemo(() => ({
     labels: contactAnalytics.inquiriesByDay?.map((item) => item.label) || [],
     datasets: [{
       label: 'Contact Inquiries',
@@ -1135,12 +1189,11 @@ const searchTrendChartData = {
       borderColor: '#10b981',
       borderWidth: 2
     }]
-  };
+  }), [contactAnalytics]);
 
   // Tab configuration
-  const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> },
-    { id: 'users', label: 'Users', icon: <FaUsers /> },
+  const tabs = useMemo(() => {
+    const defaultTabs = [
     { id: 'bookings', label: 'Bookings', icon: <FaCalendarCheck /> },
     { id: 'slots', label: 'Manage Slots', icon: <FaCalendarCheck /> },
     { id: 'centers', label: 'Centers', icon: <FaHospital /> },
@@ -1148,32 +1201,55 @@ const searchTrendChartData = {
     { id: 'news', label: 'News', icon: <FaNewspaper /> },
     { id: 'feedback', label: 'Feedback', icon: <FaComment /> },
     { id: 'contacts', label: 'Contacts', icon: <FaPhone /> }
-  ];
+    ];
+
+    if (isSuperAdmin) {
+      defaultTabs.unshift({ id: 'users', label: 'Users', icon: <FaUsers /> });
+      defaultTabs.unshift({ id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> });
+      defaultTabs.push({ id: 'create-admin', label: 'Create Admin', icon: <FaUserShield /> });
+    }
+
+    return defaultTabs;
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(isSuperAdmin ? 'dashboard' : 'bookings');
+    }
+  }, [activeTab, isSuperAdmin, tabs]);
 
   // Load functions for Feedback and Contacts
-  const loadFeedbacks = async () => {
+  const loadFeedbacks = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await adminAPI.getAllFeedback(0, 10);
       setFeedbacks(ensureArray(unwrapApiData(response)));
     } catch (err) {
       setError('Failed to load feedback');
       setFeedbacks([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadContacts = async () => {
+  const loadContacts = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await adminAPI.getAllContacts();
       setContacts(ensureArray(unwrapApiData(response)));
     } catch (err) {
       setError('Failed to load contacts');
       setContacts([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -1710,6 +1786,59 @@ const searchTrendChartData = {
     </>
   );
 
+  const renderCreateAdmin = () => (
+    <Card className="border-0 shadow-sm" style={{ borderRadius: '0.75rem', maxWidth: 680, margin: '0 auto' }}>
+      <Card.Header style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)' }} className="py-3">
+        <h5 className="mb-0 fw-bold" style={{ color: '#0ea5e9' }}><FaUserShield className="me-2" />Create Admin</h5>
+      </Card.Header>
+      <Card.Body className="p-4">
+        <Form onSubmit={handleCreateAdmin}>
+          <Form.Group className="mb-3">
+            <Form.Label>Name</Form.Label>
+            <Form.Control
+              type="text"
+              value={createAdminForm.name}
+              onChange={(event) => setCreateAdminForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Enter full name"
+              required
+              style={{ borderRadius: '0.5rem' }}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Email</Form.Label>
+            <Form.Control
+              type="email"
+              value={createAdminForm.email}
+              onChange={(event) => setCreateAdminForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="Enter admin email"
+              required
+              style={{ borderRadius: '0.5rem' }}
+            />
+          </Form.Group>
+          <Form.Group className="mb-4">
+            <Form.Label>Password</Form.Label>
+            <Form.Control
+              type="password"
+              value={createAdminForm.password}
+              onChange={(event) => setCreateAdminForm((current) => ({ ...current, password: event.target.value }))}
+              placeholder="Set a strong password"
+              required
+              minLength={8}
+              style={{ borderRadius: '0.5rem' }}
+            />
+          </Form.Group>
+          <Button
+            type="submit"
+            disabled={createAdminLoading}
+            style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem' }}
+          >
+            {createAdminLoading ? 'Creating...' : 'Create Admin'}
+          </Button>
+        </Form>
+      </Card.Body>
+    </Card>
+  );
+
   const renderUsers = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
       <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
@@ -2200,7 +2329,7 @@ const searchTrendChartData = {
 
         {/* Tab Navigation - Matching user dashboard style */}
         <div className="mb-4 admin-tabs-shell">
-          <Tabs activeKey={activeTab} onSelect={setActiveTab} className="justify-content-center">
+          <Tabs activeKey={activeTab} onSelect={handleTabSelect} className="justify-content-center">
             {tabs.map(tab => (
               <Tab 
                 key={tab.id} 
@@ -2217,7 +2346,7 @@ const searchTrendChartData = {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'dashboard' && (
+        {activeTab === 'dashboard' && isSuperAdmin && (
           error && !loading && !stats.totalUsers && !stats.totalBookings && !stats.activeDrives && !stats.totalCenters ? (
             <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
               <Card.Body className="py-5">
@@ -2230,7 +2359,7 @@ const searchTrendChartData = {
             </Card>
           ) : renderDashboard()
         )}
-        {activeTab === 'users' && renderUsers()}
+        {activeTab === 'users' && isSuperAdmin && renderUsers()}
         {activeTab === 'bookings' && renderBookings()}
         {activeTab === 'slots' && renderSlots()}
         {activeTab === 'centers' && renderCenters()}
@@ -2238,6 +2367,7 @@ const searchTrendChartData = {
         {activeTab === 'news' && renderNews()}
         {activeTab === 'feedback' && renderFeedback()}
         {activeTab === 'contacts' && renderContacts()}
+        {activeTab === 'create-admin' && isSuperAdmin && renderCreateAdmin()}
       </Container>
 
       {/* Create News Modal */}

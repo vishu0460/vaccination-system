@@ -22,6 +22,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     List<Booking> findByUserEmailOrderByBookedAtDesc(String email);
 
     List<Booking> findBySlotId(Long slotId);
+    List<Booking> findByAdminId(Long adminId);
 
     boolean existsByUserIdAndSlotIdAndStatusIn(Long userId, Long slotId, List<BookingStatus> statuses);
 

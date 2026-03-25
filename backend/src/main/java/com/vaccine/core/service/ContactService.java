@@ -9,6 +9,7 @@ import com.vaccine.domain.Contact;
 import com.vaccine.domain.ContactStatus;
 import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
+import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.ContactRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,10 +27,14 @@ import java.util.stream.Collectors;
 @Service
 public class ContactService {
     private final ContactRepository contactRepository;
+    private final BookingRepository bookingRepository;
     private final CommunicationNotificationService communicationNotificationService;
 
-    public ContactService(ContactRepository contactRepository, CommunicationNotificationService communicationNotificationService) {
+    public ContactService(ContactRepository contactRepository,
+                          BookingRepository bookingRepository,
+                          CommunicationNotificationService communicationNotificationService) {
         this.contactRepository = contactRepository;
+        this.bookingRepository = bookingRepository;
         this.communicationNotificationService = communicationNotificationService;
     }
 
@@ -56,6 +61,7 @@ public class ContactService {
         contact.setMessage(request.message().trim());
         contact.setUser(user);
         contact.setStatus(ContactStatus.PENDING);
+        contact.setAdminId(resolveContactOwnerAdminId(user));
 
         contactRepository.save(contact);
 
@@ -90,21 +96,30 @@ public class ContactService {
     }
 
     public List<Map<String, Object>> getAllContacts() {
-        List<Contact> contacts = contactRepository.findAllByOrderByCreatedAtDescIdDesc();
-        if (contacts.isEmpty()) {
+        return getAllContacts(null);
+    }
+
+    public List<Map<String, Object>> getAllContacts(Long adminId) {
+        List<Contact> contacts = adminId == null
+            ? contactRepository.findAllByOrderByCreatedAtDescIdDesc()
+            : contactRepository.findByAdminIdOrderByCreatedAtDescIdDesc(adminId);
+        if (contacts.isEmpty() && adminId == null) {
             contacts = contactRepository.findAll();
         }
         return contacts.stream().map(this::toMap).toList();
     }
 
-    public Map<String, Object> getContactById(Long id) {
-        Contact contact = contactRepository.findById(id)
-                .orElseThrow(() -> new AppException("Contact not found"));
-        return toMap(contact);
+    public ContactAnalyticsResponse getContactAnalytics() {
+        return getContactAnalytics(null);
     }
 
-    public ContactAnalyticsResponse getContactAnalytics() {
-        List<Contact> contacts = contactRepository.findAllByOrderByCreatedAtDescIdDesc();
+    public ContactAnalyticsResponse getContactAnalytics(Long adminId) {
+        List<Contact> contacts = adminId == null
+            ? contactRepository.findAllByOrderByCreatedAtDescIdDesc()
+            : contactRepository.findByAdminIdOrderByCreatedAtDescIdDesc(adminId);
+        if (contacts.isEmpty() && adminId == null) {
+            contacts = contactRepository.findAll();
+        }
         LocalDate today = LocalDate.now();
         LocalDate weekStart = today.minusDays(6);
 
@@ -155,6 +170,42 @@ public class ContactService {
         return new ContactAnalyticsResponse(totalInquiries, todayInquiries, weeklyInquiries, inquiriesByDay, mostActiveUsers, recentInquiries);
     }
 
+    public Map<String, Object> getContactById(Long id) {
+        Contact contact = contactRepository.findById(id)
+                .orElseThrow(() -> new AppException("Contact not found"));
+        return toMap(contact);
+    }
+
+    private Long resolveContactOwnerAdminId(User user) {
+        if (user == null) {
+            return null;
+        }
+        if (bookingRepository == null) {
+            return null;
+        }
+        if (user.isAdmin() && !user.isSuperAdmin()) {
+            return user.getId();
+        }
+        return bookingRepository.findByUserId(user.getId()).stream()
+            .map(ContactService::resolveBookingAdminId)
+            .filter(java.util.Objects::nonNull)
+            .findFirst()
+            .orElse(null);
+    }
+
+    private static Long resolveBookingAdminId(com.vaccine.domain.Booking booking) {
+        if (booking.getAdminId() != null) {
+            return booking.getAdminId();
+        }
+        if (booking.getSlot() != null && booking.getSlot().getAdminId() != null) {
+            return booking.getSlot().getAdminId();
+        }
+        if (booking.getSlot() != null && booking.getSlot().getDrive() != null) {
+            return booking.getSlot().getDrive().getAdminId();
+        }
+        return null;
+    }
+
     @Transactional
     public ApiMessage respondToContact(Long id, String response) {
         if (response == null || response.isBlank()) {
@@ -191,6 +242,7 @@ public class ContactService {
         Map<String, Object> map = new HashMap<>();
         map.put("id", contact.getId());
         map.put("userId", contact.getUser() != null ? contact.getUser().getId() : null);
+        map.put("adminId", contact.getAdminId());
         map.put("name", contact.getName());
         map.put("email", contact.getEmail());
         map.put("userName", contact.getUser() != null && contact.getUser().getFullName() != null ? contact.getUser().getFullName() : contact.getName());

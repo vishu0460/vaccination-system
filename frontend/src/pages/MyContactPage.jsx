@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Badge, Spinner, Alert, Button, Form } from 'react-bootstrap';
 import { contactAPI, getErrorMessage, unwrapApiData, userAPI } from '../api/client';
 
@@ -22,47 +22,19 @@ export default function MyContactPage() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [userId, setUserId] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const requestInFlight = useRef(false);
 
-  useEffect(() => {
-    const loadUserAndHistory = async () => {
-      try {
-        const response = await userAPI.getProfile();
-        const profile = unwrapApiData(response);
-        const nextUserId = profile?.id || null;
-        setUserId(nextUserId);
-        await fetchMyContacts(nextUserId);
-      } catch (err) {
-        setError(getErrorMessage(err, 'Failed to load your profile.'));
-        setLoading(false);
-      }
-    };
-
-    loadUserAndHistory();
-  }, []);
-
-  useEffect(() => {
-    const handleDataUpdated = () => {
-      fetchMyContacts(userId);
-    };
-
-    const handleFocus = () => {
-      fetchMyContacts(userId);
-    };
-
-    const intervalId = window.setInterval(() => fetchMyContacts(userId), 30000);
-    window.addEventListener('vaxzone:data-updated', handleDataUpdated);
-    window.addEventListener('focus', handleFocus);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener('vaxzone:data-updated', handleDataUpdated);
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [userId]);
-
-  const fetchMyContacts = async (nextUserId = userId) => {
+  const fetchMyContacts = useCallback(async (nextUserId, options = {}) => {
+    const { silent = false } = options;
+    if (requestInFlight.current) {
+      return;
+    }
+    requestInFlight.current = true;
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
       setError(null);
       if (!nextUserId) {
         const fallbackResponse = await contactAPI.getMyInquiries();
@@ -75,9 +47,55 @@ export default function MyContactPage() {
       setError(getErrorMessage(err, 'Failed to load your inquiries.'));
       setContacts([]);
     } finally {
-      setLoading(false);
+      requestInFlight.current = false;
+      if (!silent) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const loadUserAndHistory = async () => {
+      try {
+        const response = await userAPI.getProfile();
+        const nextProfile = unwrapApiData(response);
+        const nextUserId = nextProfile?.id || null;
+        setProfile(nextProfile || null);
+        setUserId(nextUserId);
+        setFormData((current) => ({
+          ...current,
+          name: current.name || nextProfile?.fullName || '',
+          email: current.email || nextProfile?.email || ''
+        }));
+        await fetchMyContacts(nextUserId);
+      } catch (err) {
+        setError(getErrorMessage(err, 'Failed to load your profile.'));
+        setLoading(false);
+      }
+    };
+
+    loadUserAndHistory();
+  }, [fetchMyContacts]);
+
+  useEffect(() => {
+    const handleDataUpdated = () => {
+      fetchMyContacts(userId, { silent: true });
+    };
+
+    const handleFocus = () => {
+      fetchMyContacts(userId, { silent: true });
+    };
+
+    const intervalId = window.setInterval(() => fetchMyContacts(userId, { silent: true }), 30000);
+    window.addEventListener('vaxzone:data-updated', handleDataUpdated);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('vaxzone:data-updated', handleDataUpdated);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchMyContacts, userId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -88,7 +106,12 @@ export default function MyContactPage() {
       await contactAPI.submitContact(formData);
       setSuccess('Your inquiry has been submitted successfully!');
       setShowForm(false);
-      setFormData({ name: '', email: '', subject: '', message: '' });
+      setFormData({
+        name: profile?.fullName || '',
+        email: profile?.email || '',
+        subject: '',
+        message: ''
+      });
       notifyDataUpdated();
       await fetchMyContacts(userId);
     } catch (err) {

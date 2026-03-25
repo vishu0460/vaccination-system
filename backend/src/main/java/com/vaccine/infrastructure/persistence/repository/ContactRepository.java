@@ -10,5 +10,6 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
     List<Contact> findByUser_IdOrderByCreatedAtDesc(Long userId);
     List<Contact> findByUserIsNullAndEmailIgnoreCaseOrderByCreatedAtDesc(String email);
     List<Contact> findAllByOrderByCreatedAtDescIdDesc();
+    List<Contact> findByAdminIdOrderByCreatedAtDescIdDesc(Long adminId);
     void deleteByUser_Id(Long userId);
 }

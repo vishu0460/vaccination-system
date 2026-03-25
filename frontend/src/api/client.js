@@ -370,6 +370,7 @@ export const adminAPI = {
 };
 
 export const superAdminAPI = {
+  createAdmin: (data) => apiClient.post("/superadmin/create-admin", data),
   updateUser: (userId, data) => apiClient.put(`/super-admin/users/${userId}`, data),
   deleteUser: (userId) => apiClient.delete(`/super-admin/users/${userId}`),
   updateCenter: (centerId, data) => apiClient.put(`/super-admin/centers/${centerId}`, data),

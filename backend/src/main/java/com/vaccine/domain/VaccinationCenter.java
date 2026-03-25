@@ -49,6 +49,9 @@ public class VaccinationCenter {
 
     private Integer dailyCapacity;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 

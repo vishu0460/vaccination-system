@@ -12,6 +12,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,8 +22,10 @@ import java.time.LocalDateTime;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
@@ -56,6 +60,9 @@ public class AdminService {
     private final INotificationService notificationService;
 
     public AdminDashboardStatsResponse getDashboardStats() {
+        if (getRestrictedAdminIdOrNull() != null) {
+            throw new AppException("Global analytics are available only for super admin");
+        }
         long totalUsers = userRepository.count();
         long activeUsers = userRepository.countByEnabledTrue();
         long totalBookings = bookingRepository.count();
@@ -96,6 +103,9 @@ public class AdminService {
     }
 
     public SearchAnalyticsResponse getSearchAnalytics() {
+        if (getRestrictedAdminIdOrNull() != null) {
+            throw new AppException("Global analytics are available only for super admin");
+        }
         LocalDateTime since = LocalDate.now().minusDays(29).atStartOfDay();
         List<SearchLog> logs = searchLogRepository.findBySearchedAtAfter(since);
 
@@ -136,6 +146,9 @@ public class AdminService {
     }
 
     public DashboardAnalyticsResponse getDashboardAnalytics() {
+        if (getRestrictedAdminIdOrNull() != null) {
+            throw new AppException("Global analytics are available only for super admin");
+        }
         long totalUsers = userRepository.count();
         long totalBookings = bookingRepository.count();
         long activeDrives = driveRepository.countByStatusIn(List.of(Status.UPCOMING, Status.LIVE));
@@ -179,7 +192,12 @@ public class AdminService {
     }
 
     public Map<String, Object> getAllBookings(PageRequest pageRequest, BookingStatus status, String city) {
-        List<BookingResponse> bookings = bookingRepository.findAll().stream()
+        User currentUser = getCurrentUserOrNull();
+        List<Booking> scopedBookings = isRestrictedAdmin(currentUser)
+            ? bookingRepository.findByAdminId(currentUser.getId())
+            : bookingRepository.findAll();
+
+        List<BookingResponse> bookings = scopedBookings.stream()
             .filter(booking -> status == null || booking.getStatus() == status)
             .filter(booking -> city == null || city.isBlank() || (
                 booking.getUser() != null
@@ -203,6 +221,7 @@ public class AdminService {
 
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
+        assertBookingAccess(booking);
         BookingStatus previousStatus = booking.getStatus();
         BookingStatus newStatus = switch (action.toLowerCase()) {
             case "approve", "confirm" -> BookingStatus.CONFIRMED;
@@ -237,6 +256,7 @@ public class AdminService {
     public Booking completeBooking(Long bookingId) {
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
+        assertBookingAccess(booking);
 
         if (booking.getStatus() == BookingStatus.CANCELLED) {
             throw new AppException("Cancelled bookings cannot be completed");
@@ -292,6 +312,7 @@ public class AdminService {
     public void deleteBooking(Long bookingId, HttpServletRequest request) {
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
+        assertBookingAccess(booking);
 
         Slot slot = booking.getSlot();
         if (slot != null && booking.getStatus() != BookingStatus.CANCELLED) {
@@ -305,11 +326,15 @@ public class AdminService {
     }
 
     public List<VaccinationCenter> getAllCenters() {
-        return centerRepository.findAll();
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        return restrictedAdminId == null ? centerRepository.findAll() : centerRepository.findByAdminId(restrictedAdminId);
     }
 
     public Map<String, Object> getAllCentersPaginated(PageRequest pageable) {
-        List<VaccinationCenter> centers = centerRepository.findAll();
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        List<VaccinationCenter> centers = restrictedAdminId == null
+            ? centerRepository.findAll()
+            : centerRepository.findByAdminId(restrictedAdminId);
         long total = centers.size();
         List<VaccinationCenter> pageContent = centers.stream()
             .skip(pageable.getOffset())
@@ -330,6 +355,7 @@ public class AdminService {
                 .email(req.email())
                 .workingHours(req.workingHours())
                 .dailyCapacity(req.dailyCapacity())
+                .adminId(resolveAdminOwnerForWrite())
                 .build();
         VaccinationCenter savedCenter = centerRepository.save(center);
         log.info("Center created id={} city={} name={}", savedCenter.getId(), savedCenter.getCity(), savedCenter.getName());
@@ -341,6 +367,7 @@ public class AdminService {
     public VaccinationCenter updateCenter(Long centerId, CenterRequest req) {
         VaccinationCenter center = centerRepository.findById(centerId)
             .orElseThrow(() -> new AppException("Center not found"));
+        assertCenterAccess(center);
 
         center.setName(req.name());
         center.setAddress(req.address());
@@ -358,7 +385,10 @@ public class AdminService {
     }
 
     public Map<String, Object> getAllDrives(PageRequest pageable) {
-        List<VaccinationDrive> drives = driveRepository.findAll();
+        User currentUser = getCurrentUserOrNull();
+        List<VaccinationDrive> drives = isRestrictedAdmin(currentUser)
+            ? driveRepository.findByAdminId(currentUser.getId())
+            : driveRepository.findAll();
         long total = drives.size();
         List<VaccinationDrive> pageContent = drives.stream()
             .skip(pageable.getOffset())
@@ -378,7 +408,12 @@ public class AdminService {
     }
 
     public List<AdminSlotResponse> getAllSlots(SlotStatus status, Long centerId, Long driveId, LocalDate date) {
-        return slotRepository.findAll().stream()
+        User currentUser = getCurrentUserOrNull();
+        List<Slot> scopedSlots = isRestrictedAdmin(currentUser)
+            ? slotRepository.findByAdminId(currentUser.getId())
+            : slotRepository.findAll();
+
+        return scopedSlots.stream()
             .filter(slot -> status == null || SlotStatusResolver.resolve(slot) == status)
             .filter(slot -> centerId == null || (slot.getDrive() != null && slot.getDrive().getCenter() != null
                 && centerId.equals(slot.getDrive().getCenter().getId())))
@@ -399,11 +434,13 @@ public class AdminService {
         }
         VaccinationCenter center = centerRepository.findById(req.centerId())
                 .orElseThrow(() -> new AppException("Center not found"));
+        assertCenterAccess(center);
 
         VaccinationDrive drive = VaccinationDrive.builder()
                 .title(req.title())
                 .description(req.description())
                 .center(center)
+                .adminId(resolveDriveOwnerId(center))
                 .vaccineType(req.vaccineType() != null && !req.vaccineType().isBlank() ? req.vaccineType() : "General Vaccination")
                 .driveDate(req.driveDate())
                 .minAge(req.minAge() != null ? req.minAge() : 18)
@@ -426,11 +463,14 @@ public class AdminService {
     public VaccinationDrive updateDrive(Long driveId, DriveRequest req) {
         VaccinationDrive drive = driveRepository.findById(driveId)
             .orElseThrow(() -> new AppException("Drive not found"));
+        assertDriveAccess(drive);
 
         if (req.centerId() != null) {
             VaccinationCenter center = centerRepository.findById(req.centerId())
                 .orElseThrow(() -> new AppException("Center not found"));
+            assertCenterAccess(center);
             drive.setCenter(center);
+            drive.setAdminId(resolveDriveOwnerId(center));
         }
         if (req.title() != null && !req.title().isBlank()) {
             drive.setTitle(req.title().trim());
@@ -477,9 +517,11 @@ public class AdminService {
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Slot createSlot(SlotRequest req) {
         VaccinationDrive drive = findDriveOrThrow(req.getDriveId());
+        assertDriveAccess(drive);
         validateSlotRequest(req, null);
         Slot slot = Slot.builder()
                 .drive(drive)
+                .adminId(resolveSlotOwnerId(drive))
                 .dateTime(req.getStartDate())
                 .startTime(req.getStartDate().toLocalTime())
                 .endTime(req.getEndDate().toLocalTime())
@@ -497,7 +539,9 @@ public class AdminService {
         validateSlotRequest(req, slotId);
         Slot slot = slotRepository.findById(slotId)
             .orElseThrow(() -> new AppException("Slot not found"));
+        assertSlotAccess(slot);
         VaccinationDrive drive = findDriveOrThrow(req.getDriveId());
+        assertDriveAccess(drive);
 
         int currentBooked = slot.getBookedCount() != null ? slot.getBookedCount() : 0;
         int requestedCapacity = req.getCapacity() != null ? req.getCapacity() : slot.getCapacity();
@@ -506,6 +550,7 @@ public class AdminService {
         }
 
         slot.setDrive(drive);
+        slot.setAdminId(resolveSlotOwnerId(drive));
         slot.setDateTime(req.getStartDate());
         slot.setStartTime(req.getStartDate().toLocalTime());
         slot.setEndTime(req.getEndDate().toLocalTime());
@@ -518,7 +563,11 @@ public class AdminService {
     }
 
     public Map<String, Object> getDriveSlots(Long driveId) {
+        VaccinationDrive drive = findDriveOrThrow(driveId);
+        assertDriveAccess(drive);
+        Long currentAdminId = getRestrictedAdminIdOrNull();
         List<AdminSlotResponse> slots = slotRepository.findByDrive_IdOrderByDateTimeAsc(driveId).stream()
+            .filter(slot -> currentAdminId == null || currentAdminId.equals(slot.getAdminId()))
             .sorted(Comparator.comparing(Slot::getDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
             .map(this::toAdminSlotResponse)
             .toList();
@@ -530,7 +579,14 @@ public class AdminService {
     }
 
     public Map<String, Object> getAllUsersPaginated(PageRequest pageable) {
-        List<User> users = userRepository.findAll().stream()
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        List<User> users = (restrictedAdminId == null ? userRepository.findAll().stream()
+            : bookingRepository.findByAdminId(restrictedAdminId).stream()
+                .map(Booking::getUser)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toMap(User::getId, user -> user, (left, right) -> left, LinkedHashMap::new))
+                .values()
+                .stream())
             .sorted(Comparator
                 .comparing(User::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(User::getId, Comparator.nullsLast(Comparator.reverseOrder())))
@@ -544,6 +600,9 @@ public class AdminService {
     }
 
     public Map<String, Object> enableUser(Long userId) {
+        if (getRestrictedAdminIdOrNull() != null) {
+            throw new AppException("Only super admin can update user status");
+        }
         User user = userRepository.findById(userId).orElseThrow();
         user.setEnabled(true);
         userRepository.save(user);
@@ -552,6 +611,9 @@ public class AdminService {
     }
 
     public Map<String, Object> disableUser(Long userId) {
+        if (getRestrictedAdminIdOrNull() != null) {
+            throw new AppException("Only super admin can update user status");
+        }
         User user = userRepository.findById(userId).orElseThrow();
         user.setEnabled(false);
         userRepository.save(user);
@@ -588,25 +650,32 @@ public class AdminService {
     }
 
     public Map<String, Object> getAllFeedback(PageRequest pageRequest) {
-        List<Map<String, Object>> feedback = feedbackService.getAllFeedback();
+        List<Map<String, Object>> feedback = feedbackService.getAllFeedback(getRestrictedAdminIdOrNull());
         return Map.of("content", feedback, "totalElements", feedback.size());
     }
 
     public Map<String, Object> respondToFeedback(Long feedbackId, String response) {
+        Map<String, Object> feedbackRecord = feedbackService.getFeedbackById(feedbackId);
+        assertFeedbackAccess(feedbackRecord);
         feedbackService.respondToFeedback(feedbackId, response);
         return Map.of(
             "message", "Response saved",
             "feedbackId", feedbackId,
-            "feedback", feedbackService.getFeedbackById(feedbackId)
+            "feedback", feedbackRecord
         );
     }
 
     public Map<String, Object> getAllContacts(PageRequest pageRequest) {
-        List<Map<String, Object>> contacts = contactService.getAllContacts();
+        Long adminId = getRestrictedAdminIdOrNull();
+        List<Map<String, Object>> contacts = adminId == null
+            ? contactService.getAllContacts()
+            : contactService.getAllContacts(adminId);
         return Map.of("content", contacts, "totalElements", contacts.size());
     }
 
     public Map<String, Object> respondToContact(Long contactId, String response) {
+        Contact contact = contactRepository.findById(contactId).orElseThrow(() -> new AppException("Contact not found"));
+        assertContactAccess(contact);
         contactService.respondToContact(contactId, response);
         return Map.of(
             "message", "Response saved",
@@ -616,6 +685,8 @@ public class AdminService {
     }
 
     public void deleteContact(Long contactId) {
+        Contact contact = contactRepository.findById(contactId).orElseThrow(() -> new AppException("Contact not found"));
+        assertContactAccess(contact);
         contactRepository.deleteById(contactId);
     }
 
@@ -640,18 +711,28 @@ public class AdminService {
 
     @Transactional
     public void createAdmin(AdminCreateRequest req, HttpServletRequest request) {
+        User currentUser = getCurrentUserOrNull();
+        if (currentUser != null && !currentUser.isSuperAdmin()) {
+            throw new AppException("Only super admin can create admin accounts");
+        }
         if (userRepository.existsAnyByEmail(req.email())) {
             throw new AppException("Email already exists");
         }
         Role adminRole = roleRepository.findByName(RoleName.ADMIN).orElseThrow();
+        Long currentUserId = currentUser != null ? currentUser.getId() : null;
         User admin = User.builder()
-            .email(req.email())
-            .fullName(req.fullName())
+            .email(req.email().trim().toLowerCase())
+            .fullName(req.fullName().trim())
             .password(passwordEncoder.encode(req.password()))
             .phoneNumber(req.phoneNumber())
-            .age(req.age())
+            .age(req.age() != null ? req.age() : 30)
+            .createdBy(currentUserId)
+            .role(RoleName.ADMIN.name())
+            .isAdmin(true)
+            .isSuperAdmin(false)
             .roles(new HashSet<>(Set.of(adminRole)))
             .enabled(true)
+            .emailVerified(true)
             .build();
         userRepository.save(admin);
         auditService.logAction("CREATE_ADMIN", "USER", admin.getId(), "Admin created: " + req.email(), request);
@@ -674,6 +755,7 @@ public class AdminService {
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public void deleteCenter(Long centerId, HttpServletRequest request) {
         VaccinationCenter center = centerRepository.findById(centerId).orElseThrow();
+        assertCenterAccess(center);
         String actor = auditService.getCurrentActor();
         for (VaccinationDrive drive : driveRepository.findByCenterId(centerId)) {
             deleteDriveInternal(drive, actor);
@@ -687,6 +769,7 @@ public class AdminService {
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public void deleteDrive(Long driveId, HttpServletRequest request) {
         VaccinationDrive drive = driveRepository.findById(driveId).orElseThrow();
+        assertDriveAccess(drive);
         deleteDriveInternal(drive, auditService.getCurrentActor());
         auditService.logAction("SOFT_DELETE_DRIVE", "DRIVE", driveId, "Drive soft deleted: " + drive.getTitle(), request);
     }
@@ -695,6 +778,7 @@ public class AdminService {
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public void deleteSlot(Long slotId, HttpServletRequest request) {
         Slot slot = slotRepository.findById(slotId).orElseThrow(() -> new AppException("Slot not found"));
+        assertSlotAccess(slot);
         deleteSlotInternal(slot, auditService.getCurrentActor());
         auditService.logAction("SOFT_DELETE_SLOT", "SLOT", slotId, "Slot soft deleted", request);
     }
@@ -733,8 +817,112 @@ public class AdminService {
         Role roleEntity = roleRepository.findByName(role).orElseThrow();
         user.getRoles().clear();
         user.getRoles().add(roleEntity);
+        user.setRole(role.name());
+        user.setIsSuperAdmin(role == RoleName.SUPER_ADMIN);
+        user.setIsAdmin(role == RoleName.ADMIN || role == RoleName.SUPER_ADMIN);
         userRepository.save(user);
         auditService.logAction("UPDATE_ROLE", "USER", userId, "Role updated to " + role, request);
+    }
+
+    private User getCurrentUserOrNull() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null || "anonymousUser".equals(authentication.getName())) {
+            return null;
+        }
+        return userRepository.findByEmail(authentication.getName()).orElse(null);
+    }
+
+    private Long getCurrentUserIdOrNull() {
+        User currentUser = getCurrentUserOrNull();
+        return currentUser != null ? currentUser.getId() : null;
+    }
+
+    private boolean isRestrictedAdmin(User user) {
+        return user != null && user.isAdmin() && !user.isSuperAdmin();
+    }
+
+    private Long getRestrictedAdminIdOrNull() {
+        User currentUser = getCurrentUserOrNull();
+        return isRestrictedAdmin(currentUser) ? currentUser.getId() : null;
+    }
+
+    private Long resolveAdminOwnerForWrite() {
+        return getRestrictedAdminIdOrNull();
+    }
+
+    private Long resolveDriveOwnerId(VaccinationCenter center) {
+        if (center != null && center.getAdminId() != null) {
+            return center.getAdminId();
+        }
+        return resolveAdminOwnerForWrite();
+    }
+
+    private Long resolveSlotOwnerId(VaccinationDrive drive) {
+        if (drive.getAdminId() != null) {
+            return drive.getAdminId();
+        }
+        return resolveAdminOwnerForWrite();
+    }
+
+    private void assertDriveAccess(VaccinationDrive drive) {
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        if (restrictedAdminId == null) {
+            return;
+        }
+        if (!restrictedAdminId.equals(drive.getAdminId())) {
+            throw new AppException("You can only access your own drives");
+        }
+    }
+
+    private void assertCenterAccess(VaccinationCenter center) {
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        if (restrictedAdminId == null) {
+            return;
+        }
+        if (!restrictedAdminId.equals(center.getAdminId())) {
+            throw new AppException("You can only access your own centers");
+        }
+    }
+
+    private void assertSlotAccess(Slot slot) {
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        if (restrictedAdminId == null) {
+            return;
+        }
+        if (!restrictedAdminId.equals(slot.getAdminId())) {
+            throw new AppException("You can only access your own slots");
+        }
+    }
+
+    private void assertBookingAccess(Booking booking) {
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        if (restrictedAdminId == null) {
+            return;
+        }
+        if (!restrictedAdminId.equals(booking.getAdminId())) {
+            throw new AppException("You can only access your own bookings");
+        }
+    }
+
+    private void assertContactAccess(Contact contact) {
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        if (restrictedAdminId == null) {
+            return;
+        }
+        if (!restrictedAdminId.equals(contact.getAdminId())) {
+            throw new AppException("You can only access your own contacts");
+        }
+    }
+
+    private void assertFeedbackAccess(Map<String, Object> feedback) {
+        Long restrictedAdminId = getRestrictedAdminIdOrNull();
+        if (restrictedAdminId == null) {
+            return;
+        }
+        Object adminId = feedback.get("adminId");
+        if (!(adminId instanceof Number numberValue) || numberValue.longValue() != restrictedAdminId) {
+            throw new AppException("You can only access your own feedback");
+        }
     }
 
     private void deleteDriveInternal(VaccinationDrive drive, String actor) {

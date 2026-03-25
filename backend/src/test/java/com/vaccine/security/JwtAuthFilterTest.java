@@ -10,6 +10,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.when;
+import org.springframework.http.HttpHeaders;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthFilterTest {
@@ -40,6 +41,24 @@ class JwtAuthFilterTest {
     @Test
     void shouldNotFilter_ProtectedAdminPath_ShouldRequireJwtProcessing() {
         when(request.getRequestURI()).thenReturn("/api/admin/dashboard/stats");
+
+        assertFalse(filter.exposedShouldNotFilter(request));
+    }
+
+    @Test
+    void shouldNotFilter_ContactPostWithoutToken() {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/contact");
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn(null);
+
+        assertTrue(filter.exposedShouldNotFilter(request));
+    }
+
+    @Test
+    void shouldNotFilter_ContactPostWithToken_ShouldRequireJwtProcessing() {
+        when(request.getMethod()).thenReturn("POST");
+        when(request.getRequestURI()).thenReturn("/api/contact");
+        when(request.getHeader(HttpHeaders.AUTHORIZATION)).thenReturn("Bearer sample-token");
 
         assertFalse(filter.exposedShouldNotFilter(request));
     }

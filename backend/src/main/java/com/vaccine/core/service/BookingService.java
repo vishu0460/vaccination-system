@@ -107,6 +107,7 @@ public class BookingService {
         Booking booking = Booking.builder()
             .user(user)
             .slot(slot)
+            .adminId(resolveBookingAdminId(slot))
             .status(BookingStatus.PENDING)
             .assignedTime(assignedTime)
             .notes(req.notes())
@@ -192,6 +193,7 @@ public class BookingService {
             booking.setAssignedTime(assignedTime);
         }
         booking.setSlot(newSlot);
+        booking.setAdminId(resolveBookingAdminId(newSlot));
         booking.setNotes(req.notes());
         log.info("Booking rescheduled successfully for bookingId={} to slotId={}", bookingId, newSlot.getId());
         Booking savedBooking = bookingRepository.save(booking);
@@ -253,5 +255,18 @@ public class BookingService {
 
         long intervalSeconds = Math.max(1, duration.getSeconds() / capacity);
         return slotStart.plusSeconds(intervalSeconds * alreadyBookedCount);
+    }
+
+    private Long resolveBookingAdminId(Slot slot) {
+        if (slot == null) {
+            return null;
+        }
+        if (slot.getAdminId() != null) {
+            return slot.getAdminId();
+        }
+        if (slot.getDrive() != null) {
+            return slot.getDrive().getAdminId();
+        }
+        return null;
     }
 }

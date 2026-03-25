@@ -3,6 +3,7 @@ package com.vaccine.core.service;
 import com.vaccine.common.dto.NewsRequest;
 import com.vaccine.common.dto.NewsResponse;
 import com.vaccine.domain.News;
+import com.vaccine.domain.User;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.NewsRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
@@ -40,6 +41,14 @@ public class NewsService {
     }
 
     public Page<NewsResponse> getAllNews(Pageable pageable) {
+        return getAllNews(pageable, null);
+    }
+
+    public Page<NewsResponse> getAllNews(Pageable pageable, String requesterEmail) {
+        User requester = getRequesterOrNull(requesterEmail);
+        if (isRestrictedAdmin(requester)) {
+            return newsRepository.findByAdminId(requester.getId(), pageable).map(this::toResponse);
+        }
         return newsRepository.findAll(pageable).map(this::toResponse);
     }
 
@@ -51,6 +60,8 @@ public class NewsService {
 
     @Transactional
     public NewsResponse createNews(NewsRequest request, String adminEmail) {
+        User requester = userRepository.findByEmail(adminEmail)
+            .orElseThrow(() -> new AppException("User not found"));
         News news = News.builder()
             .title(request.title().trim())
             .content(request.content().trim())
@@ -59,7 +70,8 @@ public class NewsService {
             .priority(request.priority() != null ? request.priority() : 0)
             .active(request.active() != null ? request.active() : true)
             .expiresAt(request.expiresAt())
-            .createdBy(userRepository.findByEmail(adminEmail).map(user -> user.getId()).orElse(null))
+            .createdBy(requester.getId())
+            .adminId(isRestrictedAdmin(requester) ? requester.getId() : null)
             .category(normalizeCategory(request.category()))
             .build();
 
@@ -69,8 +81,15 @@ public class NewsService {
 
     @Transactional
     public NewsResponse updateNews(Long id, NewsRequest request) {
+        return updateNews(id, request, null);
+    }
+
+    @Transactional
+    public NewsResponse updateNews(Long id, NewsRequest request, String requesterEmail) {
+        User requester = getRequesterOrNull(requesterEmail);
         News news = newsRepository.findById(id)
             .orElseThrow(() -> new AppException("News not found"));
+        assertNewsAccess(news, requester);
 
         news.setTitle(request.title().trim());
         news.setContent(request.content().trim());
@@ -87,9 +106,15 @@ public class NewsService {
 
     @Transactional
     public void deleteNews(Long id) {
-        if (!newsRepository.existsById(id)) {
-            throw new AppException("News not found");
-        }
+        deleteNews(id, null);
+    }
+
+    @Transactional
+    public void deleteNews(Long id, String requesterEmail) {
+        User requester = getRequesterOrNull(requesterEmail);
+        News news = newsRepository.findById(id)
+            .orElseThrow(() -> new AppException("News not found"));
+        assertNewsAccess(news, requester);
         newsRepository.deleteById(id);
     }
 
@@ -122,5 +147,25 @@ public class NewsService {
         return newsRepository.findByPublishedTrueAndExpiresAtIsNullOrExpiresAtAfter(LocalDateTime.now(), pageable)
             .map(this::toResponse)
             .getContent();
+    }
+
+    private User getRequesterOrNull(String requesterEmail) {
+        if (requesterEmail == null || requesterEmail.isBlank()) {
+            return null;
+        }
+        return userRepository.findByEmail(requesterEmail).orElse(null);
+    }
+
+    private boolean isRestrictedAdmin(User user) {
+        return user != null && user.isAdmin() && !user.isSuperAdmin();
+    }
+
+    private void assertNewsAccess(News news, User requester) {
+        if (!isRestrictedAdmin(requester)) {
+            return;
+        }
+        if (!requester.getId().equals(news.getAdminId())) {
+            throw new AppException("You can only access your own news items");
+        }
     }
 }

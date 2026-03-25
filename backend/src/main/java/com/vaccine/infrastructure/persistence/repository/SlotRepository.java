@@ -16,6 +16,8 @@ public interface SlotRepository extends JpaRepository<Slot, Long> {
     @Query("SELECT s FROM Slot s WHERE s.drive.id = :driveId")
     List<Slot> findByDrive_Id(Long driveId);
 
+    List<Slot> findByAdminId(Long adminId);
+
     @Query("SELECT s FROM Slot s WHERE s.dateTime >= :now AND s.bookedCount < s.capacity ORDER BY s.dateTime")
     List<Slot> findAvailableSlots(LocalDateTime now);
 

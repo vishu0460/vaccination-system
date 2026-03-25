@@ -28,6 +28,7 @@ public class User {
     private String fullName;
 
     @Column(nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String password;
 
     @Column(nullable = false)
@@ -62,6 +63,7 @@ public class User {
     private Boolean twoFactorEnabled = false;
 
     @Column(name = "two_factor_secret")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String twoFactorSecret;
 
     // Admin role flags
@@ -72,6 +74,9 @@ public class User {
     @Column(name = "is_admin", nullable = false)
     @Builder.Default
     private Boolean isAdmin = false;
+
+    @Column(name = "role", length = 32)
+    private String role;
 
     @Column(name = "created_by")
     private Long createdBy;
@@ -165,5 +170,18 @@ public boolean hasRole(RoleName roleName) {
 
     public boolean isAdmin() {
         return hasRole(RoleName.ADMIN) || Boolean.TRUE.equals(isAdmin);
+    }
+
+    public String getEffectiveRole() {
+        if (role != null && !role.isBlank()) {
+            return role.trim();
+        }
+        if (isSuperAdmin()) {
+            return RoleName.SUPER_ADMIN.name();
+        }
+        if (isAdmin()) {
+            return RoleName.ADMIN.name();
+        }
+        return RoleName.USER.name();
     }
 }

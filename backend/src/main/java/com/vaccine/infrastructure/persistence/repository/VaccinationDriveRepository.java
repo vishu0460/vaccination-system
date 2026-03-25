@@ -15,6 +15,7 @@ import java.util.List;
 public interface VaccinationDriveRepository extends JpaRepository<VaccinationDrive, Long>, JpaSpecificationExecutor<VaccinationDrive> {
     List<VaccinationDrive> findByStatusIn(List<Status> statuses);
     List<VaccinationDrive> findByCenterId(Long centerId);
+    List<VaccinationDrive> findByAdminId(Long adminId);
     long countByStatusIn(List<Status> statuses);
 
     @Query("""

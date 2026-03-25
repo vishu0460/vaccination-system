@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import api, { certificateAPI, newsAPI, publicAPI, unwrapApiData } from "../api/client";
 import ModalPopup from "../components/ModalPopup";
 import Seo from "../components/Seo";
@@ -42,6 +42,8 @@ export default function UserBookingsPage() {
   const [activeTab, setActiveTab] = useState("bookings");
   const [forms, setForms] = useState({ slotId: "" });
   const [bookingToCancel, setBookingToCancel] = useState(null);
+  const dataRequestInFlightRef = useRef(false);
+  const slotsRequestInFlightRef = useRef(false);
 
   const formatAppointmentTime = (value) => {
     if (!value) {
@@ -54,16 +56,23 @@ export default function UserBookingsPage() {
       : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (options = {}) => {
+    const { silent = false } = options;
+    if (dataRequestInFlightRef.current) {
+      return;
+    }
+    dataRequestInFlightRef.current = true;
+    if (!silent) {
+      setLoading(true);
+    }
     try {
-      const [bookingsRes, notificationsRes, profileRes, newsRes] = await Promise.all([
+      const [bookingsRes, notificationsRes, profileRes, newsRes, certificatesRes] = await Promise.all([
         api.get("/user/bookings"),
         api.get("/user/notifications"),
         api.get("/profile"),
-        newsAPI.getAllNews(0, 10)
+        newsAPI.getAllNews(0, 10),
+        certificateAPI.getMyCertificates()
       ]);
-      const certificatesRes = await certificateAPI.getMyCertificates();
 
       setBookings(unwrapApiData(bookingsRes) || []);
       setProfile(unwrapApiData(profileRes) || null);
@@ -89,6 +98,22 @@ export default function UserBookingsPage() {
         });
       setNotifications(mergedNotifications);
 
+    } catch (error) {
+      setMsg("Unable to load your data. Please try again.");
+    } finally {
+      dataRequestInFlightRef.current = false;
+      if (!silent) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  const loadAvailableSlots = useCallback(async () => {
+    if (slotsRequestInFlightRef.current) {
+      return;
+    }
+    slotsRequestInFlightRef.current = true;
+    try {
       const slotResponses = await Promise.all(publicDrives.map((drive) => publicAPI.getDriveSlots(drive.id)));
       const slots = [];
 
@@ -108,10 +133,8 @@ export default function UserBookingsPage() {
       });
 
       setAvailableSlots(slots.filter((slot) => slot.capacity > (slot.bookedCount || 0)));
-    } catch (error) {
-      setMsg("Unable to load your data. Please try again.");
     } finally {
-      setLoading(false);
+      slotsRequestInFlightRef.current = false;
     }
   }, [publicDrives]);
 
@@ -121,10 +144,16 @@ export default function UserBookingsPage() {
 
   useEffect(() => {
     const unsubscribe = subscribeToDataUpdates(() => {
-      loadData();
+      loadData({ silent: true });
     });
     return unsubscribe;
   }, [loadData]);
+
+  useEffect(() => {
+    if (activeTab === "slots" || activeTab === "book") {
+      loadAvailableSlots();
+    }
+  }, [activeTab, loadAvailableSlots]);
 
   const buildBookingPayload = (slotId) => {
     const selectedSlot = availableSlots.find((slot) => slot.id === slotId);
@@ -148,7 +177,7 @@ export default function UserBookingsPage() {
       setForms({ slotId: "" });
       broadcastDataUpdated({ source: "user-bookings-book" });
       await refreshCatalog();
-      await loadData();
+      await Promise.all([loadData({ silent: true }), loadAvailableSlots()]);
       setActiveTab("bookings");
     } catch (error) {
       setMsg(error.response?.data?.message || "Failed to book slot. Please try again.");
@@ -162,7 +191,7 @@ export default function UserBookingsPage() {
       setBookingToCancel(null);
       broadcastDataUpdated({ source: "user-bookings-cancel" });
       await refreshCatalog();
-      await loadData();
+      await Promise.all([loadData({ silent: true }), loadAvailableSlots()]);
     } catch (error) {
       setMsg(error.response?.data?.message || "Failed to cancel booking.");
     }

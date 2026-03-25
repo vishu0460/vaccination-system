@@ -43,6 +43,9 @@ public class Contact {
     @Column(name = "status", nullable = false)
     private ContactStatus status;
 
+    @Column(name = "admin_id")
+    private Long adminId;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.validation.annotation.Validated;
@@ -55,30 +56,56 @@ public class FeedbackController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAllFeedback() {
+    public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getAllFeedback(Authentication authentication) {
         log.info("Get all feedback");
-        List<Map<String, Object>> feedbackList = feedbackService.getAllFeedback();
+        List<Map<String, Object>> feedbackList = feedbackService.getAllFeedback(resolveAdminScope(authentication));
         return ResponseEntity.ok(ApiResponse.success(feedbackList));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getFeedbackById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getFeedbackById(@PathVariable Long id, Authentication authentication) {
         log.info("Get feedback by ID: {}", id);
         Map<String, Object> feedback = feedbackService.getFeedbackById(id);
+        ensureFeedbackAccess(feedback, authentication);
         return ResponseEntity.ok(ApiResponse.success(feedback));
     }
 
     @PatchMapping("/{id}/respond")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> respondToFeedback(@PathVariable Long id,
+                                                          Authentication authentication,
                                                           @RequestBody Map<String, String> request) {
         log.info("Respond to feedback ID: {}", id);
         String responseText = request.get("response");
         if (responseText == null || responseText.trim().isEmpty()) {
             throw new AppException("Response text is required");
         }
+        ensureFeedbackAccess(feedbackService.getFeedbackById(id), authentication);
         feedbackService.respondToFeedback(id, responseText.trim());
         return ResponseEntity.ok(ApiResponse.success(null, "Response sent successfully"));
+    }
+
+    private Long resolveAdminScope(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return null;
+        }
+        User currentUser = userRepository.findByEmail(authentication.getName())
+            .orElseThrow(() -> new AppException("User not found"));
+        if (currentUser.isAdmin() && !currentUser.isSuperAdmin()) {
+            return currentUser.getId();
+        }
+        return null;
+    }
+
+    private void ensureFeedbackAccess(Map<String, Object> feedback, Authentication authentication) {
+        Long adminScope = resolveAdminScope(authentication);
+        if (adminScope == null) {
+            return;
+        }
+        Object adminId = feedback.get("adminId");
+        if (!(adminId instanceof Number numberValue) || numberValue.longValue() != adminScope) {
+            throw new AppException("You can only access your own feedback");
+        }
     }
 }
