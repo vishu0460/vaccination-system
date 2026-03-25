@@ -3,9 +3,27 @@ package com.vaccine.common.dto;
 import jakarta.validation.constraints.*;
 
 public record RegisterRequest(
-    @NotBlank @Email String email,
-    @NotBlank String fullName,
-    @NotBlank @Size(min = 8) String password,
-    @NotNull @Min(0) Integer age,
-    String phoneNumber
+    @NotBlank(message = "Email is required")
+    @Email(message = "Enter a valid email address")
+    String email,
+
+    @NotBlank(message = "Full name is required")
+    @Size(min = 3, max = 80, message = "Full name must be between 3 and 80 characters")
+    @Pattern(regexp = "^[A-Za-z][A-Za-z .'-]{2,79}$", message = "Full name contains invalid characters")
+    String fullName,
+
+    @NotBlank(message = "Phone number is required")
+    @Pattern(regexp = "^\\+?[0-9]{10,15}$", message = "Enter a valid phone number")
+    String phoneNumber,
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 8, message = "Password must be at least 8 characters")
+    @Pattern(
+        regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z\\d]).{8,}$",
+        message = "Password must include uppercase, lowercase, number, and special character"
+    )
+    String password,
+
+    @Min(value = 1, message = "Age must be at least 1")
+    Integer age
 ) {}

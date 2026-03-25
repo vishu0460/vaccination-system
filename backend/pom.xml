@@ -195,6 +195,9 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <jvmArguments>--enable-native-access=ALL-UNNAMED</jvmArguments>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
@@ -208,6 +211,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
                 <configuration>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                     <includes>
                         <include>**/*Test.java</include>
                     </includes>
@@ -215,4 +219,56 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>windows-local-run-cleanup</id>
+            <activation>
+                <os>
+                    <family>Windows</family>
+                </os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>cleanup-stale-local-backend</id>
+                                <phase>test-compile</phase>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>powershell</executable>
+                                    <arguments>
+                                        <argument>-NoProfile</argument>
+                                        <argument>-ExecutionPolicy</argument>
+                                        <argument>Bypass</argument>
+                                        <argument>-Command</argument>
+                                        <argument>
+                                            $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                                            Where-Object {
+                                                $_.Name -eq 'java.exe' -and (
+                                                    $_.CommandLine -like '*com.vaccine.VaccinationApplication*' -or
+                                                    $_.CommandLine -like '*backend\\target\\classes*' -or
+                                                    $_.CommandLine -like '*vaccination-backend*'
+                                                )
+                                            };
+                                            foreach ($process in $processes) {
+                                                Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue;
+                                            };
+                                            Start-Sleep -Seconds 1
+                                        </argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

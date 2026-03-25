@@ -1,45 +1,69 @@
-export function setAuth(data) {
-  localStorage.setItem("accessToken", data.accessToken);
-  localStorage.setItem("refreshToken", data.refreshToken);
-  localStorage.setItem("role", data.role);
-  localStorage.setItem("email", data.email);
+const AUTH_STORAGE_KEYS = ["accessToken", "refreshToken", "role", "email", "name"];
+
+const getStorageValue = (key) =>
+  window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+
+const removeStoredAuth = () => {
+  AUTH_STORAGE_KEYS.forEach((key) => {
+    window.localStorage.removeItem(key);
+    window.sessionStorage.removeItem(key);
+  });
+};
+
+const notifyAuthChanged = () => {
+  window.dispatchEvent(new Event("vaxzone:auth-changed"));
+};
+
+export function setAuth(data, options = {}) {
+  const { remember = true } = options;
+  const storage = remember ? window.localStorage : window.sessionStorage;
+
+  removeStoredAuth();
+
+  storage.setItem("accessToken", data.accessToken);
+  storage.setItem("refreshToken", data.refreshToken);
+  storage.setItem("role", data.role);
+  storage.setItem("email", data.email);
   if (data.name) {
-    localStorage.setItem("name", data.name);
+    storage.setItem("name", data.name);
   }
+
+  notifyAuthChanged();
 }
 
 export function clearAuth() {
-  localStorage.removeItem("accessToken");
-  localStorage.removeItem("refreshToken");
-  localStorage.removeItem("role");
-  localStorage.removeItem("email");
-  localStorage.removeItem("name");
+  removeStoredAuth();
+  notifyAuthChanged();
 }
 
 export function getAccessToken() {
-  return localStorage.getItem("accessToken");
+  return getStorageValue("accessToken");
+}
+
+export function getRefreshToken() {
+  return getStorageValue("refreshToken");
 }
 
 export function getRole() {
-  return localStorage.getItem("role");
+  return getStorageValue("role");
 }
 
 export function getName() {
-  return localStorage.getItem("name");
+  return getStorageValue("name");
 }
 
 export function getEmail() {
-  return localStorage.getItem("email");
+  return getStorageValue("email");
 }
 
 export function isAuthenticated() {
-  return !!getAccessToken();
+  return Boolean(getAccessToken());
 }
 
-// React hook for auth (for use in functional components)
 export function useAuth() {
   return {
     accessToken: getAccessToken(),
+    refreshToken: getRefreshToken(),
     role: getRole(),
     name: getName(),
     email: getEmail(),

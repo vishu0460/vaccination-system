@@ -41,6 +41,9 @@ class BookingServiceTest {
     @Mock
     private INotificationService notificationService;
 
+    @Mock
+    private AuditService auditService;
+
     @InjectMocks
     private BookingService bookingService;
 

@@ -63,23 +63,20 @@ class AuthControllerTest {
         RegisterRequest req = new RegisterRequest(
                 "test@example.com",
                 "Test User",
-                "Password123",
-                25,
-                "+1234567890"
+                "+1234567890",
+                "Password123!",
+                25
         );
 
-        AuthResponse mockAuthResponse = new AuthResponse(
-                "mockAccessToken", "mockRefreshToken", "Bearer", 3600L, "test@example.com", "USER"
-        );
-        when(authService.registerAndLogin(any(), any()))
-                .thenReturn(mockAuthResponse);
+        when(authService.register(any(), any()))
+                .thenReturn(new ApiMessage("Registration successful. You can log in now."));
 
         mockMvc.perform(post("/api/auth/register")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.accessToken").value("mockAccessToken"));
+                .andExpect(jsonPath("$.message").value("Registration successful. You can log in now."));
     }
 
     // ✅ LOGIN SUCCESS

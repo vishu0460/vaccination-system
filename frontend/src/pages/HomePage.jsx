@@ -1,76 +1,29 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { publicAPI, unwrapApiData } from "../api/client";
+import { Link, useNavigate } from "react-router-dom";
+import NearbyCentersSection from "../components/NearbyCentersSection";
 import Seo from "../components/Seo";
+import SmartSearch from "../components/SmartSearch";
+import { usePublicCatalog } from "../context/PublicCatalogContext";
+
+const mapDrive = (drive) => ({
+  ...drive,
+  name: drive.title,
+  date: drive.driveDate,
+  centerName: drive.center?.name || drive.centerName,
+  availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
+  totalSlots: drive.totalSlots || 0,
+  startTime: drive.startTime || "N/A",
+  endTime: drive.endTime || "N/A"
+});
 
 export default function HomePage() {
-  const [stats, setStats] = useState({ centers: 0, drives: 0, bookings: 0 });
+  const navigate = useNavigate();
   const [recentDrives, setRecentDrives] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const fetchData = async () => {
-    try {
-      const [statsRes, drivesRes] = await Promise.all([
-        publicAPI.getSummary(),
-        publicAPI.getDrives()
-      ]);
-
-      const summaryData = unwrapApiData(statsRes) || {};
-      setStats({
-        centers: summaryData.totalCenters || summaryData.centersCount || 0,
-        drives: summaryData.activeDrives || summaryData.drivesCount || 0,
-        bookings: summaryData.availableSlots || 0
-      });
-
-      const drivesPayload = unwrapApiData(drivesRes) || {};
-      const drivesData = Array.isArray(drivesPayload)
-        ? drivesPayload
-        : (drivesPayload.drives || []);
-
-      const mappedDrives = drivesData.map((drive) => ({
-        ...drive,
-        name: drive.title,
-        date: drive.driveDate,
-        centerName: drive.center?.name || drive.centerName,
-        availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
-        totalSlots: drive.totalSlots || 0,
-        startTime: drive.startTime || "N/A",
-        endTime: drive.endTime || "N/A"
-      }));
-
-      setRecentDrives(mappedDrives.slice(0, 6));
-      setError(null);
-    } catch (requestError) {
-      console.error("Error fetching home data:", requestError);
-      setError(requestError.message || "Failed to load data. Please check your connection.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { drives, summary, loading, error, refreshCatalog } = usePublicCatalog();
 
   useEffect(() => {
-    fetchData();
-
-    const handleRefresh = () => fetchData();
-    const handleVisibilityRefresh = () => {
-      if (document.visibilityState === "visible") {
-        fetchData();
-      }
-    };
-
-    const intervalId = window.setInterval(fetchData, 30000);
-    window.addEventListener("focus", handleRefresh);
-    window.addEventListener("vaxzone:data-updated", handleRefresh);
-    document.addEventListener("visibilitychange", handleVisibilityRefresh);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleRefresh);
-      window.removeEventListener("vaxzone:data-updated", handleRefresh);
-      document.removeEventListener("visibilitychange", handleVisibilityRefresh);
-    };
-  }, []);
+    setRecentDrives(drives.map(mapDrive).slice(0, 6));
+  }, [drives]);
 
   return (
     <>
@@ -93,74 +46,62 @@ export default function HomePage() {
                   VaxZone is your complete vaccination management platform.
                   Book appointments, track your status, and get real-time notifications all in one place.
                 </p>
-                <div className="d-flex gap-3 flex-wrap mb-5">
-                  <Link to="/register" className="btn btn-primary btn-lg">
-                    <i className="bi bi-person-plus me-2"></i>Get Started Free
-                  </Link>
-                  <Link to="/drives" className="btn btn-outline-primary btn-lg">
+                <div className="d-flex gap-3 flex-wrap mb-4">
+                  <button type="button" className="btn btn-primary btn-lg" onClick={() => navigate("/drives")}>
                     <i className="bi bi-calendar-check me-2"></i>Browse Drives
+                  </button>
+                  <button type="button" className="btn btn-outline-primary btn-lg" onClick={() => navigate("/centers")}>
+                    <i className="bi bi-geo-alt me-2"></i>Find Centers
+                  </button>
+                  <Link to="/register" className="btn btn-success btn-lg">
+                    <i className="bi bi-person-plus me-2"></i>Get Started Free
                   </Link>
                 </div>
 
-                <div className="d-flex gap-4 flex-wrap">
-                  <div className="stats-card" style={{ minWidth: "120px" }}>
-                    <div className="stat-number">{stats.centers || 0}</div>
+                <div className="d-flex flex-wrap hero-stats">
+                  <div className="stats-card">
+                    <div className="stat-number">{summary.totalCenters || 0}</div>
                     <div className="stat-label">Centers</div>
                   </div>
-                  <div className="stats-card bg-success" style={{ minWidth: "120px" }}>
-                    <div className="stat-number">{stats.drives}</div>
+                  <div className="stats-card stats-card--success">
+                    <div className="stat-number">{summary.activeDrives}</div>
                     <div className="stat-label">Active Drives</div>
                   </div>
-                  <div className="stats-card bg-info" style={{ minWidth: "120px" }}>
-                    <div className="stat-number">{stats.bookings?.toLocaleString() || 0}</div>
+                  <div className="stats-card stats-card--info">
+                    <div className="stat-number">{summary.availableSlots?.toLocaleString() || 0}</div>
                     <div className="stat-label">Available Slots</div>
                   </div>
                 </div>
               </div>
             </div>
             <div className="col-lg-5 text-center mt-5 mt-lg-0">
-              <div className="position-relative fade-in stagger-2">
-                <div className="position-absolute" style={{ top: "-20px", right: "20px", animation: "float 6s ease-in-out infinite" }}>
-                  <div className="card shadow-lg p-3" style={{ width: "160px" }}>
-                    <div className="d-flex align-items-center gap-2">
-                      <div className="bg-success rounded-circle p-2">
-                        <i className="bi bi-check-lg text-white"></i>
-                      </div>
-                      <div>
-                        <small className="text-muted d-block">Status</small>
-                        <strong>Verified</strong>
-                      </div>
+              <div className="hero-visual fade-in stagger-2">
+                <div className="hero-floating-card hero-floating-card--top">
+                  <div className="d-flex align-items-center gap-2">
+                    <div className="hero-floating-card__icon is-success">
+                      <i className="bi bi-check-lg text-white"></i>
+                    </div>
+                    <div>
+                      <small className="text-muted d-block">Status</small>
+                      <strong>Verified</strong>
                     </div>
                   </div>
                 </div>
-                <div className="position-absolute" style={{ bottom: "20px", left: "-10px", animation: "float 8s ease-in-out infinite reverse" }}>
-                  <div className="card shadow-lg p-3" style={{ width: "150px" }}>
-                    <div className="d-flex align-items-center gap-2">
-                      <div className="bg-primary rounded-circle p-2">
-                        <i className="bi bi-calendar-check text-white"></i>
-                      </div>
-                      <div>
-                        <small className="text-muted d-block">Next Slot</small>
-                        <strong>Tomorrow</strong>
-                      </div>
+                <div className="hero-floating-card hero-floating-card--bottom">
+                  <div className="d-flex align-items-center gap-2">
+                    <div className="hero-floating-card__icon">
+                      <i className="bi bi-calendar-check text-white"></i>
+                    </div>
+                    <div>
+                      <small className="text-muted d-block">Next Slot</small>
+                      <strong>Tomorrow</strong>
                     </div>
                   </div>
                 </div>
 
                 <div className="position-relative d-inline-block">
-                  <div
-                    style={{
-                      width: "300px",
-                      height: "300px",
-                      background: "linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)",
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      boxShadow: "0 25px 50px -12px rgba(14, 165, 233, 0.4)"
-                    }}
-                  >
-                    <i className="bi bi-shield-check text-white" style={{ fontSize: "120px" }}></i>
+                  <div className="hero-orb">
+                    <i className="bi bi-shield-check hero-orb-icon"></i>
                   </div>
                 </div>
               </div>
@@ -234,6 +175,9 @@ export default function HomePage() {
         </div>
       </section>
 
+      <SmartSearch />
+      <NearbyCentersSection />
+
       <section className="py-5 bg-light">
         <div className="container">
           <div className="d-flex justify-content-between align-items-center mb-4">
@@ -254,11 +198,11 @@ export default function HomePage() {
             </div>
           ) : error ? (
             <div className="empty-state text-center py-5">
-              <i className="bi bi-wifi-off text-danger" style={{ fontSize: "4rem" }}></i>
+              <i className="bi bi-wifi-off text-danger"></i>
               <h5 className="mt-3">Unable to Load Data</h5>
               <p className="text-muted">{error}</p>
-              <button className="btn btn-primary" onClick={fetchData}>
-                Retry
+              <button className="btn btn-primary" onClick={refreshCatalog} disabled={loading}>
+                {loading ? "Retrying..." : "Retry"}
               </button>
             </div>
           ) : recentDrives.length > 0 ? (
@@ -267,7 +211,7 @@ export default function HomePage() {
                 <div key={drive.id} className={`col-md-6 col-lg-4 fade-in stagger-${index + 1}`}>
                   <div className="drive-card h-100">
                     <div className="card-header d-flex justify-content-between align-items-center">
-                      <h5 className="mb-0" style={{ fontSize: "1rem" }}>{drive.name}</h5>
+                      <h5 className="mb-0 fs-6">{drive.name}</h5>
                       {drive.availableSlots > 0 ? (
                         <span className="badge bg-white text-primary">{drive.availableSlots} left</span>
                       ) : (
@@ -288,8 +232,7 @@ export default function HomePage() {
                         <span>{drive.centerName}</span>
                       </div>
                       <div className="info-item">
-                        <i className="bi bi-person-badge"></i>
-                        <span>Age: {drive.minAge}-{drive.maxAge} years</span>
+                        <span className="drive-age-text">Age: {drive.minAge}-{drive.maxAge} years</span>
                       </div>
 
                       <div className="mt-3">
@@ -347,18 +290,7 @@ export default function HomePage() {
             ].map(([step, title, description]) => (
               <div className="col-md-4 text-center" key={step}>
                 <div className="mb-4">
-                  <div
-                    style={{
-                      width: "80px",
-                      height: "80px",
-                      margin: "0 auto",
-                      background: "linear-gradient(135deg, var(--primary-light) 0%, #e0f2fe 100%)",
-                      borderRadius: "50%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                  >
+                  <div className="step-circle">
                     <span className="h3 mb-0 text-primary fw-bold">{step}</span>
                   </div>
                 </div>
@@ -370,24 +302,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section
-        className="py-5"
-        style={{
-          background: "linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%)",
-          position: "relative",
-          overflow: "hidden"
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "url(\"data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E\")"
-          }}
-        ></div>
+      <section className="cta-banner">
         <div className="container text-center position-relative">
           <h2 className="fw-bold mb-3 text-white">Ready to Get Started?</h2>
           <p className="mb-4 fs-5 text-white-50">Join thousands of people who have already booked their vaccination slots</p>
@@ -395,9 +310,9 @@ export default function HomePage() {
             <Link to="/register" className="btn btn-light btn-lg">
               <i className="bi bi-person-plus me-2"></i>Register Now
             </Link>
-            <Link to="/centers" className="btn btn-outline-light btn-lg">
+            <button type="button" className="btn btn-outline-light btn-lg" onClick={() => navigate("/centers")}>
               <i className="bi bi-geo-alt me-2"></i>Find Centers
-            </Link>
+            </button>
           </div>
         </div>
       </section>

@@ -74,8 +74,13 @@ public class AuthService {
         this.phoneVerificationService = phoneVerificationService;
     }
 
-    public AuthResponse registerAndLogin(RegisterRequest req, HttpServletRequest request) {
-        if (userRepository.existsByEmail(req.email().toLowerCase())) {
+    public ApiMessage register(RegisterRequest req, HttpServletRequest request) {
+        String normalizedEmail = normalizeEmail(req.email());
+        String normalizedName = normalizeFullName(req.fullName());
+        String normalizedPhone = normalizePhone(req.phoneNumber());
+        int normalizedAge = req.age() == null ? 18 : req.age();
+
+        if (userRepository.existsAnyByEmail(normalizedEmail)) {
             throw new AppException("Email already registered");
         }
 
@@ -85,11 +90,11 @@ public class AuthService {
         boolean shouldAutoVerify = autoVerifyEmail;
 
         User user = User.builder()
-                .email(req.email().toLowerCase())
-                .fullName(req.fullName())
+                .email(normalizedEmail)
+                .fullName(normalizedName)
                 .password(passwordEncoder.encode(req.password()))
-                .phoneNumber(req.phoneNumber())
-                .age(req.age())
+                .phoneNumber(normalizedPhone)
+                .age(normalizedAge)
                 .enabled(true)
                 .emailVerified(shouldAutoVerify)
                 .phoneVerified(false)
@@ -113,11 +118,13 @@ public class AuthService {
             );
         }
 
-        auditService.log(user.getEmail(),"REGISTER","AUTH","User registered",request);
+        auditService.logActionAs(user.getEmail(), "REGISTER", "USER", user.getId(), "User registered", request);
 
-        // Auto-login after registration (since password known and email verified)
-        LoginRequest loginReq = new LoginRequest(req.email().toLowerCase(), req.password());
-        return login(loginReq, request);
+        if (shouldAutoVerify) {
+            return new ApiMessage("Registration successful. You can log in now.");
+        }
+
+        return new ApiMessage("Registration successful. Please verify your email before logging in.");
     }
 
     public AuthResponse login(LoginRequest req, HttpServletRequest request) {
@@ -177,7 +184,7 @@ public class AuthService {
         String accessToken = jwtService.createAccessToken(user.getEmail(), Map.of("role", role));
         String refreshToken = jwtService.createRefreshToken(user.getEmail());
 
-        auditService.log(user.getEmail(),"LOGIN_SUCCESS","AUTH","User logged in",request);
+        auditService.logActionAs(user.getEmail(), "LOGIN_SUCCESS", "AUTH", user.getId(), "User logged in", request);
 
         return new AuthResponse(
                 accessToken,
@@ -302,7 +309,7 @@ public class AuthService {
         String accessToken = jwtService.createAccessToken(user.getEmail(), Map.of("role", role));
         String refreshToken = jwtService.createRefreshToken(user.getEmail());
 
-        auditService.log(user.getEmail(), "2FA_LOGIN", "AUTH", "2FA verified", request);
+        auditService.logActionAs(user.getEmail(), "2FA_LOGIN", "AUTH", user.getId(), "2FA verified", request);
 
         return new AuthResponse(
                 accessToken,
@@ -352,5 +359,17 @@ public class AuthService {
                 .map(RoleName::name)
                 .findFirst()
                 .orElse("USER");
+    }
+
+    private String normalizeEmail(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
+    }
+
+    private String normalizeFullName(String fullName) {
+        return fullName == null ? "" : fullName.trim().replaceAll("\\s{2,}", " ");
+    }
+
+    private String normalizePhone(String phoneNumber) {
+        return phoneNumber == null ? "" : phoneNumber.replaceAll("\\s+", "");
     }
 }

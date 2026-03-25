@@ -2,14 +2,15 @@ package com.vaccine.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "slots")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -44,8 +45,18 @@ public class Slot {
     @Column(nullable = false)
     private LocalTime endTime;
 
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by", length = 120)
+    private String deletedBy;
+
     @PrePersist
     protected void onCreate() {
         bookedCount = 0;
+    }
+
+    public boolean isDeleted() {
+        return deletedAt != null;
     }
 }

@@ -1,9 +1,41 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Modal, Spinner } from "react-bootstrap";
-import { userAPI, unwrapApiData } from "../api/client";
+import { notificationAPI, unwrapApiData } from "../api/client";
 import { clearAuth, getRole, isAuthenticated } from "../utils/auth";
 import ThemeToggle from "./ThemeToggle";
+
+const REPLY_NOTIFICATION_TYPES = new Set(["CONTACT_REPLY", "FEEDBACK_REPLY"]);
+
+const getNotificationBody = (notification) => {
+  if (!notification) {
+    return {
+      emptyLabel: "No notifications yet.",
+      messageLabel: "Details",
+      messageText: "No details available",
+      replyLabel: null,
+      replyText: null
+    };
+  }
+
+  if (REPLY_NOTIFICATION_TYPES.has(notification.type)) {
+    return {
+      emptyLabel: "No notifications yet.",
+      messageLabel: "Your message",
+      messageText: notification.message || "No message",
+      replyLabel: "Reply",
+      replyText: notification.reply || "No reply"
+    };
+  }
+
+  return {
+    emptyLabel: "No notifications yet.",
+    messageLabel: notification.type === "NEWS" ? "Announcement" : "Details",
+    messageText: notification.message || "No details available",
+    replyLabel: null,
+    replyText: null
+  };
+};
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -29,7 +61,11 @@ export default function Navbar() {
     };
 
     window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("vaxzone:auth-changed", checkAuth);
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("vaxzone:auth-changed", checkAuth);
+    };
   }, [location]);
 
   useEffect(() => {
@@ -38,26 +74,57 @@ export default function Navbar() {
       return;
     }
 
-    loadNotifications();
+    loadNotifications({ includeList: true });
+    const pollId = window.setInterval(() => {
+      loadNotifications();
+    }, 30000);
 
     const handleDataUpdated = () => {
-      loadNotifications();
+      loadNotifications({ includeList: true });
     };
 
     window.addEventListener("vaxzone:data-updated", handleDataUpdated);
-    return () => window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
+    return () => {
+      window.clearInterval(pollId);
+      window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
+    };
   }, [isLoggedIn, role]);
 
-  const loadNotifications = async () => {
+  const loadNotifications = async ({ includeList = false } = {}) => {
     try {
-      setLoadingNotifications(true);
-      const response = await userAPI.getNotifications();
-      setNotifications(unwrapApiData(response) || []);
+      if (includeList) {
+        setLoadingNotifications(true);
+      }
+
+      const unreadCountResponse = await notificationAPI.getUnreadCount();
+      const unreadCount = unwrapApiData(unreadCountResponse)?.unreadCount ?? 0;
+
+      if (includeList) {
+        const response = await notificationAPI.getNotifications();
+        const nextNotifications = unwrapApiData(response) || [];
+        setNotifications(nextNotifications);
+        if (unreadCount === 0) {
+          setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+        }
+        return nextNotifications;
+      } else if (unreadCount > 0) {
+        const response = await notificationAPI.getNotifications();
+        const nextNotifications = unwrapApiData(response) || [];
+        setNotifications(nextNotifications);
+        return nextNotifications;
+      } else {
+        setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+        return [];
+      }
     } catch (error) {
-      console.error("Failed to load notifications", error);
-      setNotifications([]);
+      if (includeList) {
+        setNotifications([]);
+      }
+      return [];
     } finally {
-      setLoadingNotifications(false);
+      if (includeList) {
+        setLoadingNotifications(false);
+      }
     }
   };
 
@@ -71,27 +138,28 @@ export default function Navbar() {
 
   const openNotifications = async () => {
     setShowNotifications(true);
-    await loadNotifications();
+    const latestNotifications = await loadNotifications({ includeList: true });
 
-    const hasUnread = notifications.some((notification) => !notification.read);
+    const hasUnread = latestNotifications.some((notification) => !notification.read);
     if (hasUnread) {
       try {
-        await userAPI.markNotificationsRead();
+        await notificationAPI.markAllRead();
         setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
       } catch (error) {
-        console.error("Failed to mark notifications as read", error);
+        // Keep the modal usable even if the read-state sync fails.
       }
     }
   };
 
   const isActive = (path) => location.pathname === path;
   const unreadCount = notifications.filter((notification) => !notification.read).length;
+  const brandGradientId = "navShieldGrad";
 
   return (
     <>
-      <nav className={`navbar navbar-expand-lg navbar-light bg-white ${scrolled ? "shadow-sm" : ""}`}>
+      <nav className={`navbar navbar-expand-lg app-navbar ${scrolled ? "scrolled shadow-sm" : ""}`}>
         <div className="container">
-          <Link className="navbar-brand d-flex align-items-center" to="/">
+          <Link className="navbar-brand app-brand d-flex align-items-center" to="/">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="32"
@@ -101,15 +169,15 @@ export default function Navbar() {
               className="me-2"
             >
               <defs>
-                <linearGradient id="navShieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" style={{ stopColor: "#1E88E5" }} />
-                  <stop offset="100%" style={{ stopColor: "#1565C0" }} />
+                <linearGradient id={brandGradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="var(--primary-color)" />
+                  <stop offset="100%" stopColor="var(--primary-strong)" />
                 </linearGradient>
               </defs>
 
               <path
                 d="M20 4 L36 12 L36 24 C36 34 28 40 20 42 C12 40 4 34 4 24 L4 12 Z"
-                fill="url(#navShieldGrad)"
+                fill={`url(#${brandGradientId})`}
               />
 
               <path
@@ -120,7 +188,7 @@ export default function Navbar() {
 
               <path
                 d="M16 20 L14 28 M20 18 L24 26 M24 20 L26 28"
-                stroke="#43A047"
+                stroke="var(--secondary-color)"
                 strokeWidth="2"
                 strokeLinecap="round"
               />
@@ -134,16 +202,14 @@ export default function Navbar() {
               />
             </svg>
 
-            <span className="fw-bold" style={{ color: "#1E88E5", fontSize: "1.4rem" }}>
-              VaxZone
-            </span>
+            <span className="fw-bold app-brand-text">VaxZone</span>
           </Link>
 
           <div className="d-flex align-items-center gap-2">
             {isLoggedIn && role !== "ADMIN" && role !== "SUPER_ADMIN" && (
               <button
                 type="button"
-                className="btn btn-outline-primary position-relative"
+                className="btn btn-outline-primary nav-icon-button position-relative"
                 onClick={openNotifications}
                 aria-label="Open notifications"
               >
@@ -197,9 +263,9 @@ export default function Navbar() {
               </li>
 
               <li className="nav-item dropdown">
-                <a className="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                <button type="button" className="nav-link dropdown-toggle btn btn-link text-decoration-none" data-bs-toggle="dropdown">
                   More
-                </a>
+                </button>
 
                 <ul className="dropdown-menu">
                   <li><Link className="dropdown-item" to="/about" onClick={() => setMenuOpen(false)}>About</Link></li>
@@ -213,9 +279,9 @@ export default function Navbar() {
 
               {isLoggedIn ? (
                 <li className="nav-item dropdown ms-lg-3">
-                  <a className="nav-link dropdown-toggle btn btn-primary text-white px-3" href="#" role="button" data-bs-toggle="dropdown">
+                  <button type="button" className="btn btn-primary nav-account-trigger" data-bs-toggle="dropdown">
                     My Account
-                  </a>
+                  </button>
 
                   <ul className="dropdown-menu dropdown-menu-end">
                     {role === "ADMIN" || role === "SUPER_ADMIN" ? (
@@ -241,6 +307,11 @@ export default function Navbar() {
                         <li>
                           <Link className="dropdown-item" to="/profile" onClick={() => setMenuOpen(false)}>
                             Profile
+                          </Link>
+                        </li>
+                        <li>
+                          <Link className="dropdown-item" to="/my-inquiries" onClick={() => setMenuOpen(false)}>
+                            Contact History
                           </Link>
                         </li>
                       </>
@@ -274,41 +345,51 @@ export default function Navbar() {
       </nav>
 
       <Modal show={showNotifications} onHide={() => setShowNotifications(false)} centered>
-        <Modal.Header closeButton style={{ background: "#f8fafc" }}>
+        <Modal.Header closeButton>
           <Modal.Title>Notifications</Modal.Title>
         </Modal.Header>
-        <Modal.Body style={{ maxHeight: "60vh", overflowY: "auto" }}>
+        <Modal.Body className="notification-modal-body">
           {loadingNotifications ? (
             <div className="text-center py-4">
               <Spinner animation="border" variant="primary" />
             </div>
           ) : notifications.length === 0 ? (
-            <div className="text-center text-muted py-4">No replies yet.</div>
+            <div className="text-center text-muted py-4">No notifications yet.</div>
           ) : (
             <div className="d-grid gap-3">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className="border rounded-4 p-3"
-                  style={{ background: notification.read ? "#ffffff" : "#f0f9ff", borderColor: "#cbd5e1" }}
-                >
-                  <div className="d-flex justify-content-between align-items-start gap-3">
-                    <div>
-                      <div className="fw-semibold">{notification.title || `${notification.type} reply`}</div>
-                      <div className="small text-muted mb-2">{notification.type} • {notification.status}</div>
+              {notifications.map((notification) => {
+                const body = getNotificationBody(notification);
+
+                return (
+                  <div
+                    key={notification.id}
+                    className={`notification-item border rounded-4 p-3 ${notification.read ? "" : "is-unread"}`}
+                  >
+                    <div className="d-flex justify-content-between align-items-start gap-3">
+                      <div>
+                        <div className="fw-semibold">{notification.title || `${notification.type} notification`}</div>
+                        <div className="small text-muted mb-2">{notification.type} {"\u2022"} {notification.status}</div>
+                        {notification.scheduledTime && (
+                          <div className="small text-muted mb-2">
+                            Scheduled: {new Date(notification.scheduledTime).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                      <small className="text-muted">
+                        {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}
+                      </small>
                     </div>
-                    <small className="text-muted">
-                      {notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}
-                    </small>
+                    <div className="small mb-2">
+                      <strong>{body.messageLabel}:</strong> {body.messageText}
+                    </div>
+                    {body.replyLabel ? (
+                      <div className="small">
+                        <strong>{body.replyLabel}:</strong> {body.replyText}
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="small mb-2">
-                    <strong>Your message:</strong> {notification.message || "No message"}
-                  </div>
-                  <div className="small">
-                    <strong>Admin reply:</strong> {notification.reply || "No reply"}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Modal.Body>

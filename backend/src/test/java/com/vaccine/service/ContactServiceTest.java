@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -126,9 +127,10 @@ class ContactServiceTest {
 
     @Test
     void getUserInquiries_Success() {
-        when(contactRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(testContact));
+        when(contactRepository.findByUser_IdOrderByCreatedAtDesc(1L)).thenReturn(List.of(testContact));
+        when(contactRepository.findByUserIsNullAndEmailIgnoreCaseOrderByCreatedAtDesc("test@example.com")).thenReturn(List.of());
 
-        List<Map<String, Object>> result = contactService.getUserInquiries(1L);
+        List<Map<String, Object>> result = contactService.getUserInquiries(testUser);
 
         assertEquals(1, result.size());
         assertEquals("test@example.com", result.get(0).get("email"));
@@ -280,9 +282,10 @@ class ContactServiceTest {
 
     @Test
     void getUserInquiries_NoContacts_ReturnsEmptyList() {
-        when(contactRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+        when(contactRepository.findByUser_IdOrderByCreatedAtDesc(1L)).thenReturn(List.of());
+        when(contactRepository.findByUserIsNullAndEmailIgnoreCaseOrderByCreatedAtDesc("test@example.com")).thenReturn(List.of());
 
-        List<Map<String, Object>> result = contactService.getUserInquiries(1L);
+        List<Map<String, Object>> result = contactService.getUserInquiries(testUser);
 
         assertTrue(result.isEmpty());
     }
@@ -300,11 +303,38 @@ class ContactServiceTest {
         contact2.setMessage("Test Message");
         contact2.setCreatedAt(LocalDateTime.now());
         
-        when(contactRepository.findByUserIdOrderByCreatedAtDesc(1L)).thenReturn(List.of(testContact, contact2));
+        when(contactRepository.findByUser_IdOrderByCreatedAtDesc(1L)).thenReturn(List.of(testContact, contact2));
+        when(contactRepository.findByUserIsNullAndEmailIgnoreCaseOrderByCreatedAtDesc("test@example.com")).thenReturn(List.of());
 
-        List<Map<String, Object>> result = contactService.getUserInquiries(1L);
+        List<Map<String, Object>> result = contactService.getUserInquiries(testUser);
 
         assertEquals(2, result.size());
+    }
+
+    @Test
+    void getUserInquiries_IncludesLegacyEmailMatchedContacts() {
+        Contact legacyContact = new Contact();
+        legacyContact.setId(2L);
+        legacyContact.setUser(null);
+        legacyContact.setName("Test User");
+        legacyContact.setEmail("TEST@example.com");
+        legacyContact.setPhone("1234567890");
+        legacyContact.setStatus(ContactStatus.REPLIED);
+        legacyContact.setSubject("Legacy Subject");
+        legacyContact.setMessage("Legacy Message");
+        legacyContact.setResponse("Legacy reply");
+        legacyContact.setCreatedAt(LocalDateTime.now().plusMinutes(1));
+
+        when(contactRepository.findByUser_IdOrderByCreatedAtDesc(1L)).thenReturn(List.of(testContact));
+        when(contactRepository.findByUserIsNullAndEmailIgnoreCaseOrderByCreatedAtDesc("test@example.com")).thenReturn(List.of(legacyContact));
+        when(contactRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<Map<String, Object>> result = contactService.getUserInquiries(testUser);
+
+        assertEquals(2, result.size());
+        assertEquals(List.of(2L, 1L), result.stream().map(item -> (Long) item.get("id")).sorted(Comparator.reverseOrder()).toList());
+        assertEquals("Legacy reply", result.stream().filter(item -> Long.valueOf(2L).equals(item.get("id"))).findFirst().orElseThrow().get("adminReply"));
+        verify(contactRepository).saveAll(any());
     }
 
 

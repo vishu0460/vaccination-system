@@ -1,45 +1,62 @@
 package com.vaccine.core.service;
 
+import com.vaccine.common.exception.AppException;
+import com.vaccine.domain.DriveSubscription;
+import com.vaccine.domain.User;
+import com.vaccine.domain.VaccinationDrive;
+import com.vaccine.infrastructure.persistence.repository.DriveSubscriptionRepository;
+import com.vaccine.infrastructure.persistence.repository.UserRepository;
+import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional
 public class SlotNotificationService {
-    
-    private final Map<String, Set<Long>> userSubscriptions = new ConcurrentHashMap<>();
-    
+
+    private final DriveSubscriptionRepository driveSubscriptionRepository;
+    private final UserRepository userRepository;
+    private final VaccinationDriveRepository driveRepository;
+
     public void subscribe(String userEmail, Long driveId) {
-        userSubscriptions.computeIfAbsent(userEmail, k -> Collections.newSetFromMap(new ConcurrentHashMap<>())).add(driveId);
+        User user = userRepository.findByEmail(userEmail)
+            .orElseThrow(() -> new AppException("User not found"));
+        VaccinationDrive drive = driveRepository.findById(driveId)
+            .orElseThrow(() -> new AppException("Drive not found"));
+
+        if (!driveSubscriptionRepository.existsByUserEmailAndDriveId(userEmail, driveId)) {
+            driveSubscriptionRepository.save(DriveSubscription.builder()
+                .user(user)
+                .drive(drive)
+                .build());
+        }
+
         log.info("User {} subscribed to drive {}", userEmail, driveId);
     }
-    
+
     public void unsubscribe(String userEmail, Long driveId) {
-        Set<Long> subs = userSubscriptions.get(userEmail);
-        if (subs != null) {
-            subs.remove(driveId);
-            if (subs.isEmpty()) {
-                userSubscriptions.remove(userEmail);
-            }
-        }
+        driveRepository.findById(driveId)
+            .orElseThrow(() -> new AppException("Drive not found"));
+        driveSubscriptionRepository.deleteByUserEmailAndDriveId(userEmail, driveId);
         log.info("User {} unsubscribed from drive {}", userEmail, driveId);
     }
-    
+
+    @Transactional(readOnly = true)
     public List<Map<String, Object>> getUserSubscriptions(String userEmail) {
-        Set<Long> drives = userSubscriptions.getOrDefault(userEmail, Collections.emptySet());
-        return drives.stream()
-            .map(driveId -> {
+        return driveSubscriptionRepository.findByUserEmailOrderByCreatedAtDesc(userEmail).stream()
+            .map(subscription -> {
                 Map<String, Object> map = new HashMap<>();
-                map.put("driveId", driveId);
-                map.put("subscribedAt", new Date());
+                map.put("driveId", subscription.getDrive().getId());
+                map.put("subscribedAt", subscription.getCreatedAt());
                 return map;
             })
             .toList();
     }
 }
-

@@ -4,8 +4,8 @@ import java.time.LocalDateTime;
 
 public record AdminSlotResponse(
     Long id,
-    LocalDateTime time,
-    LocalDateTime endTime,
+    LocalDateTime startDate,
+    LocalDateTime endDate,
     Integer capacity,
     Integer bookedCount,
     Integer remaining,

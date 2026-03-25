@@ -8,7 +8,7 @@ const DEFAULT_BACKEND_PORTS = [8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8
 const getBackendPortCandidates = () => {
   const rawValue = process.env.VITE_API_PORT_CANDIDATES;
   if (!rawValue) {
-    return [...DEFAULT_BACKEND_PORTS].sort((a, b) => b - a);
+    return [...DEFAULT_BACKEND_PORTS].sort((a, b) => a - b);
   }
 
   const ports = rawValue
@@ -17,7 +17,7 @@ const getBackendPortCandidates = () => {
     .filter((value) => Number.isInteger(value) && value > 0);
 
   const candidates = ports.length > 0 ? ports : DEFAULT_BACKEND_PORTS;
-  return [...candidates].sort((a, b) => b - a);
+  return [...candidates].sort((a, b) => a - b);
 };
 
 const isPortOpen = (port) =>

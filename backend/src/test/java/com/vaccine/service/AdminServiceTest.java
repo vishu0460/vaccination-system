@@ -5,6 +5,7 @@ import com.vaccine.core.service.AdminService;
 import com.vaccine.core.service.CertificateService;
 import com.vaccine.core.service.ContactService;
 import com.vaccine.core.service.FeedbackService;
+import com.vaccine.core.service.INotificationService;
 import com.vaccine.domain.Booking;
 import com.vaccine.domain.BookingStatus;
 import com.vaccine.domain.Slot;
@@ -38,12 +39,14 @@ class AdminServiceTest {
     @Mock private PasswordResetRepository passwordResetRepository;
     @Mock private PhoneVerificationRepository phoneVerificationRepository;
     @Mock private AuditLogRepository auditLogRepository;
+    @Mock private SearchLogRepository searchLogRepository;
     @Mock private CertificateService certificateService;
     @Mock private AuditService auditService;
     @Mock private FeedbackService feedbackService;
     @Mock private ContactService contactService;
     @Mock private RoleRepository roleRepository;
     @Mock private org.springframework.security.crypto.password.PasswordEncoder passwordEncoder;
+    @Mock private INotificationService notificationService;
     @Mock private HttpServletRequest request;
 
     @InjectMocks
@@ -71,6 +74,7 @@ class AdminServiceTest {
         assertEquals(BookingStatus.COMPLETED, result.getStatus());
         verify(bookingRepository).saveAndFlush(booking);
         verify(certificateService).generate(booking);
+        verify(notificationService).queueVaccinationCompletedNotification(booking);
     }
 
     @Test
@@ -91,6 +95,6 @@ class AdminServiceTest {
 
         assertEquals(2, slot.getBookedCount());
         verify(slotRepository).save(slot);
-        verify(bookingRepository).delete(booking);
+        verify(bookingRepository).save(booking);
     }
 }

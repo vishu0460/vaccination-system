@@ -14,7 +14,8 @@ public class CacheConfig {
     public CacheManager cacheManager() {
         return new ConcurrentMapCacheManager(
             "centers", "drives", "slots", "news", "summary", "userStats",
-            "public-centers", "public-drives", "public-summary"
+            "public-centers", "public-drives", "public-summary", "public-cities",
+            "geo-city", "geo-reverse"
         );
     }
 }

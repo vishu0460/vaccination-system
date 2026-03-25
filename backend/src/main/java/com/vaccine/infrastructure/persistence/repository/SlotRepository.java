@@ -10,10 +10,11 @@ import java.util.List;
 
 @Repository
 public interface SlotRepository extends JpaRepository<Slot, Long> {
-    List<Slot> findByDriveId(Long driveId);
+    @Query("SELECT s FROM Slot s WHERE s.drive.id = :driveId ORDER BY s.dateTime ASC")
+    List<Slot> findByDrive_IdOrderByDateTimeAsc(Long driveId);
 
-    @Query("SELECT s FROM Slot s WHERE s.drive.id = :driveId ORDER BY s.startTime ASC")
-    List<Slot> findByDriveIdOrderByStartTimeAsc(Long driveId);
+    @Query("SELECT s FROM Slot s WHERE s.drive.id = :driveId")
+    List<Slot> findByDrive_Id(Long driveId);
 
     @Query("SELECT s FROM Slot s WHERE s.dateTime >= :now AND s.bookedCount < s.capacity ORDER BY s.dateTime")
     List<Slot> findAvailableSlots(LocalDateTime now);

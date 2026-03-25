@@ -1,18 +1,80 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Button, Modal } from "react-bootstrap";
-import { publicAPI, unwrapApiData, userAPI } from "../api/client";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { getErrorMessage, publicAPI, unwrapApiData, userAPI } from "../api/client";
+import CityAutocomplete from "../components/CityAutocomplete";
+import useDebounce from "../hooks/useDebounce";
 import { isAuthenticated } from "../utils/auth";
+import { broadcastDataUpdated } from "../utils/dataSync";
+import { usePublicCatalog } from "../context/PublicCatalogContext";
+
+const EMPTY_FILTERS = {
+  city: "",
+  date: "",
+  age: "",
+  vaccineType: "",
+  availability: "",
+  slot: ""
+};
+
+const AGE_OPTIONS = ["18+", "45+"];
+const VACCINE_OPTIONS = ["Covishield", "Covaxin", "Others"];
+const AVAILABILITY_OPTIONS = [
+  { value: "available", label: "Available" },
+  { value: "full", label: "Booked / Full" }
+];
+const SLOT_OPTIONS = ["Morning", "Afternoon", "Evening"];
+const normalizeCityFilter = (value) => (typeof value === "string" ? value.trim() : "");
+
+const mapDrive = (drive) => ({
+  ...drive,
+  name: drive.title,
+  date: drive.driveDate,
+  centerName: drive.center?.name || drive.centerName,
+  hasSlots: (drive.availableSlots ?? drive.totalSlots ?? 0) > 0,
+  availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
+  totalSlots: drive.totalSlots || 0,
+  startTime: drive.startTime || "N/A",
+  endTime: drive.endTime || "N/A",
+  ageLabel: drive.ageLabel || `${drive.minAge}+`
+});
+
+const combineSlotEndDateTime = (slot) => {
+  if (slot?.endDate) {
+    return slot.endDate;
+  }
+  if (slot?.endDateTime) {
+    return slot.endDateTime;
+  }
+  if (slot?.dateTime && slot?.endTime && !String(slot.endTime).includes("T")) {
+    const base = new Date(slot.dateTime);
+    if (!Number.isNaN(base.getTime())) {
+      const [hours = "0", minutes = "0", seconds = "0"] = String(slot.endTime).split(":");
+      base.setHours(Number(hours), Number(minutes), Number(seconds), 0);
+      return base.toISOString();
+    }
+  }
+  return slot?.endTime || "";
+};
+
+const parseFilters = (searchParams) => ({
+  city: searchParams.get("city") || "",
+  date: searchParams.get("date") || "",
+  age: searchParams.get("age") || "",
+  vaccineType: searchParams.get("vaccineType") || "",
+  availability: searchParams.get("availability") || "",
+  slot: searchParams.get("slot") || ""
+});
 
 export default function DrivesPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const bookParam = searchParams.get("book");
   const [drives, setDrives] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
-  const [summary, setSummary] = useState({ totalCenters: 0, activeDrives: 0, availableSlots: 0 });
-  const [filters, setFilters] = useState({ city: "", fromDate: "", age: "" });
-  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState(parseFilters(searchParams));
+  const { drives: allDrives, summary, loading, error: catalogError, refreshCatalog } = usePublicCatalog();
   const [viewMode, setViewMode] = useState("grid");
   const [error, setError] = useState("");
   const [bookingDrive, setBookingDrive] = useState(null);
@@ -20,6 +82,7 @@ export default function DrivesPage() {
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingSubmittingId, setBookingSubmittingId] = useState(null);
   const [bookingMessage, setBookingMessage] = useState("");
+  const debouncedFilters = useDebounce(filters, 300);
 
   const formatAppointmentTime = (value) => {
     if (!value) {
@@ -32,52 +95,70 @@ export default function DrivesPage() {
       : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  const load = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const params = new URLSearchParams();
-      if (filters.city.trim()) params.set("city", filters.city.trim());
-      if (filters.fromDate) params.set("fromDate", filters.fromDate);
-      if (filters.age) params.set("age", filters.age);
+  const matchesFilters = useCallback((drive, nextFilters) => {
+    const normalizedCity = normalizeCityFilter(nextFilters.city).toLowerCase();
+    const driveCity = String(drive.centerCity || drive.center?.city || "").toLowerCase();
+    const driveVaccine = String(drive.vaccineType || "").toLowerCase();
+    const driveDate = drive.driveDate || drive.date;
+    const driveAvailableSlots = drive.availableSlots ?? drive.totalSlots ?? 0;
+    const driveMinAge = Number(drive.minAge ?? 0);
+    const driveMaxAge = Number(drive.maxAge ?? 200);
+    const driveStartTime = String(drive.startTime || "").toLowerCase();
 
-      const [drivesRes, summaryRes] = await Promise.all([
-        publicAPI.getDrives(Object.fromEntries(params)),
-        publicAPI.getSummary()
-      ]);
-      const drivesPayload = unwrapApiData(drivesRes) || {};
-      const drivesData = Array.isArray(drivesPayload)
-        ? drivesPayload
-        : (drivesPayload.drives || []);
-      const mappedDrives = drivesData.map((drive) => ({
-        ...drive,
-        name: drive.title,
-        date: drive.driveDate,
-        centerName: drive.center?.name || drive.centerName,
-        hasSlots: (drive.availableSlots ?? drive.totalSlots ?? 0) > 0,
-        availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
-        totalSlots: drive.totalSlots || 0,
-        startTime: drive.startTime || "N/A",
-        endTime: drive.endTime || "N/A"
-      }));
-      setDrives(mappedDrives);
-      const summaryPayload = unwrapApiData(summaryRes) || {};
-      setSummary({
-        totalCenters: summaryPayload.totalCenters || summaryPayload.centersCount || 0,
-        activeDrives: summaryPayload.activeDrives || summaryPayload.drivesCount || 0,
-        availableSlots: summaryPayload.availableSlots || 0
-      });
-    } catch (requestError) {
-      console.error("Error fetching drives:", requestError);
-      setError("Unable to load vaccination drives right now. Please try again.");
-    } finally {
-      setLoading(false);
+    if (normalizedCity && !driveCity.includes(normalizedCity)) {
+      return false;
     }
-  };
+
+    if (nextFilters.date && driveDate !== nextFilters.date) {
+      return false;
+    }
+
+    if (nextFilters.age === "18+" && !(driveMinAge <= 18 && driveMaxAge >= 18)) {
+      return false;
+    }
+
+    if (nextFilters.age === "45+" && !(driveMinAge <= 45 && driveMaxAge >= 45)) {
+      return false;
+    }
+
+    if (nextFilters.vaccineType) {
+      const selectedVaccine = nextFilters.vaccineType.toLowerCase();
+      if (selectedVaccine === "others") {
+        if (["covishield", "covaxin"].includes(driveVaccine)) {
+          return false;
+        }
+      } else if (driveVaccine !== selectedVaccine) {
+        return false;
+      }
+    }
+
+    if (nextFilters.availability === "available" && driveAvailableSlots <= 0) {
+      return false;
+    }
+
+    if (nextFilters.availability === "full" && driveAvailableSlots > 0) {
+      return false;
+    }
+
+    if (nextFilters.slot) {
+      if (nextFilters.slot === "Morning" && !(driveStartTime >= "05:00" && driveStartTime < "12:00")) {
+        return false;
+      }
+      if (nextFilters.slot === "Afternoon" && !(driveStartTime >= "12:00" && driveStartTime < "17:00")) {
+        return false;
+      }
+      if (nextFilters.slot === "Evening" && driveStartTime < "17:00") {
+        return false;
+      }
+    }
+
+    return true;
+  }, []);
 
   useEffect(() => {
-    load();
-  }, []);
+    const nextFilters = parseFilters(searchParams);
+    setFilters((current) => JSON.stringify(current) === JSON.stringify(nextFilters) ? current : nextFilters);
+  }, [searchParams]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -89,7 +170,7 @@ export default function DrivesPage() {
       try {
         const response = await userAPI.getProfile();
         setUserProfile(unwrapApiData(response));
-      } catch (requestError) {
+      } catch {
         setUserProfile(null);
       }
     };
@@ -98,13 +179,45 @@ export default function DrivesPage() {
   }, []);
 
   useEffect(() => {
-    const handleDataUpdated = () => {
-      load();
-    };
+    setError(catalogError || "");
+  }, [catalogError]);
 
-    window.addEventListener("vaxzone:data-updated", handleDataUpdated);
-    return () => window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
-  }, [filters.city, filters.fromDate, filters.age]);
+  useEffect(() => {
+    const nextParams = new URLSearchParams();
+    const normalizedCity = normalizeCityFilter(debouncedFilters.city);
+
+    if (normalizedCity) {
+      nextParams.set("city", normalizedCity);
+    }
+    if (debouncedFilters.date) {
+      nextParams.set("date", debouncedFilters.date);
+    }
+    if (debouncedFilters.age) {
+      nextParams.set("age", debouncedFilters.age);
+    }
+    if (debouncedFilters.vaccineType) {
+      nextParams.set("vaccineType", debouncedFilters.vaccineType);
+    }
+    if (debouncedFilters.availability) {
+      nextParams.set("availability", debouncedFilters.availability);
+    }
+    if (debouncedFilters.slot) {
+      nextParams.set("slot", debouncedFilters.slot);
+    }
+    if (bookParam) {
+      nextParams.set("book", bookParam);
+    }
+
+    const currentQuery = typeof window !== "undefined"
+      ? window.location.search.replace(/^\?/, "")
+      : "";
+
+    if (nextParams.toString() !== currentQuery) {
+      setSearchParams(nextParams, { replace: true });
+    }
+
+    setDrives(allDrives.map(mapDrive).filter((drive) => matchesFilters(drive, debouncedFilters)));
+  }, [allDrives, bookParam, debouncedFilters, matchesFilters, setSearchParams]);
 
   useEffect(() => {
     const bookId = searchParams.get("book");
@@ -130,10 +243,16 @@ export default function DrivesPage() {
     driveId: drive.id,
     driveTitle: drive.title || drive.name,
     centerName: drive.center?.name || drive.centerName,
+    endDate: combineSlotEndDateTime(slot),
     availableCapacity: Math.max(0, (slot.capacity || 0) - (slot.bookedCount || 0))
   });
 
   const openBookingFlow = async (drive) => {
+    if (!isAuthenticated()) {
+      navigate(`/login?redirect=${encodeURIComponent(`/drives?book=${drive.id}`)}`);
+      return;
+    }
+
     setBookingDrive(drive);
     setBookingMessage("");
     setBookingLoading(true);
@@ -146,9 +265,8 @@ export default function DrivesPage() {
 
       setBookingSlots(slots);
     } catch (requestError) {
-      console.error("Failed to load slots for booking:", requestError);
       setBookingSlots([]);
-      setBookingMessage("Unable to load slots for this drive right now.");
+      setBookingMessage(getErrorMessage(requestError, "Unable to load slots for this drive right now."));
     } finally {
       setBookingLoading(false);
     }
@@ -195,15 +313,14 @@ export default function DrivesPage() {
           ? `Booking created successfully. Your appointment time: ${assignedTime}`
           : "Booking created successfully."
       );
-      window.dispatchEvent(new CustomEvent("vaxzone:data-updated"));
-      await load();
-      setTimeout(() => {
+      broadcastDataUpdated({ source: "drives-page-booking" });
+      await refreshCatalog();
+      window.setTimeout(() => {
         closeBookingModal();
         navigate("/user/bookings");
       }, 500);
     } catch (requestError) {
-      console.error("Booking failed:", requestError);
-      setBookingMessage(requestError.response?.data?.message || "Failed to book this slot.");
+      setBookingMessage(getErrorMessage(requestError, "Failed to book this slot."));
     } finally {
       setBookingSubmittingId(null);
     }
@@ -224,6 +341,26 @@ export default function DrivesPage() {
       }
     }))
   }), [drives]);
+
+  const clearFilters = () => {
+    setFilters(EMPTY_FILTERS);
+  };
+
+  const activeFilters = useMemo(() => {
+    const entries = [
+      filters.city ? { key: "city", label: `City: ${filters.city}` } : null,
+      filters.date ? { key: "date", label: `Date: ${filters.date}` } : null,
+      filters.age ? { key: "age", label: `Age: ${filters.age}` } : null,
+      filters.vaccineType ? { key: "vaccineType", label: `Vaccine: ${filters.vaccineType}` } : null,
+      filters.availability ? {
+        key: "availability",
+        label: `Availability: ${filters.availability === "available" ? "Available" : "Booked / Full"}`
+      } : null,
+      filters.slot ? { key: "slot", label: `Slot: ${filters.slot}` } : null
+    ];
+
+    return entries.filter(Boolean);
+  }, [filters]);
 
   const renderBookButton = (drive) => {
     if (!drive.hasSlots || drive.availableSlots <= 0) {
@@ -259,7 +396,7 @@ export default function DrivesPage() {
               <p className="mb-0 opacity-75">Find and book your vaccination slot at a drive near you</p>
             </div>
             <div className="col-lg-4 text-center text-lg-end mt-3 mt-lg-0">
-              <i className="bi bi-calendar-event display-1" style={{ opacity: 0.3 }}></i>
+              <i className="bi bi-calendar-event display-1 page-header__icon"></i>
             </div>
           </div>
         </div>
@@ -288,23 +425,31 @@ export default function DrivesPage() {
         </div>
 
         <div className="card border-0 shadow-sm mb-4">
-          <div className="card-body">
-            <div className="row g-3 align-items-end">
-              <div className="col-md-3">
-                <label className="form-label">City</label>
-                <div className="input-group">
-                  <span className="input-group-text bg-light">
-                    <i className="bi bi-geo-alt text-muted"></i>
-                  </span>
-                  <input
-                    className="form-control"
-                    placeholder="Search by city"
-                    value={filters.city}
-                    onChange={(event) => setFilters({ ...filters, city: event.target.value })}
-                  />
-                </div>
+          <div className="card-body drive-filters">
+            <div className="drive-filters__header">
+              <div>
+                <span className="drive-filters__eyebrow">Live Search</span>
+                <h4 className="drive-filters__title">Refine drives instantly</h4>
+                <p className="drive-filters__copy mb-0">Filters apply automatically as you type or choose options.</p>
               </div>
-              <div className="col-md-3">
+              <button className="btn btn-outline-secondary" onClick={clearFilters} disabled={loading}>
+                <i className="bi bi-arrow-counterclockwise me-2"></i>Clear filters
+              </button>
+            </div>
+
+            <div className="drive-filters__grid">
+              <div className="drive-filter-field drive-filter-field--city">
+                <label className="form-label">City</label>
+                <CityAutocomplete
+                  value={filters.city}
+                  onChange={(city) => setFilters((current) => ({ ...current, city }))}
+                  onSelect={(city) => setFilters((current) => ({ ...current, city }))}
+                  onEnter={(enteredCity) => setFilters((current) => ({ ...current, city: enteredCity }))}
+                  placeholder="Search by city"
+                />
+              </div>
+
+              <div className="drive-filter-field">
                 <label className="form-label">Date</label>
                 <div className="input-group">
                   <span className="input-group-text bg-light">
@@ -313,39 +458,86 @@ export default function DrivesPage() {
                   <input
                     className="form-control"
                     type="date"
-                    value={filters.fromDate}
-                    onChange={(event) => setFilters({ ...filters, fromDate: event.target.value })}
+                    value={filters.date}
+                    onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))}
                   />
                 </div>
               </div>
-              <div className="col-md-2">
-                <label className="form-label">Age</label>
-                <div className="input-group">
-                  <span className="input-group-text bg-light">
-                    <i className="bi bi-person text-muted"></i>
-                  </span>
-                  <input
-                    className="form-control"
-                    type="number"
-                    min="1"
-                    max="120"
-                    placeholder="18+"
-                    value={filters.age}
-                    onChange={(event) => setFilters({ ...filters, age: event.target.value })}
-                  />
-                </div>
+
+              <div className="drive-filter-field">
+                <label className="form-label">Age Group</label>
+                <select
+                  className="form-select"
+                  value={filters.age}
+                  onChange={(event) => setFilters((current) => ({ ...current, age: event.target.value }))}
+                >
+                  <option value="">All age groups</option>
+                  {AGE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
-              <div className="col-md-3 d-grid">
-                <button className="btn btn-primary" onClick={load}>
-                  <i className="bi bi-search me-2"></i>Search
-                </button>
+
+              <div className="drive-filter-field">
+                <label className="form-label">Vaccine Type</label>
+                <select
+                  className="form-select"
+                  value={filters.vaccineType}
+                  onChange={(event) => setFilters((current) => ({ ...current, vaccineType: event.target.value }))}
+                >
+                  <option value="">All vaccines</option>
+                  {VACCINE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
-              <div className="col-md-1">
-                <button className="btn btn-outline-secondary w-100" onClick={() => { setFilters({ city: "", fromDate: "", age: "" }); load(); }}>
-                  <i className="bi bi-arrow-counterclockwise"></i>
-                </button>
+
+              <div className="drive-filter-field">
+                <label className="form-label">Availability</label>
+                <select
+                  className="form-select"
+                  value={filters.availability}
+                  onChange={(event) => setFilters((current) => ({ ...current, availability: event.target.value }))}
+                >
+                  <option value="">All statuses</option>
+                  {AVAILABILITY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="drive-filter-field">
+                <label className="form-label">Slot Window</label>
+                <select
+                  className="form-select"
+                  value={filters.slot}
+                  onChange={(event) => setFilters((current) => ({ ...current, slot: event.target.value }))}
+                >
+                  <option value="">All time windows</option>
+                  {SLOT_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               </div>
             </div>
+
+            {activeFilters.length > 0 ? (
+              <div className="drive-filters__chips">
+                {activeFilters.map((filter) => (
+                  <button
+                    key={filter.key}
+                    type="button"
+                    className="drive-filter-chip"
+                    onClick={() => setFilters((current) => ({ ...current, [filter.key]: "" }))}
+                  >
+                    <span>{filter.label}</span>
+                    <i className="bi bi-x-lg"></i>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="small text-muted mt-3">All live filters are cleared. Showing all matching drives.</div>
+            )}
           </div>
         </div>
 
@@ -361,7 +553,7 @@ export default function DrivesPage() {
             <i className="bi bi-wifi-off"></i>
             <h5>Unable to load drives</h5>
             <p>{error}</p>
-            <button className="btn btn-primary" onClick={load}>Retry</button>
+            <button className="btn btn-primary" onClick={refreshCatalog}>Retry</button>
           </div>
         ) : drives.length > 0 ? (
           <>
@@ -389,9 +581,9 @@ export default function DrivesPage() {
               {drives.map((drive, index) => (
                 <div key={drive.id} className={`${viewMode === "grid" ? "col-md-6 col-lg-4" : ""} fade-in stagger-${(index % 6) + 1}`}>
                   <div className={`drive-card h-100 ${viewMode === "list" ? "flex-row" : ""}`}>
-                    {viewMode === "grid" && (
+                    {viewMode === "grid" ? (
                       <div className="card-header d-flex justify-content-between align-items-center">
-                        <h5 className="mb-0" style={{ fontSize: "1rem" }}>{drive.name}</h5>
+                        <h5 className="mb-0 fs-6">{drive.name}</h5>
                         {!drive.hasSlots ? (
                           <span className="badge bg-warning">No Slots</span>
                         ) : drive.availableSlots > 0 ? (
@@ -400,15 +592,15 @@ export default function DrivesPage() {
                           <span className="badge bg-danger">Full</span>
                         )}
                       </div>
-                    )}
+                    ) : null}
                     <div className={`card-body ${viewMode === "list" ? "d-flex flex-row align-items-center gap-4" : ""}`}>
-                      {viewMode === "list" && (
+                      {viewMode === "list" ? (
                         <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
                           <i className="bi bi-calendar-event display-6 text-primary"></i>
                         </div>
-                      )}
+                      ) : null}
                       <div className="flex-grow-1">
-                        {viewMode === "list" && (
+                        {viewMode === "list" ? (
                           <div className="d-flex justify-content-between align-items-start mb-2">
                             <h5 className="fw-bold mb-0">{drive.name}</h5>
                             {!drive.hasSlots ? (
@@ -419,7 +611,7 @@ export default function DrivesPage() {
                               <span className="badge bg-danger">Full</span>
                             )}
                           </div>
-                        )}
+                        ) : null}
                         <div className="row g-2">
                           <div className="col-6">
                             <div className="info-item">
@@ -434,7 +626,7 @@ export default function DrivesPage() {
                             </div>
                           </div>
                           <div className="col-6">
-                          <div className="info-item">
+                            <div className="info-item">
                               <i className="bi bi-building"></i>
                               <span>{drive.centerName}</span>
                             </div>
@@ -447,8 +639,13 @@ export default function DrivesPage() {
                           </div>
                           <div className="col-6">
                             <div className="info-item">
-                              <i className="bi bi-person-badge"></i>
-                              <span>Age: {drive.minAge}-{drive.maxAge}</span>
+                              <i className="bi bi-geo-alt"></i>
+                              <span>{drive.centerCity || filters.city || "N/A"}</span>
+                            </div>
+                          </div>
+                          <div className="col-6">
+                            <div className="info-item">
+                              <span className="drive-age-text">Age: {drive.ageLabel || `${drive.minAge}+`}</span>
                             </div>
                           </div>
                         </div>
@@ -467,7 +664,7 @@ export default function DrivesPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="card-footer bg-white border-top-0 pt-0">
+                    <div className="card-footer border-top-0 pt-0">
                       {renderBookButton(drive)}
                     </div>
                   </div>
@@ -480,7 +677,7 @@ export default function DrivesPage() {
             <i className="bi bi-calendar-x"></i>
             <h5>No Drives Found</h5>
             <p>Try adjusting your search filters or check back later.</p>
-            <button className="btn btn-primary" onClick={() => { setFilters({ city: "", fromDate: "", age: "" }); load(); }}>
+            <button className="btn btn-primary" onClick={clearFilters}>
               Clear Filters
             </button>
           </div>
@@ -561,7 +758,7 @@ export default function DrivesPage() {
                     <tr key={slot.id}>
                       <td>#{slot.id}</td>
                       <td>{slot.dateTime ? new Date(slot.dateTime).toLocaleString() : "N/A"}</td>
-                      <td>{slot.endTime || "N/A"}</td>
+                      <td>{slot.endDate ? new Date(slot.endDate).toLocaleString() : "N/A"}</td>
                       <td>{slot.availableCapacity}</td>
                       <td className="text-end">
                         <Button

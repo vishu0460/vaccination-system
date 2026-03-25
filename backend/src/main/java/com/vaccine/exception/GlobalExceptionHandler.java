@@ -15,6 +15,7 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -25,14 +26,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<?>> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new HashMap<>();
+        Map<String, String> errors = new LinkedHashMap<>();
         ex.getBindingResult().getFieldErrors().forEach(error -> 
             errors.put(error.getField(), error.getDefaultMessage()));
         List<String> errorList = errors.entrySet().stream()
             .map(e -> e.getKey() + ": " + e.getValue())
             .collect(Collectors.toList());
-        return ResponseEntity.badRequest().body(ApiResponse.error(
-            "Validation failed", errorList, 400));
+        return ResponseEntity.badRequest().body(
+            ApiResponse.builder()
+                .success(false)
+                .message("Validation failed")
+                .timestamp(java.time.LocalDateTime.now())
+                .status(400)
+                .errors(errorList)
+                .metadata(Map.of("fieldErrors", errors))
+                .build()
+        );
     }
 
     @ExceptionHandler(ConstraintViolationException.class)

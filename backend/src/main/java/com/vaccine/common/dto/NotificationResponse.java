@@ -9,6 +9,8 @@ public record NotificationResponse(
     String message,
     String reply,
     String status,
+    String deliveryStatus,
+    LocalDateTime scheduledTime,
     LocalDateTime createdAt,
     boolean read
 ) {

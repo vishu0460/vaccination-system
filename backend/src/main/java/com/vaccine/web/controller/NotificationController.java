@@ -1,6 +1,8 @@
 package com.vaccine.web.controller;
 
 import com.vaccine.common.dto.ApiResponse;
+import com.vaccine.common.dto.NotificationResponse;
+import com.vaccine.core.service.INotificationService;
 import com.vaccine.core.service.SlotNotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -16,13 +18,39 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping({"/api/v1/notifications", "/api/notifications"})
+@RequestMapping({"/v1/notifications", "/notifications"})
 @PreAuthorize("isAuthenticated()")
 public class NotificationController {
     private final SlotNotificationService slotNotificationService;
+    private final INotificationService notificationService;
 
-    public NotificationController(SlotNotificationService slotNotificationService) {
+    public NotificationController(SlotNotificationService slotNotificationService, INotificationService notificationService) {
         this.slotNotificationService = slotNotificationService;
+        this.notificationService = notificationService;
+    }
+
+    @GetMapping
+    public ResponseEntity<ApiResponse<List<NotificationResponse>>> getNotifications(Authentication auth) {
+        log.info("Get notifications for user={}", auth.getName());
+        return ResponseEntity.ok(ApiResponse.success(notificationService.getNotificationsForUser(auth.getName())));
+    }
+
+    @GetMapping("/unread-count")
+    public ResponseEntity<ApiResponse<Map<String, Long>>> getUnreadCount(Authentication auth) {
+        long unreadCount = notificationService.getUnreadCount(auth.getName());
+        return ResponseEntity.ok(ApiResponse.success(Map.of("unreadCount", unreadCount)));
+    }
+
+    @PatchMapping("/{notificationId}/read")
+    public ResponseEntity<ApiResponse<Void>> markRead(@PathVariable Long notificationId, Authentication auth) {
+        notificationService.markNotificationRead(auth.getName(), notificationId);
+        return ResponseEntity.ok(ApiResponse.success(null, "Notification marked as read"));
+    }
+
+    @PatchMapping("/read-all")
+    public ResponseEntity<ApiResponse<Void>> markAllRead(Authentication auth) {
+        notificationService.markNotificationsRead(auth.getName());
+        return ResponseEntity.ok(ApiResponse.success(null, "Notifications marked as read"));
     }
 
     @PostMapping("/slots/subscribe/{driveId}")

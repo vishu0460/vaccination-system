@@ -1,5 +1,5 @@
 import axios from "axios";
-import { clearAuth, getAccessToken, setAuth } from "../utils/auth";
+import { clearAuth, getAccessToken, getRefreshToken, setAuth } from "../utils/auth";
 
 const DEFAULT_DEV_BACKEND_PORTS = [8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089];
 
@@ -31,7 +31,7 @@ const getDevBackendPorts = () => {
     : [];
 
   const ports = configuredPorts.length > 0 ? configuredPorts : DEFAULT_DEV_BACKEND_PORTS;
-  return [...ports].sort((a, b) => b - a);
+  return [...ports].sort((a, b) => a - b);
 };
 
 const shouldAutoDetectApiBaseUrl = () => {
@@ -64,13 +64,13 @@ const buildCandidateApiBaseUrls = () => {
   const currentHostOrigin = resolveApiOrigin(currentOrigin, false);
   const candidates = [];
 
+  candidates.push(`${currentOrigin}/api`);
+
   if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
     getDevBackendPorts().forEach((port) => {
       candidates.push(`${currentHostOrigin}:${port}/api`);
     });
   }
-
-  candidates.push(`${currentOrigin}/api`);
 
   return [...new Set(candidates)];
 };
@@ -131,6 +131,55 @@ export const unwrapApiMessage = (responseOrPayload, fallback = "") => {
   return payload?.message || fallback;
 };
 
+export const getErrorMessage = (error, fallback = "Something went wrong. Please try again.") =>
+  error?.response?.data?.message
+  || error?.response?.data?.errors?.[0]
+  || error?.message
+  || fallback;
+
+export const getFieldErrors = (error) => {
+  const payload = error?.response?.data;
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+
+  const metadataErrors = payload.metadata?.fieldErrors;
+  if (metadataErrors && typeof metadataErrors === "object") {
+    return metadataErrors;
+  }
+
+  const errors = payload.errors;
+  if (!Array.isArray(errors)) {
+    return {};
+  }
+
+  return errors.reduce((accumulator, entry) => {
+    if (typeof entry !== "string") {
+      return accumulator;
+    }
+
+    const separatorIndex = entry.indexOf(":");
+    if (separatorIndex <= 0) {
+      return accumulator;
+    }
+
+    const field = entry.slice(0, separatorIndex).trim();
+    const message = entry.slice(separatorIndex + 1).trim();
+    if (field && message) {
+      accumulator[field] = message;
+    }
+    return accumulator;
+  }, {});
+};
+
+export const normalizeSearchValue = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().toLowerCase();
+};
+
 const apiClient = axios.create({
   baseURL: resolvedApiBaseUrl,
   timeout: 15000
@@ -141,22 +190,31 @@ const buildAuthHeaders = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-const publicEndpoints = [
-  "/auth/",
-  "/public/",
-  "/health",
-  "/public/news",
-  "/contact",
-  "/reviews/center/",
-  "/certificates/verify/"
-];
+const isPublicEndpoint = (urlPath, method = "get") => {
+  if (urlPath.startsWith("/auth/")) {
+    return true;
+  }
+  if (urlPath.startsWith("/public/")) {
+    return true;
+  }
+  if (urlPath === "/health" || urlPath === "/health/ping") {
+    return true;
+  }
+  if (urlPath.startsWith("/reviews/center/")) {
+    return true;
+  }
+  if (urlPath.startsWith("/certificates/verify/")) {
+    return true;
+  }
+  return false;
+};
 
 apiClient.interceptors.request.use(async (config) => {
   config.baseURL = await getApiBaseUrl();
 
   const token = getAccessToken();
   const urlPath = config.url?.split("?")[0] || "";
-  const isPublic = publicEndpoints.some((endpoint) => urlPath.startsWith(endpoint));
+  const isPublic = isPublicEndpoint(urlPath, config.method);
 
   if (token && !isPublic) {
     config.headers = config.headers || {};
@@ -178,14 +236,14 @@ apiClient.interceptors.response.use(
     const isRefreshRequest = originalRequest.url?.includes("/auth/refresh");
     if (error.response?.status === 401 && !originalRequest._retry && !isRefreshRequest) {
       originalRequest._retry = true;
-      const refreshToken = localStorage.getItem("refreshToken");
+      const refreshToken = getRefreshToken();
 
       if (refreshToken) {
         try {
           const refreshBaseUrl = await getApiBaseUrl();
           const refreshResponse = await axios.post(`${refreshBaseUrl}/auth/refresh`, { refreshToken });
           const refreshedAuth = refreshResponse.data;
-          setAuth(refreshedAuth);
+          setAuth(refreshedAuth, { remember: Boolean(window.localStorage.getItem("refreshToken")) });
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${refreshedAuth.accessToken}`;
           return apiClient(originalRequest);
@@ -217,7 +275,15 @@ export const authAPI = {
 
 export const publicAPI = {
   getDrives: (params) => apiClient.get("/public/drives", { params }),
-  getCenters: (city, page = 0, size = 50) => apiClient.get("/public/centers", { params: { city, page, size } }),
+  getCenters: (params = {}) => apiClient.get("/public/centers", { params: { page: 0, size: 50, ...params } }),
+  getCitySuggestions: (query, limit = 8) => apiClient.get("/public/cities", {
+    params: {
+      query: normalizeSearchValue(query),
+      limit
+    }
+  }),
+  smartSearch: (params = {}) => apiClient.get("/public/search", { params }),
+  getNearbyCenters: (params = {}) => apiClient.get("/public/nearby-centers", { params }),
   getCenterDetail: (id) => apiClient.get(`/public/centers/${id}`),
   getDriveSlots: (driveId) => apiClient.get(`/public/drives/${driveId}/slots`),
   getSummary: () => apiClient.get("/public/summary"),
@@ -238,8 +304,20 @@ export const userAPI = {
   getSlotRecommendations: (params) => apiClient.get("/user/recommendations/slots", { params })
 };
 
+const notificationEndpoints = {
+  getNotifications: () => apiClient.get("/notifications"),
+  getUnreadCount: () => apiClient.get("/notifications/unread-count"),
+  markAsRead: (notificationId) => apiClient.patch(`/notifications/${notificationId}/read`),
+  markAllRead: () => apiClient.patch("/notifications/read-all"),
+  subscribeToSlot: (driveId) => apiClient.post(`/notifications/slots/subscribe/${driveId}`),
+  unsubscribeFromSlot: (driveId) => apiClient.post(`/notifications/slots/unsubscribe/${driveId}`),
+  getSubscriptions: () => apiClient.get("/notifications/slots/subscriptions")
+};
+
 export const adminAPI = {
   getDashboardStats: () => apiClient.get("/admin/dashboard/stats"),
+  getDashboardAnalytics: () => apiClient.get("/admin/dashboard/analytics"),
+  getSearchAnalytics: () => apiClient.get("/admin/search-analytics"),
   getAllBookings: () => apiClient.get("/admin/bookings"),
   getAllCenters: () => apiClient.get("/admin/centers"),
   getAllDrives: () => apiClient.get("/admin/drives"),
@@ -285,6 +363,7 @@ export const adminAPI = {
   getAllFeedback: (page = 0, size = 10) => apiClient.get("/admin/feedback", { params: { page, size } }),
   respondToFeedback: (id, replyMessage) => apiClient.put(`/admin/feedback/${id}/reply`, { replyMessage }),
   getAllContacts: () => apiClient.get("/admin/contacts"),
+  getContactAnalytics: () => apiClient.get("/contact/analytics"),
   respondToContact: (id, replyMessage) => apiClient.put(`/admin/contact/${id}/reply`, { replyMessage }),
   deleteContact: (id) => apiClient.delete(`/admin/contacts/${id}`),
   getAllCertificates: () => apiClient.get("/certificates")
@@ -311,7 +390,8 @@ export const feedbackAPI = {
 export const contactAPI = {
   submitContact: (data) => apiClient.post("/contact", data),
   getMyInquiries: () => apiClient.get("/contact/my-inquiries"),
-  getAllContacts: () => apiClient.get("/contact"),
+  getUserHistory: (userId) => apiClient.get(`/contact/user/${userId}`),
+  getAllContacts: () => apiClient.get("/contact/all"),
   getContactById: (id) => apiClient.get(`/contact/${id}`),
   respondToContact: (id, response) => apiClient.patch(`/contact/${id}/respond`, { response }),
   deleteContact: (id) => apiClient.delete(`/contact/${id}`)
@@ -351,9 +431,7 @@ export const reviewAPI = {
 };
 
 export const notificationAPI = {
-  subscribeToSlot: (driveId) => apiClient.post(`/notifications/slots/subscribe/${driveId}`),
-  unsubscribeFromSlot: (driveId) => apiClient.post(`/notifications/slots/unsubscribe/${driveId}`),
-  getSubscriptions: () => apiClient.get("/notifications/slots/subscriptions")
+  ...notificationEndpoints
 };
 
 export const healthAPI = {

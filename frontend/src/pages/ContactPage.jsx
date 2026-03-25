@@ -1,214 +1,243 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { contactAPI } from "../api/client";
+import { contactAPI, getErrorMessage } from "../api/client";
+
+const INITIAL_FORM = {
+  name: "",
+  email: "",
+  message: ""
+};
+
+const notifyDataUpdated = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("vaxzone:data-updated"));
+  }
+};
 
 export default function ContactPage() {
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    subject: "",
-    message: ""
-  });
+  const [formData, setFormData] = useState(INITIAL_FORM);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+  const contactHighlights = useMemo(() => ([
+    {
+      icon: "bi-envelope-paper",
+      title: "Fast Support",
+      copy: "Questions about bookings, certificates, or scheduling are routed directly to the support queue."
+    },
+    {
+      icon: "bi-clock-history",
+      title: "Saved Automatically",
+      copy: "Each inquiry is stored in the system so admins and signed-in users can track updates reliably."
+    },
+    {
+      icon: "bi-shield-check",
+      title: "Professional Handling",
+      copy: "Messages are reviewed securely and answered by the admin team responsible for support."
+    }
+  ]), []);
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((current) => ({ ...current, [name]: value }));
     setError("");
+    setSuccessMessage("");
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setError("");
-    
-    if (!formData.name || !formData.name.trim()) {
+    setSuccessMessage("");
+
+    if (!formData.name.trim()) {
       setLoading(false);
       setError("Name is required");
       return;
     }
-    if (!formData.email || !formData.email.trim()) {
+
+    if (!formData.email.trim()) {
       setLoading(false);
       setError("Email is required");
       return;
     }
-    if (!formData.subject) {
-      setLoading(false);
-      setError("Please select a subject");
-      return;
-    }
-    if (!formData.message || !formData.message.trim()) {
+
+    if (!formData.message.trim()) {
       setLoading(false);
       setError("Message is required");
       return;
     }
-    
+
     try {
-      const response = await contactAPI.submitContact(formData);
+      const response = await contactAPI.submitContact({
+        ...formData,
+        subject: "General inquiry"
+      });
+
       if (response.status === 200 || response.status === 201) {
-        setLoading(false);
         setSubmitted(true);
-        setFormData({ name: "", email: "", phone: "", subject: "", message: "" });
+        setSuccessMessage("Your message has been sent successfully. The admin team can now see it immediately.");
+        setFormData(INITIAL_FORM);
+        notifyDataUpdated();
       }
-    } catch (err) {
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, "Failed to send message. Please try again."));
+    } finally {
       setLoading(false);
-      console.error("Contact submission error:", err);
-      if (err.response) {
-        const status = err.response.status;
-        const data = err.response.data;
-        if (status === 400) {
-          const errorMsg = typeof data?.message === 'string' ? data.message : 
-                           data?.errors ? Object.values(data.errors).flat().join(', ') : "Invalid form data";
-          setError(errorMsg || "Invalid form data. Please check your inputs.");
-        } else if (status === 401) {
-          setError("Please log in to submit a contact form.");
-        } else if (status === 500) {
-          setError("Server error. Please try again later.");
-        } else {
-          setError(data?.message || "Failed to send message. Please try again.");
-        }
-      } else if (err.request) {
-        setError("Network error. Please check your internet connection.");
-      } else {
-        setError("Failed to send message. Please try again.");
-      }
     }
   };
 
   return (
     <>
       <Helmet>
-        <title>Contact Us - VaxZone</title>
-        <meta name="description" content="Get in touch with VaxZone support team. We're here to help with vaccination booking and scheduling." />
-        <meta property="og:title" content="Contact Us - VaxZone" />
-        <meta property="og:description" content="Get in touch with our support team." />
+        <title>Contact Support - VaxZone</title>
+        <meta name="description" content="Reach the VaxZone support team for help with bookings, certificates, and vaccination scheduling." />
+        <meta property="og:title" content="Contact Support - VaxZone" />
+        <meta property="og:description" content="Send a support inquiry to the VaxZone team." />
       </Helmet>
 
       <section className="page-header">
         <div className="container">
           <div className="row align-items-center">
-            <div className="col-lg-8">
-              <h1 className="mb-2">Contact Us</h1>
-              <p className="mb-0 opacity-75">Have questions? We're here to help!</p>
+            <div className="col-lg-7">
+              <h1 className="mb-2">Contact Support</h1>
+              <p className="mb-0 opacity-75">Send a message to the VaxZone team and get help with bookings, certificates, or general platform questions.</p>
             </div>
-            <div className="col-lg-4 text-center text-lg-end mt-3 mt-lg-0">
-              <i className="bi bi-headset display-1" style={{opacity: 0.3}}></i>
+            <div className="col-lg-5 text-center text-lg-end mt-3 mt-lg-0">
+              <i className="bi bi-headset display-1" style={{ opacity: 0.3 }}></i>
             </div>
           </div>
         </div>
       </section>
 
       <div className="container py-5">
-        <div className="row g-5">
-          <div className="col-lg-7">
-            <div className="card border-0 shadow-sm p-4">
-              <h3 className="fw-bold mb-4">Send us a Message</h3>
-              {submitted ? (
-                <div className="text-center py-4">
-                  <div className="text-success mb-3">
-                    <i className="bi bi-check-circle display-1"></i>
+        <div className="row justify-content-center g-4">
+          <div className="col-xl-10">
+            <div className="row g-4">
+              <div className="col-lg-5">
+                <div className="card border-0 shadow-sm h-100 p-4">
+                  <span className="badge bg-primary-subtle text-primary px-3 py-2 mb-3">Support Desk</span>
+                  <h3 className="fw-bold mb-2">We are here to help</h3>
+                  <p className="text-muted mb-4">Use this form to reach the admin support queue. Your inquiry is saved in the database and reflected across the dashboard automatically.</p>
+
+                  <div className="d-grid gap-3">
+                    {contactHighlights.map((item) => (
+                      <div key={item.title} className="d-flex align-items-start gap-3 border rounded-4 p-3 bg-light-subtle">
+                        <div className="icon-wrapper flex-shrink-0" style={{ width: "3rem", height: "3rem" }}>
+                          <i className={`bi ${item.icon}`}></i>
+                        </div>
+                        <div>
+                          <h6 className="fw-bold mb-1">{item.title}</h6>
+                          <p className="text-muted small mb-0">{item.copy}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <h4 className="fw-bold">Thank You!</h4>
-                  <p className="text-muted">Your message has been sent successfully. We'll get back to you within 24-48 hours.</p>
-                  <button className="btn btn-primary" onClick={() => setSubmitted(false)}>Send Another Message</button>
+
+                  <div className="border rounded-4 p-3 mt-4 bg-white">
+                    <h6 className="fw-bold mb-2">Support Details</h6>
+                    <p className="text-muted small mb-1">Email: vaxzone.vaccine@gmail.com</p>
+                    <p className="text-muted small mb-1">Hours: Monday to Saturday, 9:00 AM to 6:00 PM</p>
+                    <p className="text-muted small mb-0">For emergencies, contact your local medical helpline directly.</p>
+                  </div>
                 </div>
-              ) : (
-                <form onSubmit={handleSubmit}>
-                  <div className="row g-3">
-                    <div className="col-md-6">
-                      <label htmlFor="name" className="form-label">Your Name *</label>
-                      <input type="text" className="form-control" id="name" name="name" value={formData.name} onChange={handleChange} required placeholder="John Doe" />
+              </div>
+
+              <div className="col-lg-7">
+                <div className="card border-0 shadow-sm h-100 p-4 p-lg-5">
+                  <div className="d-flex justify-content-between align-items-start mb-4">
+                    <div>
+                      <h3 className="fw-bold mb-1">Send a Message</h3>
+                      <p className="text-muted mb-0">A clear message helps us respond faster.</p>
                     </div>
-                    <div className="col-md-6">
-                      <label htmlFor="email" className="form-label">Email Address *</label>
-                      <input type="email" className="form-control" id="email" name="email" value={formData.email} onChange={handleChange} required placeholder="john@example.com" />
+                    <span className="badge rounded-pill text-bg-light">Secure Form</span>
+                  </div>
+
+                  {successMessage ? (
+                    <div className="alert alert-success border-0">
+                      <i className="bi bi-check-circle me-2"></i>{successMessage}
                     </div>
-                    <div className="col-md-6">
-                      <label htmlFor="phone" className="form-label">Phone Number</label>
-                      <input type="tel" className="form-control" id="phone" name="phone" value={formData.phone} onChange={handleChange} placeholder="+91 9631376436" />
+                  ) : null}
+
+                  {error ? (
+                    <div className="alert alert-danger border-0">
+                      <i className="bi bi-exclamation-circle me-2"></i>{error}
                     </div>
-                    <div className="col-12">
-                      <label htmlFor="subject" className="form-label">Subject *</label>
-                      <select className="form-select" id="subject" name="subject" value={formData.subject} onChange={handleChange} required>
-                        <option value="">Select a topic</option>
-                        <option value="general">General Inquiry</option>
-                        <option value="booking">Booking Assistance</option>
-                        <option value="technical">Technical Support</option>
-                        <option value="feedback">Feedback</option>
-                        <option value="partnership">Partnership</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                    <div className="col-12">
-                      <label htmlFor="message" className="form-label">Message *</label>
-                      <textarea className="form-control" id="message" name="message" rows="5" value={formData.message} onChange={handleChange} required placeholder="How can we help you?"></textarea>
-                    </div>
-                    <div className="col-12">
-                      {error && <div className="alert alert-danger">{error}</div>}
-                      <button type="submit" className="btn btn-primary btn-lg w-100" disabled={loading}>
-                        {loading ? (<><span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Sending...</>) : (<><i className="bi bi-send me-2"></i> Send Message</>)}
+                  ) : null}
+
+                  {submitted ? (
+                    <div className="text-center py-4">
+                      <div className="text-success mb-3">
+                        <i className="bi bi-check-circle display-4"></i>
+                      </div>
+                      <h4 className="fw-bold">Message Sent</h4>
+                      <p className="text-muted">Your inquiry is stored and visible to the admin team now.</p>
+                      <button
+                        className="btn btn-primary px-4"
+                        onClick={() => {
+                          setSubmitted(false);
+                          setSuccessMessage("");
+                        }}
+                      >
+                        Send Another Message
                       </button>
                     </div>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
-
-          <div className="col-lg-5">
-            <div className="card border-0 shadow-sm p-4 mb-4">
-              <h3 className="fw-bold mb-4">Get in Touch</h3>
-              <div className="d-flex align-items-start mb-4">
-                <div className="icon-wrapper me-3" style={{width: '50px', height: '50px'}}><i className="bi bi-envelope"></i></div>
-                <div>
-                  <h6 className="fw-bold mb-1">Email</h6>
-                  <p className="text-muted small mb-0">vaxzone.vaccine@gmail.com</p>
-                  <p className="text-muted small mb-0">We reply within 24-48 hours</p>
-                </div>
-              </div>
-              <div className="d-flex align-items-start mb-4">
-                <div className="icon-wrapper me-3" style={{width: '50px', height: '50px'}}><i className="bi bi-telephone"></i></div>
-                <div>
-                  <h6 className="fw-bold mb-1">Phone</h6>
-                  <p className="text-muted small mb-0">+91 9631376436</p>
-                  <p className="text-muted small mb-0">Mon - Sat, 9AM - 6PM</p>
-                </div>
-              </div>
-              <div className="d-flex align-items-start mb-4">
-                <div className="icon-wrapper me-3" style={{width: '50px', height: '50px'}}><i className="bi bi-geo-alt"></i></div>
-                <div>
-                  <h6 className="fw-bold mb-1">Location</h6>
-                  <p className="text-muted small mb-0">India</p>
-                </div>
-              </div>
-              <div className="d-flex align-items-start">
-                <div className="icon-wrapper me-3" style={{width: '50px', height: '50px'}}><i className="bi bi-clock"></i></div>
-                <div>
-                  <h6 className="fw-bold mb-1">Support Hours</h6>
-                  <p className="text-muted small mb-0">Monday - Saturday: 9AM - 6PM</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="card border-0 shadow-sm p-4">
-              <h3 className="fw-bold mb-3">Follow Us</h3>
-              <p className="text-muted small mb-4">Stay connected with VaxZone on social media for updates and health tips.</p>
-              <div className="d-flex gap-2">
-                <a href="https://www.facebook.com/profile.php?id=100086218892613" target="_blank" rel="noopener noreferrer" className="btn btn-outline-primary"><i className="bi bi-facebook"></i></a>
-                <a href="https://x.com/Thevishu133" target="_blank" rel="noopener noreferrer" className="btn btn-outline-primary"><i className="bi bi-twitter-x"></i></a>
-                <a href="https://www.instagram.com/the_vishu.7" target="_blank" rel="noopener noreferrer" className="btn btn-outline-primary"><i className="bi bi-instagram"></i></a>
-                <a href="https://www.linkedin.com/in/vishwajeet-kumar-755b0a271/" target="_blank" rel="noopener noreferrer" className="btn btn-outline-primary"><i className="bi bi-linkedin"></i></a>
-              </div>
-            </div>
-
-            <div className="card border-0 shadow-sm p-4 mt-4" style={{background: '#fff3cd'}}>
-              <div className="d-flex align-items-start">
-                <div className="text-warning me-3"><i className="bi bi-exclamation-triangle display-6"></i></div>
-                <div>
-                  <h6 className="fw-bold text-warning">Emergency Notice</h6>
-                  <p className="small mb-0">For medical emergencies, please call your local emergency number (102/108 in India) immediately. Our platform is for vaccination scheduling only.</p>
+                  ) : (
+                    <form onSubmit={handleSubmit} noValidate>
+                      <div className="row g-3">
+                        <div className="col-md-6">
+                          <label htmlFor="name" className="form-label fw-semibold">Name</label>
+                          <input
+                            id="name"
+                            name="name"
+                            type="text"
+                            className="form-control form-control-lg"
+                            value={formData.name}
+                            onChange={handleChange}
+                            placeholder="Enter your full name"
+                            required
+                          />
+                        </div>
+                        <div className="col-md-6">
+                          <label htmlFor="email" className="form-label fw-semibold">Email</label>
+                          <input
+                            id="email"
+                            name="email"
+                            type="email"
+                            className="form-control form-control-lg"
+                            value={formData.email}
+                            onChange={handleChange}
+                            placeholder="Enter your email address"
+                            required
+                          />
+                        </div>
+                        <div className="col-12">
+                          <label htmlFor="message" className="form-label fw-semibold">Message</label>
+                          <textarea
+                            id="message"
+                            name="message"
+                            className="form-control"
+                            rows="7"
+                            value={formData.message}
+                            onChange={handleChange}
+                            placeholder="Describe your question or issue"
+                            required
+                          ></textarea>
+                        </div>
+                        <div className="col-12 d-grid">
+                          <button type="submit" className="btn btn-primary btn-lg" disabled={loading}>
+                            {loading ? (
+                              <><span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Sending message...</>
+                            ) : (
+                              <><i className="bi bi-send me-2"></i>Submit Inquiry</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </div>
             </div>
@@ -222,7 +251,7 @@ export default function ContactPage() {
               <div className="card border-0 shadow-sm">
                 <div className="card-body">
                   <h6 className="fw-bold"><i className="bi bi-question-circle text-primary me-2"></i>How do I book a vaccination slot?</h6>
-                  <p className="text-muted small mb-0">Register an account, navigate to the Drives page, select your preferred drive, and book an available slot.</p>
+                  <p className="text-muted small mb-0">Register an account, open the Drives page, choose your preferred drive, and confirm an available slot.</p>
                 </div>
               </div>
             </div>
@@ -230,7 +259,7 @@ export default function ContactPage() {
               <div className="card border-0 shadow-sm">
                 <div className="card-body">
                   <h6 className="fw-bold"><i className="bi bi-question-circle text-primary me-2"></i>Can I cancel or reschedule my booking?</h6>
-                  <p className="text-muted small mb-0">Yes, go to My Bookings section and you can cancel or reschedule your appointment up to 24 hours before.</p>
+                  <p className="text-muted small mb-0">Yes. Visit My Bookings to cancel or reschedule an appointment, subject to the active booking rules.</p>
                 </div>
               </div>
             </div>
@@ -238,15 +267,15 @@ export default function ContactPage() {
               <div className="card border-0 shadow-sm">
                 <div className="card-body">
                   <h6 className="fw-bold"><i className="bi bi-question-circle text-primary me-2"></i>What documents do I need for vaccination?</h6>
-                  <p className="text-muted small mb-0">Bring a valid photo ID and your booking confirmation.</p>
+                  <p className="text-muted small mb-0">Bring a valid photo ID and your booking confirmation details when you visit the vaccination center.</p>
                 </div>
               </div>
             </div>
             <div className="col-md-6">
               <div className="card border-0 shadow-sm">
                 <div className="card-body">
-                  <h6 className="fw-bold"><i className="bi bi-question-circle text-primary me-2"></i>Is the vaccination free?</h6>
-                  <p className="text-muted small mb-0">It depends on the drive. Some drives are free while others may have a nominal fee.</p>
+                  <h6 className="fw-bold"><i className="bi bi-question-circle text-primary me-2"></i>Will my support message be saved?</h6>
+                  <p className="text-muted small mb-0">Yes. Contact inquiries are stored in the database and remain visible after restarts and page refreshes.</p>
                 </div>
               </div>
             </div>

@@ -68,15 +68,19 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
+        String path = request.getServletPath();
+        if (path == null || path.isBlank()) {
+            path = request.getRequestURI();
+        }
         
         String[] publicPaths = {
             "/health", "/api/health", "/api/health/",
+            "/v1/health",
             "/auth/", "/api/auth/",
-            "/public/", "/api/public/",
-            "/api/contact/", "/api/news/", "/api/reviews/", 
+            "/public/", "/v1/public/", "/api/public/",
+            "/contact/", "/api/contact/", "/news/", "/api/news/", "/reviews/", "/api/reviews/", 
             "/api/feedback/",
-            "/certificates/verify/",
+            "/certificates/verify/", "/reviews/center/",
             "/v3/api-docs/", "/swagger-ui/", "/h2-console/",
             "/error",
             "/", "/robots.txt", "/sitemap.xml",

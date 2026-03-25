@@ -1,9 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import api, { certificateAPI, newsAPI, publicAPI, unwrapApiData } from "../api/client";
 import ModalPopup from "../components/ModalPopup";
 import Seo from "../components/Seo";
+import { broadcastDataUpdated, subscribeToDataUpdates } from "../utils/dataSync";
+import { usePublicCatalog } from "../context/PublicCatalogContext";
+
+const REPLY_NOTIFICATION_TYPES = new Set(["CONTACT_REPLY", "FEEDBACK_REPLY"]);
+
+const getNotificationCopy = (notification) => {
+  if (notification?.type === "NEWS") {
+    return {
+      message: `Announcement: ${notification.message || "No details available"}`,
+      followUp: "Stay informed by checking the latest announcements."
+    };
+  }
+
+  if (REPLY_NOTIFICATION_TYPES.has(notification?.type)) {
+    return {
+      message: `Your message: ${notification.message || "No message"}`,
+      followUp: `Reply: ${notification.reply || "No reply yet"}`
+    };
+  }
+
+  return {
+    message: notification?.message || "No details available",
+    followUp: notification?.scheduledTime
+      ? `Scheduled for ${new Date(notification.scheduledTime).toLocaleString()}`
+      : (notification?.deliveryStatus ? `Delivery status: ${notification.deliveryStatus}` : "Notification delivered.")
+  };
+};
 
 export default function UserBookingsPage() {
+  const { drives: publicDrives, refreshCatalog } = usePublicCatalog();
   const [bookings, setBookings] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -26,14 +54,13 @@ export default function UserBookingsPage() {
       : parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   };
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [bookingsRes, notificationsRes, profileRes, drivesRes, newsRes] = await Promise.all([
+      const [bookingsRes, notificationsRes, profileRes, newsRes] = await Promise.all([
         api.get("/user/bookings"),
         api.get("/user/notifications"),
         api.get("/profile"),
-        publicAPI.getDrives(),
         newsAPI.getAllNews(0, 10)
       ]);
       const certificatesRes = await certificateAPI.getMyCertificates();
@@ -62,45 +89,42 @@ export default function UserBookingsPage() {
         });
       setNotifications(mergedNotifications);
 
-      const drivesPayload = unwrapApiData(drivesRes) || {};
-      const drives = Array.isArray(drivesPayload) ? drivesPayload : (drivesPayload.drives || []);
-      const slotResponses = await Promise.all(drives.map((drive) => publicAPI.getDriveSlots(drive.id)));
+      const slotResponses = await Promise.all(publicDrives.map((drive) => publicAPI.getDriveSlots(drive.id)));
       const slots = [];
 
       slotResponses.forEach((slotResponse, index) => {
-        const drive = drives[index];
+        const drive = publicDrives[index];
         (unwrapApiData(slotResponse) || []).forEach((slot) => {
+          const endDate = slot.endDate || slot.endDateTime || slot.endTime;
           slots.push({
             ...slot,
             driveId: drive.id,
             driveTitle: drive.title,
             driveDate: drive.driveDate,
-            centerName: drive.center?.name || drive.centerName
+            centerName: drive.center?.name || drive.centerName,
+            endDate
           });
         });
       });
 
       setAvailableSlots(slots.filter((slot) => slot.capacity > (slot.bookedCount || 0)));
     } catch (error) {
-      console.error("Error loading data:", error);
       setMsg("Unable to load your data. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [publicDrives]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   useEffect(() => {
-    const handleDataUpdated = () => {
+    const unsubscribe = subscribeToDataUpdates(() => {
       loadData();
-    };
-
-    window.addEventListener("vaxzone:data-updated", handleDataUpdated);
-    return () => window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
-  }, []);
+    });
+    return unsubscribe;
+  }, [loadData]);
 
   const buildBookingPayload = (slotId) => {
     const selectedSlot = availableSlots.find((slot) => slot.id === slotId);
@@ -122,6 +146,8 @@ export default function UserBookingsPage() {
           : "Booking request submitted successfully."
       );
       setForms({ slotId: "" });
+      broadcastDataUpdated({ source: "user-bookings-book" });
+      await refreshCatalog();
       await loadData();
       setActiveTab("bookings");
     } catch (error) {
@@ -134,6 +160,8 @@ export default function UserBookingsPage() {
       await api.patch(`/user/bookings/${id}/cancel`);
       setMsg("Booking cancelled successfully.");
       setBookingToCancel(null);
+      broadcastDataUpdated({ source: "user-bookings-cancel" });
+      await refreshCatalog();
       await loadData();
     } catch (error) {
       setMsg(error.response?.data?.message || "Failed to cancel booking.");
@@ -175,14 +203,11 @@ export default function UserBookingsPage() {
         noIndex
       />
       <div className="page-header rounded-3 mb-4 p-4">
-        <div className="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div className="d-flex align-items-center flex-wrap gap-3">
           <div>
             <h2 className="mb-1"><i className="bi bi-calendar-check me-2"></i>My Bookings</h2>
             <p className="mb-0 opacity-75">Manage your vaccination bookings and view notifications</p>
           </div>
-          <button className="btn btn-light" onClick={loadData}>
-            <i className="bi bi-arrow-clockwise me-2"></i>Refresh
-          </button>
         </div>
       </div>
 
@@ -436,24 +461,20 @@ export default function UserBookingsPage() {
               </div>
             ) : (
               <ul className="list-group list-group-flush">
-                {notifications.slice(0, 20).map((notification) => (
-                  <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
-                    <div>
-                      <div className="fw-semibold">{notification.title || `${notification.type} Reply`}</div>
-                      <div className="text-muted small">
-                        {notification.type === "NEWS"
-                          ? `Announcement: ${notification.message || "No details available"}`
-                          : `Your message: ${notification.message || "No message"}`}
+                {notifications.slice(0, 20).map((notification) => {
+                  const copy = getNotificationCopy(notification);
+
+                  return (
+                    <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
+                      <div>
+                        <div className="fw-semibold">{notification.title || `${notification.type} Notification`}</div>
+                        <div className="text-muted small">{copy.message}</div>
+                        <div className="small mt-1">{copy.followUp}</div>
                       </div>
-                      <div className="small mt-1">
-                        {notification.type === "NEWS"
-                          ? "Stay informed by checking the latest announcements."
-                          : `Reply: ${notification.reply || "No reply yet"}`}
-                      </div>
-                    </div>
-                    <small className="text-muted">{notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}</small>
-                  </li>
-                ))}
+                      <small className="text-muted">{notification.createdAt ? new Date(notification.createdAt).toLocaleString() : ""}</small>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>

@@ -1,0 +1,193 @@
+--------------------------------------------------
+PROJECT TECHNOLOGY & SKILLS REPORT
+--------------------------------------------------
+
+[A. Programming Languages]
+- Java
+- JavaScript
+- JSX
+- HTML
+- CSS
+- SQL
+- YAML
+- XML
+- PowerShell
+- Shell scripting
+
+[B. Frontend Technologies]
+- React 18
+- Vite
+- React Router DOM
+- React Strict Mode
+- React lazy loading and Suspense
+- React Error Boundaries
+- Context API
+- Custom React hooks
+- Bootstrap 5
+- React Bootstrap
+- Bootstrap Icons
+- React Icons
+- Chart.js
+- react-chartjs-2
+- Recharts
+- Axios
+- Fetch API
+- React Helmet Async
+- jsPDF
+- QRCode
+- Progressive Web App (PWA)
+- Service Worker
+- Web App Manifest
+- Responsive design
+- Theme switching with localStorage persistence
+
+[C. Backend Technologies]
+- Spring Boot 3
+- Spring Web / Spring MVC
+- Spring Security
+- Spring Data JPA
+- Spring Validation
+- Spring Mail
+- Spring Cache
+- Spring Boot Actuator
+- Spring configuration properties
+- Spring Boot auto-configuration
+- Hibernate ORM
+- HikariCP
+- Lombok
+- Jackson
+- SLF4J logging
+- REST controllers
+- Repository-service-controller layered architecture
+
+[D. Database]
+- MySQL 8
+- H2 Database
+- JPA entities and repositories
+- Hibernate dialect configuration
+- Flyway database migrations
+- SQL seed scripts
+
+[E. Authentication & Security]
+- JWT authentication
+- Access token and refresh token flow
+- Spring Security filter chain
+- Role-based access control (USER / ADMIN / SUPER_ADMIN)
+- Method-level authorization with `@PreAuthorize`
+- BCrypt password hashing
+- CORS configuration
+- Stateless session management
+- Custom JWT authentication filter
+- Custom authentication entry point
+- Brute-force protection settings
+- Rate limiting filter
+- Security headers
+- Email verification
+- Two-factor verification flow
+- Forgot password / reset password flow
+- Protected frontend routes
+
+[F. APIs & Communication]
+- REST APIs
+- JSON request/response DTOs
+- Axios interceptors
+- Automatic token refresh on 401 responses
+- Backend health endpoints
+- OpenAPI / Swagger UI
+- Fetch-based API health probing
+- Mail sending via SMTP / Spring Mail
+- Twilio SMS integration
+- In-app notification system
+- Reverse proxying via Nginx
+
+[G. Dev Tools & Build Tools]
+- Maven
+- Spring Boot Maven Plugin
+- Maven Surefire Plugin
+- npm
+- package-lock.json dependency locking
+- Node.js
+- Vite dev server and build pipeline
+- Vitest
+- jsdom
+- React Testing Library
+- Testing Library user-event
+- Testing Library jest-dom
+- Playwright
+- JUnit 5
+- Mockito
+- Spring Boot Test
+- Spring Security Test
+- MockMvc
+- Testcontainers
+- Docker multi-stage builds
+
+[H. Deployment & Environment]
+- Docker
+- Docker Compose
+- Nginx
+- MailHog
+- Environment-variable based configuration
+- Multiple Spring profiles (`dev`, `local`, `prod`, and local variants)
+- Frontend dev proxy auto-detection for backend ports
+- HTTP/2 enabled backend config
+- Gzip compression
+- Health checks in Docker Compose
+- Production-ready reverse proxy setup
+- Localhost development configuration
+
+[I. Version Control]
+- Git
+
+[J. Other Libraries / Utilities]
+- `io.jsonwebtoken` (JJWT)
+- `org.springdoc` OpenAPI starter
+- `org.apache.commons:commons-csv`
+- ZXing (`com.google.zxing`) for QR generation
+- OpenPDF (`com.github.librepdf:openpdf`)
+- Twilio Java SDK
+- `core-js`
+- Browser Cache API
+- LocalStorage-based client persistence
+- H2 Console
+
+[K. Concepts & Skills Used]
+- Full-stack web application development
+- Vaccination booking and scheduling workflows
+- CRUD operations
+- Authentication and authorization
+- Role-based admin and super-admin dashboards
+- Token-based session handling
+- Email verification and password recovery
+- Two-factor verification
+- Public and protected API design
+- Form handling and validation
+- Error handling and global exception handling
+- API integration and client abstraction
+- Responsive UI development
+- Search, filtering, and query-param driven views
+- Pagination
+- Lazy loading and route-based code splitting
+- SEO metadata management
+- PWA/offline asset caching
+- Data visualization and analytics dashboards
+- Certificate generation and verification
+- QR code generation and scanning flows
+- CSV export
+- Notification workflows (in-app, email, SMS-style)
+- Review, feedback, and contact management workflows
+- Audit logging
+- Caching and cache invalidation
+- Database migration management
+- Health monitoring
+- Reverse proxy and containerized deployment
+- Layered architecture with DTOs, services, repositories, and entities
+- MVC-style backend organization
+- Automated unit, integration, security, and end-to-end testing
+
+--------------------------------------------------
+SUMMARY:
+This project is a full-stack vaccination management and booking platform with separate React/Vite frontend and Spring Boot backend applications. It uses Java 17, Spring Boot 3, Spring Security, Spring Data JPA, MySQL, Flyway, React 18, Bootstrap, Axios, Chart.js, Recharts, and Docker-based deployment infrastructure with Nginx reverse proxying.
+
+Key implemented features include citizen registration and login, JWT-based authentication with refresh flow, role-based access control, email verification, password reset, two-factor verification, vaccination center and drive discovery, slot booking and rescheduling, certificate generation and verification with QR codes and PDF export, admin analytics dashboards, notifications, reviews, feedback/contact workflows, SEO support, PWA/service-worker support, audit logging, caching, and automated testing across backend and frontend layers.
+--------------------------------------------------

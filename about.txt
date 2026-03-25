@@ -1,0 +1,501 @@
+VAXZONE VACCINATION SYSTEM
+Complete Project Documentation
+
+1. PROJECT OVERVIEW
+
+Project Name:
+VaxZone Vaccination System
+
+Purpose:
+VaxZone is a full-stack vaccination booking and management platform built to help citizens discover vaccination centers, search live drives, book appointments, receive reminders, and manage certificates from a single system.
+
+Problem It Solves:
+Traditional vaccination coordination is often fragmented across manual records, static notices, and disconnected booking channels. This project solves that by centralizing center discovery, slot scheduling, booking management, notifications, certificate handling, and administrative monitoring into one digital platform.
+
+Target Users:
+- Citizens looking for vaccination centers, drives, slots, and certificates
+- Admins managing centers, drives, slots, bookings, feedback, and contacts
+- Super admins overseeing users, admins, and platform-wide data
+- Clients or healthcare operators looking for a deployable vaccination SaaS platform
+
+
+2. KEY FEATURES
+
+Smart Search:
+- Intelligent search across cities, vaccination centers, and drives
+- Ranked results with exact, prefix, contains, and fuzzy matching
+- "Did you mean" suggestion support
+- Search analytics logging for admin insights
+
+Drive and Slot Management:
+- Admins can create, update, filter, and soft-delete centers, drives, and slots
+- Slot overlap validation prevents conflicting time windows
+- Slot status handling supports UPCOMING, LIVE, and EXPIRED views
+- Drive configuration supports vaccine type, age range, total slots, and second-dose settings
+
+Booking System:
+- Citizens can book, cancel, and reschedule vaccination appointments
+- Capacity control prevents overbooking
+- Appointment times are auto-assigned within slot windows
+- Booking history and status tracking are available in the user dashboard
+
+Notification System:
+- In-app notification queue with scheduled delivery
+- Booking confirmation notifications
+- Appointment reminders at 48 hours and 24 hours before vaccination
+- Vaccination completion alerts
+- Second-dose reminders when a drive requires a follow-up dose
+- Reply notifications for feedback/contact responses
+
+Contact System:
+- Public and logged-in users can submit inquiries
+- Users can view their inquiry history
+- Admins can reply to contacts and track inquiry analytics
+
+Admin Dashboard:
+- Dashboard with users, bookings, drives, centers, slots, news, feedback, contacts, and audit logs
+- Booking status management
+- CSV export for bookings
+- Search analytics and contact analytics
+
+Analytics:
+- Dashboard metrics such as total users, total bookings, active drives, and available slots
+- Search analytics for top cities, top keywords, and trends
+- Contact analytics for daily activity, recent inquiries, and most active users
+
+Other Notable Features:
+- Profile management
+- Certificate generation and verification
+- Review and rating support for centers
+- News publishing module
+- Nearby center discovery
+- Responsive UI with theme toggle
+- SEO and PWA support
+
+
+3. TECH STACK
+
+Frontend:
+- React 18
+- Vite
+- Axios
+- React Router
+- React Bootstrap
+- Chart.js / react-chartjs-2 / Recharts
+- React Helmet for SEO metadata
+
+Backend:
+- Spring Boot 3
+- Spring Security
+- Spring Data JPA
+- Spring Validation
+- Spring Mail
+- Spring Cache
+- REST APIs
+- Springdoc OpenAPI / Swagger
+
+Database:
+- MySQL as the primary persistent production database
+- Flyway for schema migration and versioning
+
+Other:
+- JWT authentication with access token and refresh token flow
+- BCrypt password hashing
+- H2 file-based local profile for quick self-contained development
+- Twilio integration hooks for SMS delivery
+- OpenPDF and ZXing for certificate PDF and QR generation
+- Docker, Docker Compose, and Nginx deployment support
+
+
+4. SYSTEM ARCHITECTURE
+
+High-Level Flow:
+User -> Frontend -> API Client -> Spring Boot Backend -> Service Layer -> Repository Layer -> MySQL -> Backend Response -> UI Update
+
+Architecture Explanation:
+- The React frontend handles UI rendering, form interactions, route protection, search UI, dashboard views, and API communication through Axios.
+- The backend exposes REST endpoints through controllers.
+- Controllers delegate work to service classes containing business rules.
+- Services use repository interfaces for database access through JPA.
+- MySQL stores persistent application data such as users, drives, slots, bookings, contacts, and notifications.
+- Responses are returned as DTOs or structured payloads and then rendered in the frontend.
+
+Controller Layer:
+- Handles HTTP requests and response formatting
+- Key controller groups include `AuthController`, `PublicController`, `UserController`, `AdminController`, `SuperAdminController`, `NotificationController`, `ContactController`, `FeedbackController`, `CertificateController`, `NewsController`, `ProfileController`, and `ReviewController`
+
+Service Layer:
+- Contains core business logic
+- Important services include authentication, booking, drive management, slot management, contact handling, notification scheduling, certificate generation, search ranking, public catalog aggregation, and analytics generation
+
+Repository Layer:
+- JPA repositories handle persistence for users, centers, drives, slots, bookings, notifications, contacts, feedback, reviews, certificates, audit logs, search logs, and subscriptions
+- This layer isolates database interaction from controller logic
+
+
+5. WORKFLOW (STEP-BY-STEP)
+
+User Flow:
+1. Register account with name, email, password, age, and optional phone
+2. Verify email, then log in using JWT-based authentication
+3. Browse centers or drives, or use smart search to find relevant options
+4. View slot availability and book a preferred slot
+5. Track booking status from the user dashboard
+6. Receive booking confirmation and reminder notifications
+7. Complete vaccination and access certificate information
+8. Submit feedback or contact support if needed
+
+Admin Flow:
+1. Log in with admin credentials
+2. Open admin dashboard
+3. Create or manage vaccination centers
+4. Create drives linked to centers
+5. Add and manage slots for each drive
+6. Review and update bookings
+7. Reply to contact and feedback messages
+8. Monitor analytics, audit logs, and platform activity
+
+Super Admin Flow:
+1. Log in with super admin privileges
+2. Create admins and manage their access
+3. Update or remove users, centers, drives, and slots
+4. Oversee system-wide governance and data integrity
+
+
+6. DATABASE DESIGN
+
+Core Tables:
+
+users
+- Purpose: Stores citizen, admin, and super admin accounts
+- Key fields: `id`, `email`, `full_name`, `password`, `age`, `enabled`, `email_verified`, `phone_number`, `phone_verified`, `user_city`, `user_state`, `created_at`, `updated_at`
+
+vaccination_drives
+- Purpose: Stores vaccination campaign/drive records
+- Key fields: `id`, `title`, `vaccine_type`, `center_id`, `drive_date`, `min_age`, `max_age`, `start_time`, `end_time`, `total_slots`, `status`, `active`, `second_dose_required`, `second_dose_gap_days`
+
+slots
+- Purpose: Stores bookable time windows under a drive
+- Key fields: `id`, `drive_id`, `date_time`, `start_time`, `end_time`, `capacity`, `booked_count`
+
+bookings
+- Purpose: Stores user reservations for slots
+- Key fields: `id`, `user_id`, `slot_id`, `status`, `assigned_time`, `booked_at`, `cancelled_at`, `dose_number`, `first_dose_date`, `next_dose_due_date`, `second_dose_required`
+
+contacts
+- Purpose: Stores inquiries submitted through the contact system
+- Key fields: `id`, `user_id`, `name`, `email`, `phone`, `subject`, `message`, `response`, `status`, `created_at`, `updated_at`
+
+notifications
+- Purpose: Stores in-app and scheduled notification records
+- Key fields: `id`, `user_id`, `title`, `message`, `type`, `reply_message`, `status`, `delivery_status`, `scheduled_time`, `sent_at`, `next_attempt_at`, `retry_count`, `dedupe_key`, `created_at`
+
+Supporting Tables Present In The Project:
+- `roles`
+- `user_roles`
+- `vaccination_centers`
+- `certificates`
+- `feedback`
+- `reviews`
+- `news`
+- `email_verifications`
+- `phone_verifications`
+- `password_resets`
+- `audit_logs`
+- `rate_limits`
+- `search_logs`
+- `drive_subscriptions`
+
+Relationships:
+- One center can have many drives
+- One drive can have many slots
+- One user can have many bookings
+- One slot can have many bookings
+- One user can create many contacts, feedback entries, and notifications
+
+
+7. DATA STORAGE
+
+- Persistent business data is intended to be stored in MySQL using Flyway-managed schema migrations
+- The production profile validates schema against MySQL and keeps data across restarts
+- Entities are linked with proper foreign-key relationships
+- The project also includes soft-delete metadata (`deleted_at`, `deleted_by`) for safer administrative deletion in key entities
+- A local H2 file profile exists for easier development, but the main designed data layer is MySQL
+
+
+8. API STRUCTURE
+
+Major API Groups:
+
+/api/auth
+- `POST /auth/register` for registration
+- `POST /auth/login` for login
+- `POST /auth/refresh` for refresh token flow
+- `GET /auth/verify-email` for email verification
+- `POST /auth/resend-verification` for resending verification token
+- `POST /auth/forgot-password` and `POST /auth/reset-password` for password recovery
+- `POST /auth/phone/send-otp` and `POST /auth/phone/verify` for phone verification
+- `POST /auth/2fa/verify` for second-factor verification flow
+
+/api/public
+- `GET /public/centers` for center listing
+- `GET /public/drives` for drive listing and filtering
+- `GET /public/cities` for city suggestions
+- `GET /public/search` for smart search
+- `GET /public/nearby-centers` for location-based discovery
+- `GET /public/summary` for public platform metrics
+- `GET /public/centers/{id}` for center detail
+- `GET /public/drives/{driveId}/slots` for public slot visibility
+
+/api/user
+- `POST /user/bookings` for booking a slot
+- `GET /user/bookings` for booking history
+- `PATCH /user/bookings/{bookingId}/cancel` for cancellation
+- `PATCH /user/bookings/{bookingId}/reschedule` for rescheduling
+- `GET /user/notifications` for user notifications
+- `PATCH /user/notifications/read-all` for mark-all-read
+- `GET /user/recommendations/slots` for slot recommendations
+
+/api/profile
+- `GET /profile` for profile data
+- `PUT /profile` for profile update
+- `POST /profile/change-password` for password change
+- `POST /profile/deactivate` for account deactivation
+
+/api/admin
+- `GET /admin/dashboard/stats`
+- `GET /admin/dashboard/analytics`
+- `GET /admin/search-analytics`
+- `GET /admin/bookings`
+- `PATCH /admin/bookings/{bookingId}/{action}`
+- `PUT /admin/booking/{bookingId}/complete`
+- `GET/POST/PUT/DELETE` endpoints for centers, drives, and slots
+- `GET /admin/users`
+- `PATCH /admin/users/{userId}/enable`
+- `PATCH /admin/users/{userId}/disable`
+- `GET /admin/feedback` and reply endpoints
+- `GET /admin/contacts` and reply endpoints
+- `GET /admin/audit-logs`
+- `GET /admin/bookings/export`
+
+/api/contact
+- `POST /contact` for inquiry submission
+- `GET /contact/my-inquiries` for user inquiry history
+- `GET /contact/analytics` for inquiry analytics
+- `PATCH /contact/{id}/respond` for replies
+
+/api/notifications
+- `GET /notifications`
+- `GET /notifications/unread-count`
+- `PATCH /notifications/{notificationId}/read`
+- `PATCH /notifications/read-all`
+- `POST /notifications/slots/subscribe/{driveId}`
+- `POST /notifications/slots/unsubscribe/{driveId}`
+
+/api/certificates
+- `POST /certificates` for generation
+- `GET /certificates/my-certificates`
+- `GET /certificates/{id}`
+- `GET /certificates/verify/{certificateNumber}`
+
+HTTP Usage:
+- GET for retrieval
+- POST for creation and action submission
+- PUT for full updates and admin reply/update actions
+- PATCH for partial updates such as status changes and read markers
+- DELETE for delete operations, with several admin deletes implemented as soft deletes in the service layer
+
+
+9. SECURITY
+
+Authentication:
+- JWT-based stateless authentication
+- Access token and refresh token flow
+- Protected route handling in frontend and protected API access in backend
+
+Password Security:
+- Passwords are hashed with BCrypt (`BCryptPasswordEncoder`)
+- Plain-text passwords are not stored
+
+Authorization:
+- Role-based access control for `USER`, `ADMIN`, and `SUPER_ADMIN`
+- Admin endpoints require admin or super admin role
+- Super admin endpoints require super admin role only
+
+Validation and Safety:
+- Request DTO validation and backend checks for required fields
+- Age eligibility validation for booking
+- Slot capacity and duplicate booking prevention
+- Overlapping slot prevention
+- Email verification and password reset token handling
+- Brute-force login protection with failed-attempt lockout
+- Rate-limiting filter for API protection
+- CORS configuration for allowed origins
+
+Secure APIs:
+- Unauthorized access is blocked by Spring Security filters
+- JWT auth filter resolves authenticated users per request
+- Public, auth, health, review, contact-submit, and certificate-verify routes are explicitly allowed
+
+
+10. UI/UX DESIGN
+
+- Clean React single-page application with route-based navigation
+- Light and dark theme support using a persistent theme context
+- Responsive layout using Bootstrap and custom styling
+- User-friendly navigation with protected routes for secured areas
+- Smart search with live suggestions and keyboard navigation
+- Dashboard cards, charts, badges, modals, and tables for clarity
+- SEO support through React Helmet metadata
+- PWA basics through manifest and service worker files
+
+
+11. NOTIFICATION SYSTEM
+
+Implemented Notification Events:
+- Booking confirmation
+- Appointment reminder 48 hours before
+- Appointment reminder 24 hours before
+- Vaccination completion notification
+- Second-dose reminder 48 hours before
+- Second-dose reminder 24 hours before
+- Contact reply notification
+- Feedback reply notification
+
+How It Works:
+- Notifications are queued in the database
+- Delivery records track status such as pending, sent, and failed
+- Deduplication keys prevent duplicate notifications
+- A scheduler dispatches due notifications and reconciles reminder schedules
+- The frontend shows notifications in the user dashboard
+
+Delivery Channels:
+- In-app notifications are fully modeled
+- Email and SMS delivery hooks exist in the backend, with mail/Twilio configuration support for real integration
+
+
+12. ANALYTICS
+
+Dashboard Metrics:
+- Total users
+- Active users
+- Total bookings
+- Pending, confirmed, and cancelled bookings
+- Total centers, drives, slots, and available slots
+- New users this month
+- Bookings today
+- Completed vaccinations
+
+Search Analytics:
+- Total searches
+- Top searched cities
+- Top keywords
+- Search trend by day
+
+Contact Analytics:
+- Total inquiries
+- Today's inquiries
+- Weekly inquiries
+- Daily inquiry breakdown
+- Most active users
+- Recent inquiry feed
+
+User and Activity Tracking:
+- Audit logs capture key actions such as register, login, booking creation, booking updates, and admin operations
+- Search logs capture smart-search and nearby-center usage
+
+
+13. CHALLENGES & SOLUTIONS
+
+1. Data not updating across pages or dashboards
+Solution:
+The frontend uses explicit reload methods, shared data-sync utilities, interval refresh, focus refresh, and event broadcasting to re-fetch fresh data after booking/admin actions.
+
+2. Slot date and time editing bugs
+Solution:
+The admin dashboard normalizes slot start/end values, binds edit state separately, validates end-after-start, and rebuilds slot payloads before saving.
+
+3. API sync issues between frontend and backend
+Solution:
+The codebase standardizes endpoint groups in the Axios client and supports compatible route aliases on the backend such as `/admin/...`, `/public/...`, `/contact/...`, and `/profile`.
+
+4. Duplicate or mistimed notifications
+Solution:
+Notifications use scheduled timestamps, retry tracking, reconciliation jobs, and dedupe keys to make reminder delivery more reliable.
+
+5. Overbooking and schedule conflicts
+Solution:
+Booking logic checks slot capacity, prevents duplicate active bookings, blocks nearby conflicting bookings, and calculates appointment times inside the slot duration.
+
+6. Unsafe hard deletion in admin workflows
+Solution:
+The service layer introduces soft-delete behavior for users, centers, drives, slots, and bookings to improve recoverability and auditability.
+
+
+14. FUTURE ENHANCEMENTS
+
+- Dedicated mobile app for Android and iOS
+- AI-based vaccine or slot recommendations
+- Fully integrated real email and SMS notification delivery
+- More advanced analytics and forecasting
+- Geospatial map view for centers and drives
+- Payment or enterprise billing for SaaS deployment
+- Multi-tenant organization support for hospitals or health departments
+- Better 2FA implementation beyond development placeholder flow
+
+
+15. HOW TO RUN PROJECT
+
+Frontend:
+1. Open terminal in `frontend`
+2. Run `npm install`
+3. Run `npm run dev`
+4. Frontend will run on a Vite dev server, commonly `http://localhost:5174`
+
+Backend:
+1. Open terminal in `backend`
+2. Run `mvn spring-boot:run`
+3. Backend runs on `http://localhost:8080` with context path `/api`
+4. Swagger UI is available at `http://localhost:8080/swagger-ui/index.html`
+
+Database:
+Primary MySQL setup:
+1. Install MySQL 8+
+2. Create a database, for example `vaccination_db`
+3. Configure database credentials in environment variables or application profile
+4. Use the production/MySQL profile so Flyway migrations create and align schema
+
+Optional Docker-based setup:
+1. Configure `.env`
+2. Run `docker compose up -d mysql`
+3. Start backend with the MySQL-backed profile
+
+Local Development Note:
+- The project also supports a self-contained local profile using persistent file-based H2 for easier startup without MySQL
+- Production-oriented deployment is designed around MySQL
+
+Suggested Environment Variables:
+- `SPRING_PROFILES_ACTIVE`
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+- `JWT_SECRET`, `JWT_ISSUER`
+- `CORS_ALLOWED_ORIGINS`
+- `APP_BASE_URL`, `FRONTEND_URL`
+- `MAIL_*`
+- `TWILIO_*`
+
+
+16. WHY THIS PROJECT IS UNIQUE
+
+- It is more than a student CRUD app; it is structured like a startup-ready healthcare operations platform
+- It solves a real-world public service problem with citizen and admin workflows in one product
+- It includes smart search, scheduled reminders, analytics, certificates, contact workflows, and admin governance
+- It follows scalable layered architecture with controllers, services, repositories, DTOs, and migrations
+- It supports both local development convenience and production deployment patterns
+- It is suitable for interviews, demos, client discussions, and investor-facing explanation because it combines usability, operations, and technical depth
+
+
+17. CONCLUSION
+
+VaxZone is a practical, full-stack vaccination management system that demonstrates real-world software engineering across frontend experience, backend architecture, persistence design, security, analytics, and deployment readiness.
+
+From a business perspective, it improves healthcare service coordination, user convenience, and operational visibility. From a technical perspective, it shows a scalable SaaS-style architecture using React, Spring Boot, and MySQL, with strong potential for expansion into a production-grade public health or healthcare platform.

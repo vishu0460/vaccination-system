@@ -75,38 +75,29 @@ class AuthServiceTest {
     }
 
 @Test
-    void registerAndLogin_WithNewEmail_ShouldCreateUserAndLogin() {
-        RegisterRequest req = new RegisterRequest("test@example.com", "Test User", "Password123", 25, "+1234567890");
+    void register_WithNewEmail_ShouldCreateUser() {
+        RegisterRequest req = new RegisterRequest("test@example.com", "Test User", "+1234567890", "Password123!", 25);
         
-        when(userRepository.existsByEmail("test@example.com")).thenReturn(false);
+        when(userRepository.existsAnyByEmail("test@example.com")).thenReturn(false);
         when(roleRepository.findByName(RoleName.USER)).thenReturn(Optional.of(Role.builder().name(RoleName.USER).build()));
         when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(User.builder()
-            .email("test@example.com")
-            .emailVerified(true)
-            .roles(Set.of(Role.builder().name(RoleName.USER).build()))
-            .build()
-        ));
-        when(authenticationManager.authenticate(any())).thenReturn(mock(Authentication.class));
-        when(jwtService.createAccessToken(anyString(), anyMap())).thenReturn("accessToken");
-        when(jwtService.createRefreshToken(anyString())).thenReturn("refreshToken");
-        when(jwtService.accessExpirySeconds()).thenReturn(3600L);
+        ReflectionTestUtils.setField(authService, "autoVerifyEmail", true);
 
-        AuthResponse result = authService.registerAndLogin(req, httpServletRequest);
+        ApiMessage result = authService.register(req, httpServletRequest);
 
         assertNotNull(result);
-        assertEquals("accessToken", result.accessToken());
-        verify(userRepository, times(2)).save(any(User.class));
+        assertEquals("Registration successful. You can log in now.", result.message());
+        verify(userRepository).save(any(User.class));
     }
 
     @Test
-    void registerAndLogin_WithExistingEmail_ShouldThrowException() {
-        RegisterRequest req = new RegisterRequest("existing@example.com", "Test User", "Password123", 25, "+1234567890");
+    void register_WithExistingEmail_ShouldThrowException() {
+        RegisterRequest req = new RegisterRequest("existing@example.com", "Test User", "+1234567890", "Password123!", 25);
         
-        when(userRepository.existsByEmail("existing@example.com")).thenReturn(true);
+        when(userRepository.existsAnyByEmail("existing@example.com")).thenReturn(true);
 
-        AppException exception = assertThrows(AppException.class, () -> authService.registerAndLogin(req, httpServletRequest));
+        AppException exception = assertThrows(AppException.class, () -> authService.register(req, httpServletRequest));
         assertEquals("Email already registered", exception.getMessage());
     }
 
@@ -294,4 +285,3 @@ class AuthServiceTest {
         assertEquals("Invalid or expired reset token", exception.getMessage());
     }
 }
-

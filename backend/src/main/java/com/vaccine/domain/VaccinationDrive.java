@@ -2,14 +2,16 @@ package com.vaccine.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "vaccination_drives")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -62,5 +64,22 @@ public class VaccinationDrive {
     @Column(nullable = false)
     private Boolean active = true;
 
+    @Builder.Default
+    @Column(name = "second_dose_required", nullable = false)
+    private Boolean secondDoseRequired = false;
+
+    @Column(name = "second_dose_gap_days")
+    private Integer secondDoseGapDays;
+
     private String description;
+
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by", length = 120)
+    private String deletedBy;
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
 }

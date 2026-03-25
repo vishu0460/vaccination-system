@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Badge, Button, Spinner, Modal, Form, Alert, Tab, Tabs } from 'react-bootstrap';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { adminAPI, newsAPI, certificateAPI, superAdminAPI, unwrapApiData } from '../api/client';
+import { adminAPI, newsAPI, superAdminAPI, unwrapApiData } from '../api/client';
 import ErrorState from '../components/ErrorState';
+import SearchInput from '../components/SearchInput';
 import { getRole } from '../utils/auth';
-import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaSearch, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaDownload, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
+import { broadcastDataUpdated, debugDataSync, subscribeToDataUpdates } from '../utils/dataSync';
+import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
 import useDebounce from '../hooks/useDebounce';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
@@ -18,6 +20,31 @@ const EMPTY_STATS = {
   newUsersThisMonth: 0,
   bookingsToday: 0,
   completedVaccinations: 0
+};
+
+const EMPTY_SEARCH_ANALYTICS = {
+  totalSearches: 0,
+  topCities: [],
+  topKeywords: [],
+  trends: []
+};
+
+const EMPTY_DASHBOARD_ANALYTICS = {
+  totalUsers: 0,
+  totalBookings: 0,
+  activeDrives: 0,
+  availableSlots: 0,
+  mostSearchedCity: 'N/A',
+  mostBookedVaccine: 'N/A'
+};
+
+const EMPTY_CONTACT_ANALYTICS = {
+  totalInquiries: 0,
+  todayInquiries: 0,
+  weeklyInquiries: 0,
+  inquiriesByDay: [],
+  mostActiveUsers: [],
+  recentInquiries: []
 };
 
 const DRIVE_STATUS_OPTIONS = ['UPCOMING', 'LIVE', 'EXPIRED'];
@@ -114,6 +141,39 @@ const formatApiDateTime = (value) => {
 
 const isDateTimeValue = (value) => typeof value === 'string' && value.includes('T');
 
+const addHoursToLocalDateTime = (value, hours = 1) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+
+  parsed.setHours(parsed.getHours() + hours);
+  return formatDateTimeLocal(parsed);
+};
+
+const normalizeSlotDateRange = (startValue, endValue) => {
+  const normalizedStart = formatDateTimeLocal(startValue) || startValue || '';
+  let normalizedEnd = formatDateTimeLocal(endValue) || endValue || '';
+
+  if (!normalizedStart) {
+    return {
+      startDate: '',
+      endDate: normalizedEnd
+    };
+  }
+
+  const parsedStart = new Date(normalizedStart);
+  const parsedEnd = normalizedEnd ? new Date(normalizedEnd) : null;
+  if (!normalizedEnd || Number.isNaN(parsedEnd?.getTime()) || parsedEnd <= parsedStart) {
+    normalizedEnd = addHoursToLocalDateTime(normalizedStart, 1);
+  }
+
+  return {
+    startDate: normalizedStart,
+    endDate: normalizedEnd
+  };
+};
+
 const combineSlotDateTime = (baseDateTime, timeValue) => {
   if (!timeValue && !baseDateTime) {
     return '';
@@ -140,39 +200,52 @@ const combineSlotDateTime = (baseDateTime, timeValue) => {
   return formatDateTimeLocal(parsed);
 };
 
-const normalizeSlotForEditing = (slot) => {
-  const baseStart = slot?.startDate || slot?.dateTime || slot?.time || slot?.startTime || '';
-  const rawEnd = slot?.endDate || slot?.endTime || slot?.dateEndTime || slot?.endDateTime || '';
-  const normalizedDriveId = slot?.driveId || slot?.drive?.id || '';
-  const normalizedStartTime = formatDateTimeLocal(baseStart);
-  let normalizedEndTime = formatDateTimeLocal(rawEnd) || combineSlotDateTime(baseStart, rawEnd);
+const getSlotStartValue = (slot) => slot?.startDate || slot?.time || slot?.dateTime || slot?.startTime || '';
 
-  if (!normalizedEndTime && normalizedStartTime) {
-    const fallbackEnd = new Date(normalizedStartTime);
-    if (!Number.isNaN(fallbackEnd.getTime())) {
-      fallbackEnd.setHours(fallbackEnd.getHours() + 1);
-      normalizedEndTime = formatDateTimeLocal(fallbackEnd);
-    }
+const getSlotEndValue = (slot) => {
+  if (slot?.endDate) {
+    return slot.endDate;
   }
+  if (slot?.endDateTime) {
+    return slot.endDateTime;
+  }
+  if (slot?.dateEndTime) {
+    return slot.dateEndTime;
+  }
+  if (slot?.endTime) {
+    return combineSlotDateTime(getSlotStartValue(slot), slot.endTime) || slot.endTime;
+  }
+  return '';
+};
+
+const normalizeSlotForEditing = (slot) => {
+  const baseStart = getSlotStartValue(slot);
+  const rawEnd = getSlotEndValue(slot);
+  const normalizedDriveId = slot?.driveId || slot?.drive?.id || '';
+  const normalizedRange = normalizeSlotDateRange(
+    baseStart,
+    formatDateTimeLocal(rawEnd) || rawEnd
+  );
 
   return {
     ...slot,
     startDate: slot?.startDate || baseStart || null,
     endDate: slot?.endDate || rawEnd || null,
     driveId: normalizedDriveId,
-    editStartTime: slot?.editStartTime || normalizedStartTime,
-    editEndTime: slot?.editEndTime || normalizedEndTime,
+    editStartDate: slot?.editStartDate || normalizedRange.startDate,
+    editEndDate: slot?.editEndDate || normalizedRange.endDate,
   };
 };
 
 const formatSlotEndDisplay = (slot) => {
-  const endDateTime = slot?.endDate || combineSlotDateTime(slot?.startDate || slot?.dateTime || slot?.time || slot?.startTime, slot?.endTime);
+  const endDateTime = getSlotEndValue(slot);
   return formatDateTime(endDateTime);
 };
 
 const buildSlotPayload = (formState) => {
-  const startDate = formatApiDateTime(formState.startTime) || formState.startTime;
-  const endDate = formatApiDateTime(formState.endTime) || formState.endTime;
+  const normalizedRange = normalizeSlotDateRange(formState.startDate, formState.endDate);
+  const startDate = formatApiDateTime(normalizedRange.startDate) || normalizedRange.startDate;
+  const endDate = formatApiDateTime(normalizedRange.endDate) || normalizedRange.endDate;
 
   return {
     driveId: Number(formState.driveId),
@@ -185,10 +258,14 @@ const buildSlotPayload = (formState) => {
 const mergeUpdatedSlot = (currentSlots, updatedSlot) =>
   currentSlots.map((slot) => (Number(slot.id) === Number(updatedSlot.id) ? normalizeSlotForEditing(updatedSlot) : slot));
 
+const upsertDrive = (currentDrives, nextDrive) => {
+  const normalizedId = Number(nextDrive?.id);
+  const remainingDrives = currentDrives.filter((drive) => Number(drive.id) !== normalizedId);
+  return [nextDrive, ...remainingDrives];
+};
+
 const notifyDataUpdated = () => {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('vaxzone:data-updated'));
-  }
+  broadcastDataUpdated({ source: 'admin-dashboard' });
 };
 
 const communicationBadge = (status) => {
@@ -201,13 +278,15 @@ export default function AdminDashboardPage() {
   const isSuperAdmin = currentRole === 'SUPER_ADMIN';
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stats, setStats] = useState(EMPTY_STATS);
+  const [searchAnalytics, setSearchAnalytics] = useState(EMPTY_SEARCH_ANALYTICS);
+  const [dashboardAnalytics, setDashboardAnalytics] = useState(EMPTY_DASHBOARD_ANALYTICS);
+  const [contactAnalytics, setContactAnalytics] = useState(EMPTY_CONTACT_ANALYTICS);
   const [users, setUsers] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [centers, setCenters] = useState([]);
   const [drives, setDrives] = useState([]);
   const [slots, setSlots] = useState([]);
   const [news, setNews] = useState([]);
-  const [certificates, setCertificates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -230,7 +309,6 @@ export default function AdminDashboardPage() {
   const [showSlotModal, setShowSlotModal] = useState(false);
   const [showManageSlotsModal, setShowManageSlotsModal] = useState(false);
   const [showEditSlotModal, setShowEditSlotModal] = useState(false);
-  const [showCertificateModal, setShowCertificateModal] = useState(false);
   const [showEditBookingModal, setShowEditBookingModal] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -249,10 +327,11 @@ export default function AdminDashboardPage() {
   const [editCenterForm, setEditCenterForm] = useState({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
   const [driveForm, setDriveForm] = useState({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
   const [editDriveForm, setEditDriveForm] = useState({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
-  const [slotForm, setSlotForm] = useState({ driveId: '', startTime: '', endTime: '', capacity: 50 });
-  const [editSlotForm, setEditSlotForm] = useState({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+  const [slotForm, setSlotForm] = useState({ driveId: '', startDate: '', endDate: '', capacity: 50 });
+  const [editSlotForm, setEditSlotForm] = useState({ driveId: '', startDate: '', endDate: '', capacity: 50 });
+  const [editSlotStartDate, setEditSlotStartDate] = useState('');
+  const [editSlotEndDate, setEditSlotEndDate] = useState('');
   const [slotActionLoading, setSlotActionLoading] = useState(false);
-  const [certificateForm, setCertificateForm] = useState({ bookingId: '', vaccineName: '', doseNumber: 1 });
   const [editUserForm, setEditUserForm] = useState({ email: '', fullName: '', age: 0, phoneNumber: '', enabled: true });
   const [slotFilters, setSlotFilters] = useState({ status: 'ALL', centerId: '', driveId: '', date: '' });
   
@@ -266,15 +345,16 @@ export default function AdminDashboardPage() {
   const [responseText, setResponseText] = useState('');
 
   const refreshActiveTabData = async () => {
-    await loadDashboardData();
+    await Promise.all([
+      loadDashboardData(),
+      loadCenters({ silent: true }),
+      loadDrives({ silent: true }),
+      loadSlots({ silent: true })
+    ]);
 
     if (activeTab === 'users') await loadUsers();
     if (activeTab === 'bookings') await loadBookings();
-    if (activeTab === 'centers') await loadCenters();
-    if (activeTab === 'drives') await loadDrives();
-    if (activeTab === 'slots') await loadSlots();
     if (activeTab === 'news') await loadNews();
-    if (activeTab === 'certificates') await loadCertificates();
     if (activeTab === 'feedback') await loadFeedbacks();
     if (activeTab === 'contacts') await loadContacts();
 
@@ -284,30 +364,35 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    const unsubscribe = subscribeToDataUpdates(() => {
+      refreshActiveTabData().catch((err) => {
+        setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
+      });
+    });
+
+    return unsubscribe;
+  }, [activeTab, selectedDrive?.id, showManageSlotsModal, slotFilters]);
 
   useEffect(() => {
-    const handleDataUpdated = () => {
+    const refresh = () => {
       refreshActiveTabData().catch((err) => {
         setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
       });
     };
 
-    window.addEventListener('vaxzone:data-updated', handleDataUpdated);
-    return () => window.removeEventListener('vaxzone:data-updated', handleDataUpdated);
+    const intervalId = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refresh);
+    };
   }, [activeTab, selectedDrive?.id, showManageSlotsModal, slotFilters]);
 
   useEffect(() => {
-    if (activeTab === 'users') loadUsers();
-    if (activeTab === 'bookings') loadBookings();
-    if (activeTab === 'centers') loadCenters();
-    if (activeTab === 'drives') loadDrives();
-    if (activeTab === 'slots') loadSlots();
-    if (activeTab === 'news') loadNews();
-    if (activeTab === 'certificates') loadCertificates();
-    if (activeTab === 'feedback') loadFeedbacks();
-    if (activeTab === 'contacts') loadContacts();
+    refreshActiveTabData().catch((err) => {
+      setError(err?.response?.data?.message || 'Failed to refresh dashboard data');
+    });
   }, [activeTab]);
 
   useEffect(() => {
@@ -316,20 +401,56 @@ export default function AdminDashboardPage() {
     }
   }, [slotFilters]);
 
+  useEffect(() => {
+    debugDataSync('admin drives state', drives);
+  }, [drives]);
+
+  useEffect(() => {
+    debugDataSync('admin slots state', slots);
+  }, [slots]);
+
+  useEffect(() => {
+    debugDataSync('admin drive state for render', drives);
+  }, [drives]);
+
+  useEffect(() => {
+    debugDataSync('edit slot start date', editSlotStartDate);
+  }, [editSlotStartDate]);
+
+  useEffect(() => {
+    debugDataSync('edit slot end date', editSlotEndDate);
+  }, [editSlotEndDate]);
+
+  const handleSlotFormFieldChange = (setter) => (event) => {
+    const { name, value } = event.target;
+    setter((current) => ({
+      ...current,
+      [name]: name === 'capacity' ? Number(value) : value
+    }));
+  };
+
   const loadDashboardData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [statsRes, bookingsRes] = await Promise.all([
+      const [statsRes, bookingsRes, searchAnalyticsRes, dashboardAnalyticsRes, contactAnalyticsRes] = await Promise.all([
         adminAPI.getDashboardStats(),
-        adminAPI.getAllBookings()
+        adminAPI.getAllBookings(),
+        adminAPI.getSearchAnalytics(),
+        adminAPI.getDashboardAnalytics(),
+        adminAPI.getContactAnalytics()
       ]);
       setStats(ensureStats(unwrapApiData(statsRes)));
       setBookings(ensureArray(unwrapApiData(bookingsRes)));
+      setSearchAnalytics({ ...EMPTY_SEARCH_ANALYTICS, ...(unwrapApiData(searchAnalyticsRes) || {}) });
+      setDashboardAnalytics({ ...EMPTY_DASHBOARD_ANALYTICS, ...(unwrapApiData(dashboardAnalyticsRes) || {}) });
+      setContactAnalytics({ ...EMPTY_CONTACT_ANALYTICS, ...(unwrapApiData(contactAnalyticsRes) || {}) });
     } catch (err) {
-      console.error('Error loading dashboard:', err.response?.data || err.message);
       setStats(EMPTY_STATS);
       setBookings([]);
+      setSearchAnalytics(EMPTY_SEARCH_ANALYTICS);
+      setDashboardAnalytics(EMPTY_DASHBOARD_ANALYTICS);
+      setContactAnalytics(EMPTY_CONTACT_ANALYTICS);
       setError(err.response?.data?.message || 'Failed to load dashboard stats');
     } finally {
       setLoading(false);
@@ -365,29 +486,41 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const loadCenters = async () => {
+  const loadCenters = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await adminAPI.getAllCenters();
-      setCenters(ensureArray(unwrapApiData(response)));
+      const centerItems = ensureArray(unwrapApiData(response));
+      debugDataSync('admin centers response', centerItems);
+      setCenters(centerItems);
     } catch (err) {
       setError('Failed to load centers');
       setCenters([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const loadDrives = async () => {
+  const loadDrives = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       const response = await adminAPI.getAllDrives();
-      setDrives(ensureArray(unwrapApiData(response)));
+      const driveItems = ensureArray(unwrapApiData(response));
+      debugDataSync('admin drives response', driveItems);
+      setDrives(driveItems);
     } catch (err) {
       setError('Failed to load drives');
       setDrives([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -410,13 +543,22 @@ export default function AdminDashboardPage() {
     return params;
   };
 
-  const loadSlots = async () => {
+  const loadSlots = async (options = {}) => {
     try {
-      setLoading(true);
+      if (!options.silent) {
+        setLoading(true);
+      }
       setError(null);
 
       const slotsResponse = await adminAPI.getAllSlotsList(buildSlotFilterParams());
-      setSlots(ensureArray(unwrapApiData(slotsResponse)).map(normalizeSlotForEditing));
+      const slotItems = ensureArray(unwrapApiData(slotsResponse)).map(normalizeSlotForEditing);
+      slotItems.forEach((slot) => {
+        console.log('Slot:', slot);
+        console.log('Start:', slot.startDate);
+        console.log('End:', slot.endDate);
+      });
+      debugDataSync('admin slots response', slotItems);
+      setSlots(slotItems);
 
       const metadataRequests = [];
       if (centers.length === 0) {
@@ -439,7 +581,9 @@ export default function AdminDashboardPage() {
       setError('Failed to load slots');
       setSlots([]);
     } finally {
-      setLoading(false);
+      if (!options.silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -451,18 +595,6 @@ export default function AdminDashboardPage() {
       setNews(ensureArray(payload));
     } catch (err) {
       setNews([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadCertificates = async () => {
-    try {
-      setLoading(true);
-      const response = await adminAPI.getAllCertificates();
-      setCertificates(ensureArray(unwrapApiData(response)));
-    } catch (err) {
-      setCertificates([]);
     } finally {
       setLoading(false);
     }
@@ -529,8 +661,7 @@ export default function AdminDashboardPage() {
       setCenterForm({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
       setSuccess('Center created successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadCenters();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to create center');
     }
@@ -560,8 +691,7 @@ export default function AdminDashboardPage() {
       setEditingCenter(null);
       setSuccess('Center updated successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadCenters();
+      await refreshActiveTabData();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update center');
     }
@@ -578,13 +708,17 @@ export default function AdminDashboardPage() {
   const handleCreateDrive = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.createDrive({ ...driveForm, centerId: Number(driveForm.centerId) });
+      const response = await adminAPI.createDrive({ ...driveForm, centerId: Number(driveForm.centerId) });
+      const createdDrive = unwrapApiData(response);
+      debugDataSync('created drive response', createdDrive);
+      if (createdDrive?.id) {
+        setDrives((currentDrives) => upsertDrive(currentDrives, createdDrive));
+      }
       setShowDriveModal(false);
       setDriveForm({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
       setSuccess('Drive created successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadDrives();
+      await loadDrives();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create drive');
     }
@@ -612,13 +746,17 @@ export default function AdminDashboardPage() {
   const handleUpdateDrive = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.updateDrive(editingDrive.id, { ...editDriveForm, centerId: Number(editDriveForm.centerId) });
+      const response = await adminAPI.updateDrive(editingDrive.id, { ...editDriveForm, centerId: Number(editDriveForm.centerId) });
+      const updatedDrive = unwrapApiData(response);
+      debugDataSync('updated drive response', updatedDrive);
+      if (updatedDrive?.id) {
+        setDrives((currentDrives) => upsertDrive(currentDrives, updatedDrive));
+      }
       setShowEditDriveModal(false);
       setEditingDrive(null);
       setSuccess('Drive updated successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadDrives();
+      await loadDrives();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update drive');
     }
@@ -630,6 +768,7 @@ export default function AdminDashboardPage() {
       setDrives((current) => current.map((drive) => (drive.id === driveId ? { ...drive, status } : drive)));
       setSuccess(`Drive status updated to ${status}.`);
       notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update drive status');
     }
@@ -641,7 +780,7 @@ export default function AdminDashboardPage() {
       await loadDrives();
     }
     setSelectedDrive(drive || null);
-    setSlotForm({ driveId: drive?.id || '', startTime: '', endTime: '', capacity: 50 });
+    setSlotForm({ driveId: drive?.id || '', startDate: '', endDate: '', capacity: 50 });
     setShowSlotModal(true);
   };
 
@@ -652,15 +791,10 @@ export default function AdminDashboardPage() {
       const slotData = buildSlotPayload(slotForm);
       await adminAPI.createSlot(slotData);
       setShowSlotModal(false);
-      setSlotForm({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+      setSlotForm({ driveId: '', startDate: '', endDate: '', capacity: 50 });
       setSuccess('Slot created successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadDrives();
-      loadSlots();
-      if (selectedDrive?.id) {
-        loadDriveSlots(selectedDrive.id, true);
-      }
+      await refreshActiveTabData();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to create slot');
     } finally {
@@ -674,12 +808,17 @@ export default function AdminDashboardPage() {
       const response = await (isSuperAdmin ? superAdminAPI.getDriveSlots(driveId) : adminAPI.getDriveSlots(driveId));
       const payload = unwrapApiData(response) || {};
       const slots = (Array.isArray(payload) ? payload : (payload.slots || [])).map(normalizeSlotForEditing);
+      slots.forEach((slot) => {
+        console.log('Slot:', slot);
+        console.log('Start:', slot.startDate);
+        console.log('End:', slot.endDate);
+      });
       setDriveSlots(slots);
       if (keepOpen) {
         setShowManageSlotsModal(true);
       }
     } catch (err) {
-      console.error('Failed to load drive slots:', err.response?.data || err.message);
+      console.error('Failed to load drive slots', err);
       setDriveSlots([]);
       setError('Failed to load slots');
     }
@@ -694,10 +833,10 @@ export default function AdminDashboardPage() {
     const normalizedSlot = normalizeSlotForEditing(slot);
     setEditingSlot(normalizedSlot);
     const isExpired = normalizedSlot.slotStatus === 'EXPIRED';
+    setEditSlotStartDate(normalizedSlot.editStartDate || '');
+    setEditSlotEndDate(normalizedSlot.editEndDate || '');
     setEditSlotForm({
       driveId: normalizedSlot.driveId || '',
-      startTime: normalizedSlot.editStartTime || '',
-      endTime: normalizedSlot.editEndTime || '',
       capacity: normalizedSlot.capacity || 50
     });
     if (isExpired) {
@@ -710,20 +849,29 @@ export default function AdminDashboardPage() {
     e.preventDefault();
     setSlotActionLoading(true);
     try {
-      const slotPayload = buildSlotPayload(editSlotForm);
+      const slotPayload = buildSlotPayload({
+        ...editSlotForm,
+        startDate: editSlotStartDate,
+        endDate: editSlotEndDate
+      });
       const nextStatus = getSlotStatusPreview(slotPayload.startDate, slotPayload.endDate);
       if (!editingSlot?.id) {
         throw new Error('Slot ID is missing');
       }
       const response = await (isSuperAdmin ? superAdminAPI.updateSlot(editingSlot.id, slotPayload) : adminAPI.updateSlot(editingSlot.id, slotPayload));
       const updatedSlot = normalizeSlotForEditing(unwrapApiData(response));
+      console.log('Slot:', updatedSlot);
+      console.log('Start:', updatedSlot.startDate);
+      console.log('End:', updatedSlot.endDate);
 
       setSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
       setDriveSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
 
       setShowEditSlotModal(false);
       setEditingSlot(null);
-      setEditSlotForm({ driveId: '', startTime: '', endTime: '', capacity: 50 });
+      setEditSlotForm({ driveId: '', startDate: '', endDate: '', capacity: 50 });
+      setEditSlotStartDate('');
+      setEditSlotEndDate('');
 
       const updatedDriveId = Number(slotPayload.driveId);
       const updatedDrive = drives.find((drive) => Number(drive.id) === updatedDriveId) || selectedDrive;
@@ -755,27 +903,9 @@ export default function AdminDashboardPage() {
       await (isSuperAdmin ? superAdminAPI.deleteSlot(slotId) : adminAPI.deleteSlot(slotId));
       setSuccess('Slot deleted successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadDrives();
-      loadSlots();
-      if (selectedDrive?.id) {
-        loadDriveSlots(selectedDrive.id, true);
-      }
+      await refreshActiveTabData();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete slot');
-    }
-  };
-
-  const handleGenerateCertificate = async (e) => {
-    e.preventDefault();
-    try {
-      await certificateAPI.generateCertificate(certificateForm);
-      setShowCertificateModal(false);
-      setCertificateForm({ bookingId: '', vaccineName: '', doseNumber: 1 });
-      setSuccess('Certificate generated successfully!');
-      loadCertificates();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to generate certificate');
     }
   };
 
@@ -787,7 +917,8 @@ export default function AdminDashboardPage() {
         await adminAPI.enableUser(userId);
       }
       setSuccess(`User ${enabled ? 'disabled' : 'enabled'} successfully!`);
-      loadUsers();
+      notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to update user status');
     }
@@ -812,7 +943,7 @@ export default function AdminDashboardPage() {
       }
       setSuccess(`Booking ${status} successfully!`);
       setShowEditBookingModal(false);
-      await Promise.all([loadDashboardData(), loadBookings(), loadCertificates()]);
+      await Promise.all([loadDashboardData(), loadBookings()]);
     } catch (err) {
       setError('Failed to update booking status');
     }
@@ -829,7 +960,7 @@ export default function AdminDashboardPage() {
         setShowEditBookingModal(false);
       }
       setSuccess('Booking deleted successfully!');
-      await Promise.all([loadDashboardData(), loadBookings(), loadCertificates()]);
+      await Promise.all([loadDashboardData(), loadBookings()]);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete booking');
     }
@@ -841,8 +972,7 @@ export default function AdminDashboardPage() {
       await (isSuperAdmin ? superAdminAPI.deleteCenter(centerId) : adminAPI.deleteCenter(centerId));
       setSuccess('Center deleted successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadCenters();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to delete center');
     }
@@ -854,8 +984,7 @@ export default function AdminDashboardPage() {
       await (isSuperAdmin ? superAdminAPI.deleteDrive(driveId) : adminAPI.deleteDrive(driveId));
       setSuccess('Drive deleted successfully!');
       notifyDataUpdated();
-      loadDashboardData();
-      loadDrives();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to delete drive');
     }
@@ -880,8 +1009,8 @@ export default function AdminDashboardPage() {
       setShowEditUserModal(false);
       setEditingUser(null);
       setSuccess('User updated successfully!');
-      loadDashboardData();
-      loadUsers();
+      notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update user');
     }
@@ -892,8 +1021,8 @@ export default function AdminDashboardPage() {
     try {
       await superAdminAPI.deleteUser(userId);
       setSuccess('User deleted successfully!');
-      loadDashboardData();
-      loadUsers();
+      notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to delete user');
     }
@@ -958,6 +1087,56 @@ export default function AdminDashboardPage() {
     return <Badge bg={config.bg}>{config.text}</Badge>;
   };
 
+  const updateSlotDateField = (setter, field) => (event) => {
+    const nextValue = event.target.value;
+    setter((current) => {
+      const next = { ...current, [field]: nextValue };
+      const startValue = field === 'startDate' ? nextValue : next.startDate;
+      const endValue = field === 'endDate' ? nextValue : next.endDate;
+
+      if (field === 'startDate' && startValue) {
+        next.endDate = normalizeSlotDateRange(startValue, endValue).endDate;
+      }
+
+      return next;
+    });
+  };
+
+  const updateEditSlotDate = (field, setter) => (event) => {
+    const nextValue = event.target.value;
+    if (field === 'startDate') {
+      const normalizedRange = normalizeSlotDateRange(nextValue, editSlotEndDate);
+      setEditSlotStartDate(normalizedRange.startDate);
+      setEditSlotEndDate(normalizedRange.endDate);
+      return;
+    }
+
+    const normalizedRange = normalizeSlotDateRange(editSlotStartDate, nextValue);
+    setter(normalizedRange.endDate);
+  };
+
+const searchTrendChartData = {
+    labels: searchAnalytics.trends?.map((item) => item.day) || [],
+    datasets: [{
+      label: 'Searches',
+      data: searchAnalytics.trends?.map((item) => item.count) || [],
+      backgroundColor: 'rgba(14, 165, 233, 0.2)',
+      borderColor: '#0ea5e9',
+      borderWidth: 2
+    }]
+  };
+
+  const contactTrendChartData = {
+    labels: contactAnalytics.inquiriesByDay?.map((item) => item.label) || [],
+    datasets: [{
+      label: 'Contact Inquiries',
+      data: contactAnalytics.inquiriesByDay?.map((item) => item.value) || [],
+      backgroundColor: 'rgba(16, 185, 129, 0.2)',
+      borderColor: '#10b981',
+      borderWidth: 2
+    }]
+  };
+
   // Tab configuration
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> },
@@ -966,7 +1145,6 @@ export default function AdminDashboardPage() {
     { id: 'slots', label: 'Manage Slots', icon: <FaCalendarCheck /> },
     { id: 'centers', label: 'Centers', icon: <FaHospital /> },
     { id: 'drives', label: 'Drives', icon: <FaSyringe /> },
-    { id: 'certificates', label: 'Certificates', icon: <FaCertificate /> },
     { id: 'news', label: 'News', icon: <FaNewspaper /> },
     { id: 'feedback', label: 'Feedback', icon: <FaComment /> },
     { id: 'contacts', label: 'Contacts', icon: <FaPhone /> }
@@ -1010,8 +1188,8 @@ export default function AdminDashboardPage() {
       setShowFeedbackModal(false);
       setResponseText('');
       setSelectedFeedback(null);
-      await loadFeedbacks();
       notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to send response');
     }
@@ -1028,8 +1206,8 @@ export default function AdminDashboardPage() {
       setShowContactModal(false);
       setResponseText('');
       setSelectedContact(null);
-      await loadContacts();
       notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to send response');
     }
@@ -1040,7 +1218,8 @@ export default function AdminDashboardPage() {
     try {
       await adminAPI.deleteContact(id);
       setSuccess('Contact deleted successfully!');
-      loadContacts();
+      notifyDataUpdated();
+      await refreshActiveTabData();
     } catch (err) {
       setError('Failed to delete contact');
     }
@@ -1301,6 +1480,233 @@ export default function AdminDashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      <Row className="g-4">
+        <Col xl={12}>
+          <Card className="border-0 shadow-sm" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header style={{background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.08)'}}>
+              <h5 className="mb-0 fw-bold"><FaChartLine className="me-2" />Premium Analytics</h5>
+            </Card.Header>
+            <Card.Body>
+              <Row className="g-4">
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Total Users</div>
+                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.totalUsers || 0}</div>
+                  </div>
+                </Col>
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Total Bookings</div>
+                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.totalBookings || 0}</div>
+                  </div>
+                </Col>
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Active Drives</div>
+                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.activeDrives || 0}</div>
+                  </div>
+                </Col>
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Available Slots</div>
+                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.availableSlots || 0}</div>
+                  </div>
+                </Col>
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Most Searched City</div>
+                    <div className="fw-bold">{dashboardAnalytics.mostSearchedCity || 'N/A'}</div>
+                  </div>
+                </Col>
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Most Booked Vaccine</div>
+                    <div className="fw-bold">{dashboardAnalytics.mostBookedVaccine || 'N/A'}</div>
+                  </div>
+                </Col>
+              </Row>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold"><FaChartLine className="me-2" />Search Activity</h5>
+            </Card.Header>
+            <Card.Body>
+              <div className="stat-number text-primary mb-2">{searchAnalytics.totalSearches || 0}</div>
+              <p className="text-muted mb-0">Searches tracked in the last 30 days.</p>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Most Searched Cities</h5>
+            </Card.Header>
+            <Card.Body>
+              {searchAnalytics.topCities?.length ? (
+                <div className="d-grid gap-3">
+                  {searchAnalytics.topCities.map((item) => (
+                    <div key={item.label} className="d-flex justify-content-between align-items-center">
+                      <span>{item.label}</span>
+                      <Badge bg="info">{item.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted mb-0">Search insights will appear here as users search.</p>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Most Searched Keywords</h5>
+            </Card.Header>
+            <Card.Body>
+              {searchAnalytics.topKeywords?.length ? (
+                <div className="d-grid gap-3">
+                  {searchAnalytics.topKeywords.map((item) => (
+                    <div key={item.label} className="d-flex justify-content-between align-items-center">
+                      <span>{item.label}</span>
+                      <Badge bg="success">{item.count}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted mb-0">Keyword analytics will appear once searches are logged.</p>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="g-4 mt-1">
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold"><FaEnvelope className="me-2" />Contact Analytics</h5>
+            </Card.Header>
+            <Card.Body>
+              <div className="d-grid gap-3">
+                <div className="d-flex justify-content-between align-items-center">
+                  <span>Total Inquiries</span>
+                  <Badge bg="primary">{contactAnalytics.totalInquiries || 0}</Badge>
+                </div>
+                <div className="d-flex justify-content-between align-items-center">
+                  <span>Today</span>
+                  <Badge bg="success">{contactAnalytics.todayInquiries || 0}</Badge>
+                </div>
+                <div className="d-flex justify-content-between align-items-center">
+                  <span>Last 7 Days</span>
+                  <Badge bg="info">{contactAnalytics.weeklyInquiries || 0}</Badge>
+                </div>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Inquiry Trend</h5>
+            </Card.Header>
+            <Card.Body>
+              <Bar
+                data={contactTrendChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                    x: { grid: { display: false } }
+                  }
+                }}
+                height={220}
+              />
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={4}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Most Active Users</h5>
+            </Card.Header>
+            <Card.Body>
+              {contactAnalytics.mostActiveUsers?.length ? (
+                <div className="d-grid gap-3">
+                  {contactAnalytics.mostActiveUsers.map((item) => (
+                    <div key={item.label} className="d-flex justify-content-between align-items-center">
+                      <span>{item.label}</span>
+                      <Badge bg="dark">{item.value}</Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted mb-0">Active contact users will appear here as inquiries arrive.</p>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="g-4 mt-1">
+        <Col lg={6}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Recent Inquiries</h5>
+            </Card.Header>
+            <Card.Body>
+              {contactAnalytics.recentInquiries?.length ? (
+                <div className="d-grid gap-3">
+                  {contactAnalytics.recentInquiries.map((item) => (
+                    <div key={item.id} className="border rounded-4 p-3">
+                      <div className="d-flex justify-content-between align-items-start gap-3">
+                        <div>
+                          <div className="fw-semibold">{item.userName || 'Guest'}</div>
+                          <div className="small text-muted">{item.userEmail || 'No email'}</div>
+                        </div>
+                        {communicationBadge(item.status)}
+                      </div>
+                      <div className="fw-medium mt-2">{item.subject || 'General inquiry'}</div>
+                      <div className="small text-muted mt-1">{item.message}</div>
+                      <div className="small text-muted mt-2">{formatDateTime(item.createdAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted mb-0">Recent inquiries will appear here.</p>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={6}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Search Trend</h5>
+            </Card.Header>
+            <Card.Body>
+              <Bar
+                data={searchTrendChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+                    x: { grid: { display: false } }
+                  }
+                }}
+                height={220}
+              />
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
     </>
   );
 
@@ -1312,15 +1718,13 @@ export default function AdminDashboardPage() {
             <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaUsers className="me-2" />User Management</h5>
           </Col>
           <Col md={6}>
-            <div className="d-flex gap-2">
-              <Form.Control 
-                type="text" 
-                placeholder="Search users..." 
+              <SearchInput
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{borderRadius: '0.5rem'}}
+                onChange={setSearchTerm}
+                placeholder="Search users by name or email"
+                icon="search"
+                onClear={() => setSearchTerm('')}
               />
-            </div>
           </Col>
         </Row>
       </Card.Header>
@@ -1389,12 +1793,12 @@ export default function AdminDashboardPage() {
             <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCalendarCheck className="me-2" />Booking Management</h5>
           </Col>
           <Col md={6}>
-            <Form.Control 
-              type="text" 
-              placeholder="Search bookings..." 
+            <SearchInput
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              style={{borderRadius: '0.5rem'}}
+              onChange={setSearchTerm}
+              placeholder="Search bookings by user or status"
+              icon="search"
+              onClear={() => setSearchTerm('')}
             />
           </Col>
         </Row>
@@ -1515,56 +1919,63 @@ export default function AdminDashboardPage() {
         </Button>
       </Card.Header>
       <Card.Body className="p-0">
-        <Table responsive hover className="mb-0">
-          <thead style={{background: '#f8fafc'}}>
-            <tr>
-              <th className="ps-4">ID</th>
-              <th>Title</th>
-              <th>Center</th>
-              <th>Date</th>
-              <th>Age Range</th>
-              <th>Status</th>
-              <th className="text-end pe-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {drives.map(drive => (
-              <tr key={drive.id}>
-                <td className="ps-4">#{drive.id}</td>
-                <td className="fw-medium">{drive.title}</td>
-                <td>{drive.center?.name || drive.centerName || 'N/A'}</td>
-                <td>{drive.driveDate}</td>
-                <td>{drive.minAge} - {drive.maxAge}</td>
-                <td>
-                  <Form.Select
-                    size="sm"
-                    value={drive.status || 'UPCOMING'}
-                    onChange={(e) => handleDriveStatusChange(drive.id, e.target.value)}
-                    style={{borderRadius: '0.5rem', minWidth: '140px'}}
-                  >
-                    {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
-                  </Form.Select>
-                </td>
-                <td className="text-end pe-4">
-                  <div className="d-flex justify-content-end gap-2">
-                    <Button variant="outline-primary" size="sm" onClick={() => openEditDriveModal(drive)} style={{borderRadius: '0.375rem'}}>
-                      <FaEdit />
-                    </Button>
-                    <Button variant="outline-info" size="sm" onClick={() => openManageSlotsModal(drive)} style={{borderRadius: '0.375rem'}}>
-                      Slots
-                    </Button>
-                    <Button variant="outline-primary" size="sm" onClick={() => handleOpenSlotModal(drive)} style={{borderRadius: '0.375rem'}}>
-                      <FaPlus />
-                    </Button>
-                    <Button variant="outline-danger" size="sm" onClick={() => handleDeleteDrive(drive.id)} style={{borderRadius: '0.375rem'}}>
-                      <FaTrash />
-                    </Button>
-                  </div>
-                </td>
+        {drives.length === 0 ? (
+          <div className="text-center py-5">
+            <FaSyringe size={48} className="text-muted mb-3" />
+            <p className="text-muted mb-0">No drives available yet.</p>
+          </div>
+        ) : (
+          <Table responsive hover className="mb-0">
+            <thead style={{background: '#f8fafc'}}>
+              <tr>
+                <th className="ps-4">ID</th>
+                <th>Title</th>
+                <th>Center</th>
+                <th>Date</th>
+                <th>Age Range</th>
+                <th>Status</th>
+                <th className="text-end pe-4">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </Table>
+            </thead>
+            <tbody>
+              {drives.map(drive => (
+                <tr key={drive.id}>
+                  <td className="ps-4">#{drive.id}</td>
+                  <td className="fw-medium">{drive.title}</td>
+                  <td>{drive.center?.name || drive.centerName || 'N/A'}</td>
+                  <td>{drive.driveDate}</td>
+                  <td>{drive.minAge} - {drive.maxAge}</td>
+                  <td>
+                    <Form.Select
+                      size="sm"
+                      value={drive.status || 'UPCOMING'}
+                      onChange={(e) => handleDriveStatusChange(drive.id, e.target.value)}
+                      style={{borderRadius: '0.5rem', minWidth: '140px'}}
+                    >
+                      {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                    </Form.Select>
+                  </td>
+                  <td className="text-end pe-4">
+                    <div className="d-flex justify-content-end gap-2">
+                      <Button variant="outline-primary" size="sm" onClick={() => openEditDriveModal(drive)} style={{borderRadius: '0.375rem'}}>
+                        <FaEdit />
+                      </Button>
+                      <Button variant="outline-info" size="sm" onClick={() => openManageSlotsModal(drive)} style={{borderRadius: '0.375rem'}}>
+                        Slots
+                      </Button>
+                      <Button variant="outline-primary" size="sm" onClick={() => handleOpenSlotModal(drive)} style={{borderRadius: '0.375rem'}}>
+                        <FaPlus />
+                      </Button>
+                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteDrive(drive.id)} style={{borderRadius: '0.375rem'}}>
+                        <FaTrash />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
       </Card.Body>
     </Card>
   );
@@ -1653,8 +2064,8 @@ export default function AdminDashboardPage() {
               {slots.map((slot) => (
                 <tr key={slot.id}>
                   <td className="ps-4">
-                    <div className="fw-medium">{formatDateTime(slot.startDate || slot.time || slot.dateTime)}</div>
-                    <small className="text-muted">Ends {formatDateTime(slot.endDate || slot.endTime)}</small>
+                    <div className="fw-medium">{formatDateTime(getSlotStartValue(slot))}</div>
+                    <small className="text-muted">Ends {formatDateTime(getSlotEndValue(slot))}</small>
                   </td>
                   <td>{slot.centerName || 'N/A'}</td>
                   <td>{slot.driveName || 'N/A'}</td>
@@ -1669,59 +2080,6 @@ export default function AdminDashboardPage() {
                         <FaTrash />
                       </Button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </Card.Body>
-    </Card>
-  );
-
-  const renderCertificates = () => (
-    <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
-      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
-        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCertificate className="me-2" />Certificate Management</h5>
-        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowCertificateModal(true)}>
-          <FaPlus className="me-2" />Generate Certificate
-        </Button>
-      </Card.Header>
-      <Card.Body className="p-0">
-        {certificates.length === 0 ? (
-          <div className="text-center py-5">
-            <FaCertificate size={48} className="text-muted mb-3" />
-            <p className="text-muted">No certificates generated yet.</p>
-            <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none'}} onClick={() => setShowCertificateModal(true)}>
-              Generate First Certificate
-            </Button>
-          </div>
-        ) : (
-          <Table responsive hover className="mb-0">
-            <thead style={{background: '#f8fafc'}}>
-              <tr>
-                <th className="ps-4">Certificate #</th>
-                <th>User</th>
-                <th>Vaccine</th>
-                <th>Dose</th>
-                <th>Center</th>
-                <th>Issued Date</th>
-                <th className="text-end pe-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {certificates.map(cert => (
-                <tr key={cert.id}>
-                  <td className="ps-4 fw-medium">{cert.certificateNumber}</td>
-                  <td>{cert.userName}</td>
-                  <td>{cert.vaccineName}</td>
-                  <td>Dose {cert.doseNumber}</td>
-                  <td>{cert.centerName}</td>
-                  <td>{formatDate(cert.issuedAt)}</td>
-                  <td className="text-end pe-4">
-                    <Button variant="outline-primary" size="sm" onClick={() => window.open(`/certificates/${cert.id}`, '_blank')} style={{borderRadius: '0.375rem'}}>
-                      <FaDownload />
-                    </Button>
                   </td>
                 </tr>
               ))}
@@ -1804,9 +2162,9 @@ export default function AdminDashboardPage() {
 
   if (loading && !stats.totalUsers && !stats.totalBookings && !stats.activeDrives && !stats.totalCenters) {
     return (
-      <div className="d-flex align-items-center justify-content-center" style={{minHeight: '60vh'}}>
+      <div className="dashboard-loading d-flex align-items-center justify-content-center">
         <div className="text-center">
-          <Spinner animation="border" style={{color: '#0ea5e9'}} />
+          <Spinner animation="border" variant="primary" />
           <p className="mt-3 text-muted">Loading dashboard...</p>
         </div>
       </div>
@@ -1814,52 +2172,22 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="bg-pattern" style={{minHeight: '100vh', paddingBottom: '2rem'}}>
+    <div className="admin-shell bg-pattern">
       {/* Admin Header - Matching user dashboard hero style */}
-      <div style={{
-        background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-        padding: '3rem 0',
-        marginBottom: '2rem',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.05\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")'
-        }}></div>
+      <div className="admin-hero">
+        <div className="admin-hero__pattern"></div>
         <Container position="relative">
           <Row className="align-items-center">
             <Col md={8}>
               <div className="d-flex align-items-center gap-3 mb-3">
-                <div style={{
-                  width: '70px',
-                  height: '70px',
-                  background: 'rgba(255,255,255,0.2)',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <FaUserShield size={32} style={{color: 'white'}} />
+                <div className="admin-hero__icon">
+                  <FaUserShield size={32} />
                 </div>
                 <div>
-                  <h1 className="mb-1 fw-bold text-white" style={{fontSize: '2rem'}}>Admin Dashboard</h1>
+                  <h1 className="mb-1 fw-bold text-white admin-hero__title">Admin Dashboard</h1>
                   <p className="mb-0 text-white-50">Manage your vaccination system</p>
                 </div>
               </div>
-            </Col>
-            <Col md={4} className="text-md-end">
-              <Button 
-                variant="light" 
-                onClick={loadDashboardData}
-                style={{borderRadius: '0.5rem'}}
-              >
-                <FaCog className="me-2" />Refresh Data
-              </Button>
             </Col>
           </Row>
         </Container>
@@ -1867,16 +2195,11 @@ export default function AdminDashboardPage() {
 
       <Container>
         {/* Alerts */}
-        {error && <Alert variant="danger" dismissible onClose={() => setError(null)} className="mb-4" style={{borderRadius: '0.5rem', border: 'none'}}>{error}</Alert>}
-        {success && <Alert variant="success" dismissible onClose={() => setSuccess(null)} className="mb-4" style={{borderRadius: '0.5rem', border: 'none', background: 'linear-gradient(135deg, #d1fae5 0%, #10b981 100%)', color: '#065f46'}}>{success}</Alert>}
+        {error && <Alert variant="danger" dismissible onClose={() => setError(null)} className="mb-4 admin-alert">{error}</Alert>}
+        {success && <Alert variant="success" dismissible onClose={() => setSuccess(null)} className="mb-4 admin-alert admin-alert--success">{success}</Alert>}
 
         {/* Tab Navigation - Matching user dashboard style */}
-        <div className="mb-4" style={{
-          background: 'white',
-          borderRadius: '0.75rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-          padding: '0.5rem'
-        }}>
+        <div className="mb-4 admin-tabs-shell">
           <Tabs activeKey={activeTab} onSelect={setActiveTab} className="justify-content-center">
             {tabs.map(tab => (
               <Tab 
@@ -1912,7 +2235,6 @@ export default function AdminDashboardPage() {
         {activeTab === 'slots' && renderSlots()}
         {activeTab === 'centers' && renderCenters()}
         {activeTab === 'drives' && renderDrives()}
-        {activeTab === 'certificates' && renderCertificates()}
         {activeTab === 'news' && renderNews()}
         {activeTab === 'feedback' && renderFeedback()}
         {activeTab === 'contacts' && renderContacts()}
@@ -2275,7 +2597,7 @@ export default function AdminDashboardPage() {
             </Alert>
             <Form.Group className="mb-3">
               <Form.Label>Drive</Form.Label>
-              <Form.Select value={slotForm.driveId} onChange={e => setSlotForm({...slotForm, driveId: e.target.value})} required style={{borderRadius: '0.5rem'}}>
+              <Form.Select name="driveId" value={slotForm.driveId} onChange={handleSlotFormFieldChange(setSlotForm)} required style={{borderRadius: '0.5rem'}}>
                 <option value="">Select Drive</option>
                 {drives.map(drive => <option key={drive.id} value={drive.id}>{drive.title}</option>)}
               </Form.Select>
@@ -2284,8 +2606,9 @@ export default function AdminDashboardPage() {
               <Form.Label>Start Time</Form.Label>
               <Form.Control 
                 type="datetime-local" 
-                value={slotForm.startTime} 
-                onChange={e => setSlotForm({...slotForm, startTime: e.target.value})} 
+                name="startDate"
+                value={slotForm.startDate} 
+                onChange={updateSlotDateField(setSlotForm, 'startDate')} 
                 required 
                 style={{borderRadius: '0.5rem'}}
               />
@@ -2294,8 +2617,9 @@ export default function AdminDashboardPage() {
               <Form.Label>End Time</Form.Label>
               <Form.Control 
                 type="datetime-local" 
-                value={slotForm.endTime} 
-                onChange={e => setSlotForm({...slotForm, endTime: e.target.value})} 
+                name="endDate"
+                value={slotForm.endDate} 
+                onChange={updateSlotDateField(setSlotForm, 'endDate')} 
                 required 
                 style={{borderRadius: '0.5rem'}}
               />
@@ -2304,8 +2628,9 @@ export default function AdminDashboardPage() {
               <Form.Label>Capacity (Number of Appointments)</Form.Label>
               <Form.Control 
                 type="number" 
+                name="capacity"
                 value={slotForm.capacity} 
-                onChange={e => setSlotForm({...slotForm, capacity: parseInt(e.target.value)})} 
+                onChange={handleSlotFormFieldChange(setSlotForm)} 
                 required 
                 min="1"
                 placeholder="e.g., 50"
@@ -2343,7 +2668,7 @@ export default function AdminDashboardPage() {
                 {driveSlots.map(slot => (
                   <tr key={slot.id}>
                     <td>#{slot.id}</td>
-                    <td>{formatDateTime(slot.startDate || slot.dateTime || slot.time || slot.startTime)}</td>
+                    <td>{formatDateTime(getSlotStartValue(slot))}</td>
                     <td>{formatSlotEndDisplay(slot)}</td>
                     <td>{slot.capacity}</td>
                     <td>{slot.bookedCount || 0}</td>
@@ -2374,11 +2699,11 @@ export default function AdminDashboardPage() {
         </Modal.Header>
         <Form onSubmit={handleUpdateSlot}>
           <Modal.Body>
-            <Alert variant={getSlotStatusPreview(editSlotForm.startTime, editSlotForm.endTime) === 'EXPIRED' ? 'warning' : 'info'} style={{borderRadius: '0.5rem'}}>
+            <Alert variant={getSlotStatusPreview(editSlotStartDate, editSlotEndDate) === 'EXPIRED' ? 'warning' : 'info'} style={{borderRadius: '0.5rem'}}>
               {(() => {
-                const previewStatus = getSlotStatusPreview(editSlotForm.startTime, editSlotForm.endTime);
+                const previewStatus = getSlotStatusPreview(editSlotStartDate, editSlotEndDate);
                 if (previewStatus === 'EXPIRED') {
-                  return 'This slot is editable, but the selected date/time is still before March 22, 2026, so it will remain EXPIRED after saving.';
+                  return 'This slot is editable, but the selected time window is already in the past, so it will remain EXPIRED after saving.';
                 }
                 if (previewStatus === 'LIVE') {
                   return 'Saving these values will make this slot LIVE immediately.';
@@ -2391,22 +2716,22 @@ export default function AdminDashboardPage() {
             </Alert>
             <Form.Group className="mb-3">
               <Form.Label>Drive</Form.Label>
-              <Form.Select value={editSlotForm.driveId} onChange={e => setEditSlotForm({...editSlotForm, driveId: e.target.value})} required style={{borderRadius: '0.5rem'}}>
+              <Form.Select name="driveId" value={editSlotForm.driveId} onChange={handleSlotFormFieldChange(setEditSlotForm)} required style={{borderRadius: '0.5rem'}}>
                 <option value="">Select Drive</option>
                 {drives.map(drive => <option key={drive.id} value={drive.id}>{drive.title}</option>)}
               </Form.Select>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Start Time</Form.Label>
-              <Form.Control type="datetime-local" value={editSlotForm.startTime} onChange={e => setEditSlotForm({...editSlotForm, startTime: e.target.value})} required style={{borderRadius: '0.5rem'}} />
+              <Form.Control type="datetime-local" name="startDate" value={editSlotStartDate} onChange={updateEditSlotDate('startDate', setEditSlotStartDate)} required style={{borderRadius: '0.5rem'}} />
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>End Time</Form.Label>
-              <Form.Control type="datetime-local" value={editSlotForm.endTime} onChange={e => setEditSlotForm({...editSlotForm, endTime: e.target.value})} required style={{borderRadius: '0.5rem'}} />
+              <Form.Control type="datetime-local" name="endDate" value={editSlotEndDate} onChange={updateEditSlotDate('endDate', setEditSlotEndDate)} required style={{borderRadius: '0.5rem'}} />
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Capacity</Form.Label>
-              <Form.Control type="number" value={editSlotForm.capacity} onChange={e => setEditSlotForm({...editSlotForm, capacity: Number(e.target.value)})} min="1" required style={{borderRadius: '0.5rem'}} />
+              <Form.Control type="number" name="capacity" value={editSlotForm.capacity} onChange={handleSlotFormFieldChange(setEditSlotForm)} min="1" required style={{borderRadius: '0.5rem'}} />
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
@@ -2446,58 +2771,6 @@ export default function AdminDashboardPage() {
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowEditUserModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
             <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Update User</Button>
-          </Modal.Footer>
-        </Form>
-      </Modal>
-
-      {/* Certificate Modal */}
-      <Modal show={showCertificateModal} onHide={() => setShowCertificateModal(false)} size="lg" centered>
-        <Modal.Header closeButton style={{background: '#f8fafc'}}>
-          <Modal.Title><FaCertificate className="me-2" />Generate Certificate</Modal.Title>
-        </Modal.Header>
-        <Form onSubmit={handleGenerateCertificate}>
-          <Modal.Body>
-            <Alert variant="info" style={{background: 'linear-gradient(135deg, #cffafe 0%, #06b6d4 100%)', border: 'none', borderRadius: '0.5rem'}}>
-              <small>Generate a vaccination certificate for a completed booking. The booking must be in COMPLETED status.</small>
-            </Alert>
-            <Form.Group className="mb-3">
-              <Form.Label>Booking ID</Form.Label>
-              <Form.Control 
-                type="number" 
-                value={certificateForm.bookingId} 
-                onChange={e => setCertificateForm({...certificateForm, bookingId: e.target.value})} 
-                required 
-                placeholder="Enter booking ID"
-                style={{borderRadius: '0.5rem'}}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Vaccine Name</Form.Label>
-              <Form.Control 
-                type="text" 
-                value={certificateForm.vaccineName} 
-                onChange={e => setCertificateForm({...certificateForm, vaccineName: e.target.value})} 
-                required 
-                placeholder="e.g., Covishield, Covaxin, Pfizer"
-                style={{borderRadius: '0.5rem'}}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>Dose Number</Form.Label>
-              <Form.Select 
-                value={certificateForm.doseNumber} 
-                onChange={e => setCertificateForm({...certificateForm, doseNumber: parseInt(e.target.value)})}
-                style={{borderRadius: '0.5rem'}}
-              >
-                <option value={1}>Dose 1</option>
-                <option value={2}>Dose 2</option>
-                <option value={3}>Booster Dose</option>
-              </Form.Select>
-            </Form.Group>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowCertificateModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
-            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Generate Certificate</Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -2622,71 +2895,6 @@ export default function AdminDashboardPage() {
         </Modal.Footer>
       </Modal>
 
-      {/* Custom Styles */}
-      <style>{`
-        .nav-tabs .nav-link {
-          border: none;
-          padding: 0.875rem 1.5rem;
-          color: #64748b;
-          font-weight: 600;
-          border-radius: 0.5rem;
-          transition: all 0.2s;
-        }
-        .nav-tabs .nav-link:hover {
-          background: #e0f2fe;
-          color: #0ea5e9;
-        }
-        .nav-tabs .nav-link.active {
-          background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-          color: white;
-          border-radius: 0.5rem;
-        }
-        .stats-card {
-          border-radius: 0.75rem;
-          padding: 1.5rem;
-          color: white;
-          transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .stats-card:hover {
-          transform: translateY(-4px);
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-        }
-        .stats-card .stat-number {
-          font-size: 2.5rem;
-          font-weight: 800;
-          line-height: 1;
-        }
-        .stats-card .stat-label {
-          font-size: 0.875rem;
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-          font-weight: 500;
-        }
-        .table thead th {
-          background: #f8fafc;
-          border-bottom: 2px solid #0ea5e9;
-          color: #1e293b;
-          font-weight: 600;
-          text-transform: uppercase;
-          font-size: 0.75rem;
-          letter-spacing: 0.5px;
-          padding: 1rem;
-        }
-        .table tbody td {
-          padding: 1rem;
-          vertical-align: middle;
-          border-color: #e2e8f0;
-        }
-        .table tbody tr:hover {
-          background: #e0f2fe;
-        }
-        .card {
-          transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .card:hover {
-          transform: translateY(-2px);
-        }
-      `}</style>
     </div>
   );
 }

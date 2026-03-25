@@ -12,7 +12,7 @@ import java.util.Map;
 
 @Slf4j
 @RestController
-@RequestMapping({"/api/v1/health", "/api/health"})
+@RequestMapping({"/v1/health", "/health"})
 public class HealthController {
 
     @GetMapping

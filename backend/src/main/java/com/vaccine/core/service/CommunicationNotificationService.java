@@ -1,32 +1,32 @@
 package com.vaccine.core.service;
 
-import com.vaccine.domain.Notification;
+import com.vaccine.domain.NotificationType;
 import com.vaccine.domain.User;
-import com.vaccine.infrastructure.persistence.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
 public class CommunicationNotificationService {
-    private final NotificationRepository notificationRepository;
+    private final INotificationService notificationService;
 
     public void notifyReply(User user, String type, String title, String sourceMessage, String replyMessage, Long referenceId) {
         if (user == null) {
             return;
         }
 
-        Notification notification = Notification.builder()
-            .user(user)
-            .title(title)
-            .type(type)
-            .message(sourceMessage)
-            .replyMessage(replyMessage)
-            .status("REPLIED")
-            .referenceId(referenceId)
-            .isRead(false)
-            .build();
+        NotificationType notificationType = "CONTACT_REPLY".equalsIgnoreCase(type)
+            ? NotificationType.CONTACT_REPLY
+            : NotificationType.FEEDBACK_REPLY;
 
-        notificationRepository.save(notification);
+        notificationService.queueReplyNotification(
+            user,
+            notificationType,
+            title,
+            sourceMessage,
+            replyMessage,
+            referenceId,
+            notificationType.name() + ":" + referenceId + ":reply"
+        );
     }
 }

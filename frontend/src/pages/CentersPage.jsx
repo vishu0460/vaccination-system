@@ -1,45 +1,93 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useCallback, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { publicAPI, unwrapApiData } from "../api/client";
+import { Link, useSearchParams } from "react-router-dom";
+import { getErrorMessage, normalizeSearchValue, publicAPI, unwrapApiData } from "../api/client";
+import CityAutocomplete from "../components/CityAutocomplete";
+import useDebounce from "../hooks/useDebounce";
+import { debugDataSync, subscribeToDataUpdates } from "../utils/dataSync";
+
+const parseCity = (searchParams) => searchParams.get("city") || "";
 
 export default function CentersPage() {
-  const [city, setCity] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [city, setCity] = useState(parseCity(searchParams));
+  const [selectedCity, setSelectedCity] = useState(parseCity(searchParams));
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uniqueCities, setUniqueCities] = useState([]);
+  const [error, setError] = useState("");
+  const debouncedSelectedCity = useDebounce(selectedCity, 400);
 
-  const load = async () => {
+  const load = useCallback(async (cityFilter) => {
     setLoading(true);
+    setError("");
+
     try {
-      const response = await publicAPI.getCenters(city);
+      const response = await publicAPI.getCenters({
+        city: normalizeSearchValue(cityFilter)
+      });
       const payload = unwrapApiData(response) || {};
       const data = Array.isArray(payload)
         ? payload
         : (payload.centers || payload.content || []);
+      debugDataSync("public centers response", data);
       setCenters(data);
-      if (data.length > 0) {
-        const cities = [...new Set(data.map(c => c.city).filter(Boolean))].sort();
-        setUniqueCities(cities);
-      }
-    } catch (error) {
-      console.error("Error fetching centers:", error);
+    } catch (requestError) {
       setCenters([]);
+      setError(getErrorMessage(requestError, "Unable to load vaccination centers."));
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => { load(); }, []);
+  }, []);
 
   useEffect(() => {
-    const handleDataUpdated = () => {
-      load();
+    const nextCity = parseCity(searchParams);
+    setCity(nextCity);
+    setSelectedCity(nextCity);
+    load(nextCity);
+  }, [searchParams, load]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      load(city);
     };
 
-    window.addEventListener("vaxzone:data-updated", handleDataUpdated);
-    return () => window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
-  }, [city]);
+    const intervalId = window.setInterval(() => {
+      load(city);
+    }, 30000);
+
+    window.addEventListener("focus", handleFocus);
+    const unsubscribe = subscribeToDataUpdates(() => load(city));
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleFocus);
+      unsubscribe();
+    };
+  }, [city, load]);
+
+  const applySearch = (cityValue = selectedCity, options = {}) => {
+    const nextParams = new URLSearchParams();
+    const normalizedCity = normalizeSearchValue(cityValue);
+    if (normalizedCity) {
+      nextParams.set("city", normalizedCity);
+    }
+    setSearchParams(nextParams, options);
+  };
+
+  const resetSearch = () => {
+    setSelectedCity("");
+    setSearchParams(new URLSearchParams());
+  };
+
+  useEffect(() => {
+    const normalizedCurrent = normalizeSearchValue(city);
+    const normalizedDraft = normalizeSearchValue(debouncedSelectedCity);
+
+    if (normalizedDraft === normalizedCurrent) {
+      return;
+    }
+
+    applySearch(debouncedSelectedCity, { replace: true });
+  }, [debouncedSelectedCity, city]);
 
   return (
     <>
@@ -50,7 +98,6 @@ export default function CentersPage() {
         <meta property="og:description" content="Find vaccination centers near you." />
       </Helmet>
 
-      {/* Page Header */}
       <section className="page-header">
         <div className="container">
           <div className="row align-items-center">
@@ -61,55 +108,45 @@ export default function CentersPage() {
               </p>
             </div>
             <div className="col-lg-4 text-center text-lg-end mt-3 mt-lg-0">
-              <i className="bi bi-building display-1" style={{opacity: 0.3}}></i>
+              <i className="bi bi-building display-1 page-header__icon"></i>
             </div>
           </div>
         </div>
       </section>
 
       <div className="container pb-5">
-        {/* Search & Filter */}
         <div className="card border-0 shadow-sm mb-4">
           <div className="card-body">
             <div className="row g-3 align-items-end">
-              <div className="col-md-5">
+              <div className="col-md-6">
                 <label className="form-label">Search by City</label>
-                <div className="input-group">
-                  <span className="input-group-text bg-light">
-                    <i className="bi bi-geo-alt text-muted"></i>
-                  </span>
-                  <input 
-                    className="form-control" 
-                    value={city} 
-                    onChange={(e) => setCity(e.target.value)} 
-                    placeholder="Enter city name"
-                  />
-                </div>
+                <CityAutocomplete
+                  value={selectedCity}
+                  onChange={setSelectedCity}
+                  onSelect={setSelectedCity}
+                  onEnter={(enteredCity) => applySearch(enteredCity, { replace: true })}
+                  placeholder="Start typing a city"
+                />
               </div>
-              <div className="col-md-3">
-                <label className="form-label">Quick Filters</label>
-                <select className="form-select" onChange={(e) => setCity(e.target.value)} value={city}>
-                  <option value="">All Cities</option>
-                  {uniqueCities.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="col-md-2 d-grid">
-                <button className="btn btn-primary" onClick={load}>
-                  <i className="bi bi-search me-2"></i>Search
+              <div className="col-md-3 d-grid">
+                <button className="btn btn-primary" onClick={applySearch} disabled={loading}>
+                  <i className="bi bi-search me-2"></i>{loading ? "Searching..." : "Search"}
                 </button>
               </div>
-              <div className="col-md-2 d-grid">
-                <button className="btn btn-outline-secondary" onClick={() => { setCity(""); load(); }}>
+              <div className="col-md-3 d-grid">
+                <button className="btn btn-outline-secondary" onClick={resetSearch} disabled={loading}>
                   <i className="bi bi-arrow-counterclockwise me-2"></i>Reset
                 </button>
               </div>
             </div>
+            {city ? (
+              <div className="small text-muted mt-3">
+                Filtering centers for <strong>{city}</strong>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* Results */}
         {loading ? (
           <div className="text-center py-5">
             <div className="spinner-border text-primary" role="status">
@@ -117,65 +154,72 @@ export default function CentersPage() {
             </div>
             <p className="mt-3 text-muted">Loading vaccination centers...</p>
           </div>
+        ) : error ? (
+          <div className="empty-state">
+            <i className="bi bi-wifi-off"></i>
+            <h5>Unable to load centers</h5>
+            <p>{error}</p>
+            <button className="btn btn-primary" onClick={() => load(city)}>Retry</button>
+          </div>
         ) : centers.length > 0 ? (
           <>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <p className="text-muted mb-0">
-                Showing <strong>{centers.length}</strong> center{centers.length !== 1 ? 's' : ''}
-                {city && <span> in <strong>{city}</strong></span>}
+                Showing <strong>{centers.length}</strong> center{centers.length !== 1 ? "s" : ""}
+                {city ? <span> in <strong>{city}</strong></span> : null}
               </p>
-              <Link to="/drives" className="btn btn-outline-primary btn-sm">
+              <Link to={city ? `/drives?city=${encodeURIComponent(city)}` : "/drives"} className="btn btn-outline-primary btn-sm">
                 <i className="bi bi-calendar-check me-2"></i>View Drives
               </Link>
             </div>
             <div className="row g-4">
-              {centers.map((c, index) => (
-                <div className="col-md-6 col-lg-4 fade-in" key={c.id} style={{animationDelay: `${index * 0.1}s`}}>
+              {centers.map((center, index) => (
+                <div className="col-md-6 col-lg-4 fade-in" key={center.id} style={{ animationDelay: `${index * 0.1}s` }}>
                   <div className="center-card h-100">
                     <div className="card-header">
                       <h5 className="mb-0">
                         <i className="bi bi-building me-2"></i>
-                        {c.name}
+                        {center.name}
                       </h5>
                     </div>
                     <div className="card-body">
                       <div className="center-info">
                         <div className="info-item">
                           <i className="bi bi-geo-alt"></i>
-                          <span>{c.address}</span>
+                          <span>{center.address}</span>
                         </div>
                         <div className="info-item">
                           <i className="bi bi-map"></i>
-                          <span>{c.city}</span>
+                          <span>{center.city}</span>
                         </div>
-                        {c.phone && (
+                        {center.phone ? (
                           <div className="info-item">
                             <i className="bi bi-telephone"></i>
-                            <span>{c.phone}</span>
+                            <span>{center.phone}</span>
                           </div>
-                        )}
-                        {c.email && (
+                        ) : null}
+                        {center.email ? (
                           <div className="info-item">
                             <i className="bi bi-envelope"></i>
-                            <span>{c.email}</span>
+                            <span>{center.email}</span>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                       <div className="mt-3 d-flex flex-wrap gap-2">
                         <span className="badge bg-success">
                           <i className="bi bi-people me-1"></i>
-                          {c.dailyCapacity}/day
+                          {center.dailyCapacity}/day
                         </span>
-                        {c.isActive !== false && (
+                        {center.isActive !== false ? (
                           <span className="badge bg-info">
                             <i className="bi bi-check-circle me-1"></i>
                             Active
                           </span>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                     <div className="card-footer">
-                      <Link to={`/drives?city=${encodeURIComponent(c.city)}`} className="btn btn-primary w-100">
+                      <Link to={`/drives?city=${encodeURIComponent(center.city)}`} className="btn btn-primary w-100">
                         <i className="bi bi-calendar-plus me-2"></i>View Drives
                       </Link>
                     </div>
@@ -190,7 +234,7 @@ export default function CentersPage() {
             <h5>No Centers Found</h5>
             <p>Try a different city or check back later.</p>
             <div className="d-flex gap-2 justify-content-center">
-              <button className="btn btn-primary" onClick={() => { setCity(""); load(); }}>
+              <button className="btn btn-primary" onClick={resetSearch}>
                 View All Centers
               </button>
               <Link to="/contact" className="btn btn-outline-primary">
@@ -200,7 +244,6 @@ export default function CentersPage() {
           </div>
         )}
 
-        {/* Info Section */}
         <div className="mt-5">
           <div className="row g-4">
             <div className="col-md-4">
@@ -245,13 +288,12 @@ export default function CentersPage() {
           </div>
         </div>
 
-        {/* CTA */}
         <div className="mt-5">
           <div className="card border-0 shadow-sm bg-primary text-white">
             <div className="card-body py-4 text-center">
               <h4 className="fw-bold mb-2">Ready to Get Vaccinated?</h4>
               <p className="mb-3">Browse available drives and book your appointment today.</p>
-              <Link to="/drives" className="btn btn-light btn-lg">
+              <Link to={city ? `/drives?city=${encodeURIComponent(city)}` : "/drives"} className="btn btn-light btn-lg">
                 <i className="bi bi-calendar-check me-2"></i>Find a Drive
               </Link>
             </div>

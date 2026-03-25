@@ -49,10 +49,11 @@ public class CertificateService {
             .user(booking.getUser())
             .certificateNumber(certificateNumber)
             .vaccineName(vaccineName)
-            .doseNumber(doseNumber != null ? doseNumber : 1)
-            .vaccinationDate(booking.getBookedAt())
+            .doseNumber(doseNumber != null ? doseNumber : (booking.getDoseNumber() != null ? booking.getDoseNumber() : 1))
+            .vaccinationDate(booking.getFirstDoseDate() != null ? booking.getFirstDoseDate() : booking.getBookedAt())
             .qrCode(generateQrCode(certificateNumber))
             .digitalVerificationCode(generateDigitalVerificationCode(certificateNumber, booking))
+            .nextDoseDate(booking.getNextDoseDueDate())
             .issuedAt(LocalDateTime.now())
             .build();
 
@@ -69,7 +70,7 @@ public class CertificateService {
             ? booking.getSlot().getDrive().getVaccineType()
             : "Vaccination";
 
-        return generateCertificate(booking.getId(), vaccineName, 1);
+        return generateCertificate(booking.getId(), vaccineName, booking.getDoseNumber());
     }
 
     public Certificate getCertificateById(Long id) {

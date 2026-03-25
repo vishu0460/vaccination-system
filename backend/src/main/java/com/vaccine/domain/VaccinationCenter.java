@@ -2,9 +2,12 @@ package com.vaccine.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.LocalDateTime;
+import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "vaccination_centers")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -28,8 +31,10 @@ public class VaccinationCenter {
     @Column(name = "pincode")
     private String pincode;
 
+    @Column(name = "latitude")
     private Double lat;
 
+    @Column(name = "longitude")
     private Double lng;
 
     private String phone;
@@ -44,5 +49,13 @@ public class VaccinationCenter {
 
     private Integer dailyCapacity;
 
-    // Lombok generated getters/setters/builders
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    @Column(name = "deleted_by", length = 120)
+    private String deletedBy;
+
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
 }

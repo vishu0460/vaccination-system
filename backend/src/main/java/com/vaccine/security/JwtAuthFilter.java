@@ -35,7 +35,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
+        String path = request.getServletPath();
+        if (path == null || path.isBlank()) {
+            path = request.getRequestURI();
+        }
+        String method = request.getMethod();
 
         String[] exactPublicPaths = {
             "/",
@@ -43,6 +47,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/robots.txt",
             "/sitemap.xml",
             "/health",
+            "/v1/health",
             "/api/health",
             "/api/v1/health"
         };
@@ -53,20 +58,25 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
 
+        if (("POST".equalsIgnoreCase(method) && ("/contact".equals(path) || "/api/contact".equals(path)))
+            || ("OPTIONS".equalsIgnoreCase(method) && (path.startsWith("/contact") || path.startsWith("/api/contact")))) {
+            return true;
+        }
+
         String[] publicPathPrefixes = {
             "/actuator/",
             "/auth/",
             "/api/auth/",
             "/public/",
+            "/v1/public/",
             "/api/public/",
             "/api/v1/public/",
-            "/api/contact/",
-            "/contact/",
+            "/reviews/center/",
+            "/v1/reviews/center/",
             "/api/reviews/center/",
             "/api/v1/reviews/center/",
-            "/reviews/center/",
-            "/api/certificates/verify/",
             "/certificates/verify/",
+            "/api/certificates/verify/",
             "/v3/api-docs/",
             "/swagger-ui/",
             "/h2-console/"

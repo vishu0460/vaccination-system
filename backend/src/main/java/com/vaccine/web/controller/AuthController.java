@@ -12,7 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping({"/api/auth", "/auth"})
+@RequestMapping({"/auth"})
 public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
@@ -24,11 +24,9 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
+    public ResponseEntity<ApiMessage> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
         log.info("Registration request received for email: {}", req.email());
-        // Auto-login after registration for seamless flow
-        AuthResponse authResponse = authService.registerAndLogin(req, request);
-        return ResponseEntity.ok(authResponse);
+        return ResponseEntity.ok(authService.register(req, request));
     }
 
     @PostMapping("/login")

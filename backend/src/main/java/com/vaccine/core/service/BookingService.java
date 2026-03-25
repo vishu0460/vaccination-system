@@ -31,15 +31,17 @@ public class BookingService {
     private final UserRepository userRepository;
     private final VaccinationDriveRepository driveRepository;
     private final INotificationService notificationService;
+    private final AuditService auditService;
 
     public BookingService(BookingRepository bookingRepository, SlotRepository slotRepository,
                           UserRepository userRepository, VaccinationDriveRepository driveRepository,
-                          INotificationService notificationService) {
+                          INotificationService notificationService, AuditService auditService) {
         this.bookingRepository = bookingRepository;
         this.slotRepository = slotRepository;
         this.userRepository = userRepository;
         this.driveRepository = driveRepository;
         this.notificationService = notificationService;
+        this.auditService = auditService;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -114,7 +116,7 @@ public class BookingService {
         slotRepository.save(slot);
 
         Booking saved = bookingRepository.save(booking);
-        notificationService.sendBookingNotification(saved);
+        auditService.logActionAs(user.getEmail(), "CREATE_BOOKING", "BOOKING", saved.getId(), "Booking created for slot " + slot.getId(), null);
         log.info("Booking created successfully for user={}, bookingId={}, status={}, assignedTime={}", email, saved.getId(), saved.getStatus(), saved.getAssignedTime());
         return saved;
     }
@@ -142,7 +144,9 @@ public class BookingService {
             buildCancellationMessage(booking));
         notificationService.sendSms(booking.getUser(), buildShortCancellationMessage(booking));
         log.info("Booking cancelled successfully for bookingId={}", bookingId);
-        return bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
+        auditService.logActionAs(booking.getUser().getEmail(), "CANCEL_BOOKING", "BOOKING", savedBooking.getId(), "Booking cancelled by user", null);
+        return savedBooking;
     }
 
     public List<BookingResponse> getMyBookings(String email) {
@@ -190,7 +194,9 @@ public class BookingService {
         booking.setSlot(newSlot);
         booking.setNotes(req.notes());
         log.info("Booking rescheduled successfully for bookingId={} to slotId={}", bookingId, newSlot.getId());
-        return bookingRepository.save(booking);
+        Booking savedBooking = bookingRepository.save(booking);
+        auditService.logActionAs(booking.getUser().getEmail(), "RESCHEDULE_BOOKING", "BOOKING", savedBooking.getId(), "Booking moved to slot " + newSlot.getId(), null);
+        return savedBooking;
     }
 
     public List<Slot> recommendSlots(String email, String city, int limit) {

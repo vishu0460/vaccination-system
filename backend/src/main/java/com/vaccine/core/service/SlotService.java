@@ -6,6 +6,7 @@ import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,7 +23,7 @@ public class SlotService {
     private final VaccinationDriveRepository driveRepository;
 
     public List<Slot> getAllActiveSlots() {
-        return slotRepository.findByDriveIdOrderByStartTimeAsc(1L);  // Temp fix; add proper query if needed
+        return slotRepository.findAll(Sort.by(Sort.Direction.ASC, "dateTime"));
     }
 
     public long countSlots() {
@@ -32,7 +33,7 @@ public class SlotService {
     public List<DriveResponse.SlotResponse> getSlotsForDrive(Long driveId) {
         var drive = driveRepository.findById(driveId).orElseThrow();
         LocalDate driveDate = drive.getDriveDate();
-        return slotRepository.findByDriveIdOrderByStartTimeAsc(driveId)
+        return slotRepository.findByDrive_IdOrderByDateTimeAsc(driveId)
                 .stream()
                 .map(slot -> new DriveResponse.SlotResponse(
                     slot.getId(), 
@@ -43,4 +44,3 @@ public class SlotService {
                 .collect(Collectors.toList());
     }
 }
-

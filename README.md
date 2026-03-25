@@ -60,12 +60,30 @@ VaxZone is a full-stack vaccination booking platform built with Spring Boot, Rea
 
 ### Backend
 
+The default `local` profile is now self-contained and uses a persistent file-based H2 database, so a plain backend startup works without MySQL:
+
 ```bash
 cd backend
 mvn spring-boot:run
 ```
 
 Backend default URL: `http://localhost:8080`
+
+Default startup profile is `local`, which persists data in `backend/data/vaxdb.*` and starts without any external database service. Use `SPRING_PROFILES_ACTIVE=local-fixed` when you want the MySQL-backed local profile, or `SPRING_PROFILES_ACTIVE=dev` when you intentionally want the in-memory developer profile.
+
+For MySQL-backed local development:
+
+```bash
+docker compose up -d mysql
+cd backend
+mvn spring-boot:run -Dspring-boot.run.profiles=local-fixed
+```
+
+If you use the helper script instead, it will preflight port `8080`, check MySQL on `localhost:3306`, and try to start the Compose MySQL service automatically:
+
+```powershell
+.\run-local.ps1
+```
 
 Swagger UI: `http://localhost:8080/swagger-ui/index.html`
 
@@ -110,10 +128,26 @@ Copy `.env.example` to `.env` and set the values you need.
 
 ## Database
 
-- Development uses H2/test-friendly data paths already wired into the backend.
-- Production uses MySQL with Flyway migrations from `backend/src/main/resources/db/migration`.
+- Default local and production runtime use MySQL with Flyway migrations from `backend/src/main/resources/db/migration`.
+- The `dev` and `test` profiles are intentionally non-persistent and should not be used for data you need to keep.
+- Slot-notification subscriptions, notifications, search logs, bookings, users, and drives are stored in the database and survive application restarts when running with MySQL.
+
+### Backup
+
+- A repeatable MySQL backup script is available at `scripts/mysql-backup.sh`.
+- Example: `DB_PASSWORD=your-password ./scripts/mysql-backup.sh`
+- The script creates compressed dumps in `./backups/mysql` and prunes backups older than `BACKUP_RETENTION_DAYS` (default `14`).
 
 ## Deployment
+
+### Production Checklist
+
+- Set strong values for `JWT_SECRET`, `DB_ROOT_PASSWORD`, `DB_PASSWORD`, and `DEFAULT_ADMIN_PASSWORD`
+- Keep `APP_SEED_ENABLED=false` in production
+- Set `CORS_ALLOWED_ORIGINS`, `APP_BASE_URL`, and `FRONTEND_URL` to your real HTTPS domains
+- Run Flyway migrations before exposing traffic
+- Replace MailHog with a real SMTP provider in production
+- Enable HTTPS at the reverse proxy and mount valid certificates in `nginx/certs`
 
 ### Backend on Render
 
@@ -121,6 +155,20 @@ Copy `.env.example` to `.env` and set the values you need.
 - Start command: `java -jar backend/target/app.jar`
 - Set MySQL, JWT, mail, and CORS environment variables in Render
 - Point `APP_BASE_URL` to the frontend production URL
+
+### Docker Compose Production
+
+```bash
+docker compose up -d --build
+```
+
+- The compose stack now fails fast when required production secrets are missing
+- MySQL is only exposed to the internal Docker network by default
+- MailHog is available only through the optional `dev` profile:
+
+```bash
+docker compose --profile dev up -d
+```
 
 ### Frontend on Vercel
 

@@ -3,6 +3,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import { certificateAPI, unwrapApiData } from "../api/client";
 import QRCode from "qrcode";
 import ModalPopup from "../components/ModalPopup";
+import SearchInput from "../components/SearchInput";
 import Seo from "../components/Seo";
 
 export default function VerifyCertificatePage() {
@@ -112,7 +113,7 @@ export default function VerifyCertificatePage() {
               </p>
             </div>
             <div className="col-lg-4 text-center text-lg-end mt-3 mt-lg-0">
-              <i className="bi bi-shield-check display-1" style={{opacity: 0.3}}></i>
+              <i className="bi bi-shield-check display-1 page-header__icon"></i>
             </div>
           </div>
         </div>
@@ -131,15 +132,19 @@ export default function VerifyCertificatePage() {
                     <label htmlFor="certNumber" className="form-label">
                       Certificate Number
                     </label>
-                    <div className="input-group">
-                      <input
-                        type="text"
-                        className="form-control"
+                    <div className="search-action-row">
+                      <SearchInput
                         id="certNumber"
-                        placeholder="Enter certificate number (e.g., CERT-2024-001234)"
                         value={certificateNumber}
-                        onChange={(e) => setCertificateNumber(e.target.value)}
+                        onChange={setCertificateNumber}
+                        placeholder="Search certificate number (e.g., CERT-2024-001234)"
+                        icon="search"
+                        loading={loading}
                         disabled={loading}
+                        onClear={() => {
+                          setCertificateNumber("");
+                          setError("");
+                        }}
                       />
                       <button
                         type="submit"

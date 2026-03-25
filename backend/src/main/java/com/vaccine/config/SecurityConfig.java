@@ -28,6 +28,8 @@ import org.springframework.beans.factory.annotation.Value;
 
 import java.util.List;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Configuration
@@ -50,12 +52,12 @@ public class SecurityConfig {
             .exceptionHandling(ex -> ex.authenticationEntryPoint(restAuthenticationEntryPoint))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/**", "/auth/**").permitAll()
-                .requestMatchers("/api/public/**", "/api/v1/public/**").permitAll()
-                .requestMatchers("/api/health/**", "/api/v1/health/**", "/health/**").permitAll()
-                .requestMatchers("/api/contact/**", "/contact/**").permitAll()
-                .requestMatchers("/api/v1/reviews/center/**", "/api/reviews/center/**", "/reviews/center/**").permitAll()
-                .requestMatchers("/api/certificates/verify/**", "/certificates/verify/**").permitAll()
+                .requestMatchers("/auth/**", "/api/auth/**").permitAll()
+                .requestMatchers("/public/**", "/v1/public/**", "/api/public/**", "/api/v1/public/**").permitAll()
+                .requestMatchers("/health/**", "/v1/health/**", "/api/health/**", "/api/v1/health/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/contact", "/api/contact").permitAll()
+                .requestMatchers("/reviews/center/**", "/v1/reviews/center/**", "/api/reviews/center/**", "/api/v1/reviews/center/**").permitAll()
+                .requestMatchers("/certificates/verify/**", "/api/certificates/verify/**").permitAll()
                 .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**", "/h2-console/**", "/actuator/**", "/robots.txt", "/sitemap.xml").permitAll()
                 .requestMatchers("/admin/**", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
                 .requestMatchers("/super-admin/**", "/api/super-admin/**").hasRole("SUPER_ADMIN")
@@ -72,10 +74,10 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        List<String> origins = Arrays.stream(corsAllowedOrigins.split(","))
+        List<String> origins = expandLocalOrigins(Arrays.stream(corsAllowedOrigins.split(","))
             .map(String::trim)
             .filter(value -> !value.isEmpty())
-            .collect(Collectors.toList());
+            .collect(Collectors.toList()));
         if (origins.contains("*")) {
             configuration.setAllowedOriginPatterns(List.of("*"));
         } else {
@@ -89,6 +91,24 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
+    }
+
+    private List<String> expandLocalOrigins(List<String> configuredOrigins) {
+        Set<String> expandedOrigins = new LinkedHashSet<>(configuredOrigins);
+
+        for (String origin : configuredOrigins) {
+            if (!origin.startsWith("http://") && !origin.startsWith("https://")) {
+                continue;
+            }
+
+            if (origin.contains("localhost")) {
+                expandedOrigins.add(origin.replace("localhost", "127.0.0.1"));
+            } else if (origin.contains("127.0.0.1")) {
+                expandedOrigins.add(origin.replace("127.0.0.1", "localhost"));
+            }
+        }
+
+        return List.copyOf(expandedOrigins);
     }
 
     @Bean

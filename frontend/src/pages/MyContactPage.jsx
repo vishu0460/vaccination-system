@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Badge, Spinner, Alert, Button, Form } from 'react-bootstrap';
-import { contactAPI } from '../api/client';
+import { contactAPI, getErrorMessage, unwrapApiData, userAPI } from '../api/client';
+
+const notifyDataUpdated = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('vaxzone:data-updated'));
+  }
+};
 
 export default function MyContactPage() {
   const [contacts, setContacts] = useState([]);
@@ -15,19 +21,59 @@ export default function MyContactPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
+  const [userId, setUserId] = useState(null);
 
   useEffect(() => {
-    fetchMyContacts();
+    const loadUserAndHistory = async () => {
+      try {
+        const response = await userAPI.getProfile();
+        const profile = unwrapApiData(response);
+        const nextUserId = profile?.id || null;
+        setUserId(nextUserId);
+        await fetchMyContacts(nextUserId);
+      } catch (err) {
+        setError(getErrorMessage(err, 'Failed to load your profile.'));
+        setLoading(false);
+      }
+    };
+
+    loadUserAndHistory();
   }, []);
 
-  const fetchMyContacts = async () => {
+  useEffect(() => {
+    const handleDataUpdated = () => {
+      fetchMyContacts(userId);
+    };
+
+    const handleFocus = () => {
+      fetchMyContacts(userId);
+    };
+
+    const intervalId = window.setInterval(() => fetchMyContacts(userId), 30000);
+    window.addEventListener('vaxzone:data-updated', handleDataUpdated);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('vaxzone:data-updated', handleDataUpdated);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [userId]);
+
+  const fetchMyContacts = async (nextUserId = userId) => {
     try {
       setLoading(true);
-      const response = await contactAPI.getMyInquiries();
-      setContacts(response.data);
+      setError(null);
+      if (!nextUserId) {
+        const fallbackResponse = await contactAPI.getMyInquiries();
+        setContacts(unwrapApiData(fallbackResponse) || []);
+        return;
+      }
+      const response = await contactAPI.getUserHistory(nextUserId);
+      setContacts(unwrapApiData(response) || []);
     } catch (err) {
-      setError('Failed to load your inquiries.');
-      console.error('Error fetching contacts:', err);
+      setError(getErrorMessage(err, 'Failed to load your inquiries.'));
+      setContacts([]);
     } finally {
       setLoading(false);
     }
@@ -43,9 +89,10 @@ export default function MyContactPage() {
       setSuccess('Your inquiry has been submitted successfully!');
       setShowForm(false);
       setFormData({ name: '', email: '', subject: '', message: '' });
-      fetchMyContacts();
+      notifyDataUpdated();
+      await fetchMyContacts(userId);
     } catch (err) {
-      setError('Failed to submit inquiry. Please try again.');
+      setError(getErrorMessage(err, 'Failed to submit inquiry. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -72,7 +119,7 @@ export default function MyContactPage() {
   return (
     <Container className="py-4">
       <div className="d-flex justify-content-between align-items-center mb-4">
-        <h2>My Contact Inquiries</h2>
+        <h2>Contact History</h2>
         <Button variant="primary" onClick={() => setShowForm(!showForm)}>
           {showForm ? 'Cancel' : 'New Inquiry'}
         </Button>
@@ -140,8 +187,8 @@ export default function MyContactPage() {
       {contacts.length === 0 && !showForm ? (
         <Card>
           <Card.Body className="text-center py-5">
-            <h4>No Inquiries Yet</h4>
-            <p className="text-muted">You haven't submitted any contact inquiries.</p>
+            <h4>No Contact History Yet</h4>
+            <p className="text-muted">Your submitted inquiries will appear here with dates and reply status.</p>
           </Card.Body>
         </Card>
       ) : (
@@ -164,7 +211,7 @@ export default function MyContactPage() {
                   )}
                   
                   <small className="text-muted d-block mt-2">
-                    Submitted: {new Date(item.createdAt).toLocaleDateString()}
+                    Submitted: {new Date(item.createdAt).toLocaleString()}
                   </small>
                 </Card.Body>
               </Card>

@@ -2,7 +2,6 @@ package com.vaccine.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -26,10 +25,13 @@ public class AuditLog {
     @Column(length = 255)
     private String resource;
 
+    @Column(name = "resource_id", length = 120)
+    private String resourceId;
+
     @Column(length = 255)
     private String details;
 
-@Column(nullable = false, length = 64)
+    @Column(nullable = false, length = 64)
     private String ip;
 
     @Column(nullable = false)

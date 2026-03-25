@@ -14,6 +14,8 @@ public record DriveRequest(
     Integer minAge,
     Integer maxAge,
     Integer totalSlots,
+    Boolean secondDoseRequired,
+    Integer secondDoseGapDays,
     Status status,
     Boolean active
 ) {}

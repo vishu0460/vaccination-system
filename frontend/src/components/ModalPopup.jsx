@@ -12,7 +12,7 @@ export default function ModalPopup({
   confirmVariant = "primary"
 }) {
   return (
-    <Modal show={show} onHide={onCancel || onConfirm} centered>
+    <Modal show={show} onHide={onCancel || onConfirm} centered className="app-modal">
       <Modal.Header closeButton>
         <Modal.Title>{title}</Modal.Title>
       </Modal.Header>

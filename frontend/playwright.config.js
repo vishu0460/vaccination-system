@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: process.env.VITE_FRONTEND_URL || 'http://localhost:5173',
+    baseURL: process.env.VITE_FRONTEND_URL || 'http://127.0.0.1:4173',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -20,15 +20,15 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'mvn spring-boot:run',
+      command: 'powershell -ExecutionPolicy Bypass -File run-local.ps1',
       url: 'http://localhost:8080/api/health',
       cwd: '../backend',
       reuseExistingServer: !process.env.CI,
       timeout: 180000,
     },
     {
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
+      command: 'npm run dev -- --host 127.0.0.1 --port 4173',
+      url: 'http://127.0.0.1:4173',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
     },

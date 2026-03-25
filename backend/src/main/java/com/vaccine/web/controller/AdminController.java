@@ -42,6 +42,16 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(adminService.getDashboardStats()));
     }
 
+    @GetMapping("/dashboard/analytics")
+    public ResponseEntity<ApiResponse<DashboardAnalyticsResponse>> getDashboardAnalytics() {
+        return ResponseEntity.ok(ApiResponse.success(adminService.getDashboardAnalytics()));
+    }
+
+    @GetMapping("/search-analytics")
+    public ResponseEntity<ApiResponse<SearchAnalyticsResponse>> getSearchAnalytics() {
+        return ResponseEntity.ok(ApiResponse.success(adminService.getSearchAnalytics()));
+    }
+
     @GetMapping("/bookings")
     public ResponseEntity<Map<String, Object>> getAllBookings(
             @RequestParam(defaultValue = "0") int page,
@@ -84,6 +94,12 @@ public class AdminController {
         return ResponseEntity.ok(adminService.updateCenter(centerId, req));
     }
 
+    @DeleteMapping({"/centers/{centerId}", "/center/{centerId}"})
+    public ResponseEntity<Map<String, Object>> deleteCenter(@PathVariable Long centerId, HttpServletRequest request) {
+        adminService.deleteCenter(centerId, request);
+        return ResponseEntity.ok(Map.of("message", "Center deleted successfully"));
+    }
+
     @GetMapping("/drives")
     public ResponseEntity<Map<String, Object>> getAllDrives(
             @RequestParam(defaultValue = "0") int page,
@@ -108,17 +124,17 @@ public class AdminController {
     }
 
     @PostMapping("/slots")
-    public ResponseEntity<Slot> createSlot(@Valid @RequestBody SlotRequest req) {
+    public ResponseEntity<SlotDetailResponse> createSlot(@Valid @RequestBody SlotRequest req) {
         log.info("Create slot for driveId={} startDate={} endDate={}", req.getDriveId(), req.getStartDate(), req.getEndDate());
         Slot createdSlot = adminService.createSlot(req);
-        return ResponseEntity.ok(createdSlot);
+        return ResponseEntity.ok(SlotDetailResponse.from(createdSlot));
     }
 
     @PutMapping({"/slots/{slotId}", "/slot/{slotId}"})
-    public ResponseEntity<Slot> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
+    public ResponseEntity<SlotDetailResponse> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
         log.info("Update slot id={} driveId={} startDate={} endDate={}", slotId, req.getDriveId(), req.getStartDate(), req.getEndDate());
         Slot updatedSlot = adminService.updateSlot(slotId, req);
-        return ResponseEntity.ok(updatedSlot);
+        return ResponseEntity.ok(SlotDetailResponse.from(updatedSlot));
     }
 
     @GetMapping("/drives/{driveId}/slots")

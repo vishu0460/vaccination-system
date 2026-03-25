@@ -36,6 +36,23 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
            "AND b.status IN :statuses")
     boolean existsByUserIdAndSlotDateTimeBetweenAndStatusIn(Long userId, LocalDateTime start, LocalDateTime end, List<BookingStatus> statuses);
 
+    @Query("""
+        SELECT b FROM Booking b
+        WHERE b.status = :status
+          AND b.assignedTime IS NOT NULL
+          AND b.assignedTime BETWEEN :start AND :end
+    """)
+    List<Booking> findScheduledBookingsForWindow(BookingStatus status, LocalDateTime start, LocalDateTime end);
+
+    @Query("""
+        SELECT b FROM Booking b
+        WHERE b.status = :status
+          AND b.secondDoseRequired = true
+          AND b.nextDoseDueDate IS NOT NULL
+          AND b.nextDoseDueDate BETWEEN :start AND :end
+    """)
+    List<Booking> findSecondDoseBookingsForWindow(BookingStatus status, LocalDateTime start, LocalDateTime end);
+
     default boolean existsByUserIdAndSlotStartTimeBetweenAndStatusIn(Long userId, LocalDateTime start, LocalDateTime end, List<BookingStatus> statuses) {
         return existsByUserIdAndSlotDateTimeBetweenAndStatusIn(userId, start, end, statuses);
     }

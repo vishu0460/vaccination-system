@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -45,12 +46,14 @@ public class AdminService {
     private final PasswordResetRepository passwordResetRepository;
     private final PhoneVerificationRepository phoneVerificationRepository;
     private final AuditLogRepository auditLogRepository;
+    private final SearchLogRepository searchLogRepository;
     private final CertificateService certificateService;
     private final AuditService auditService;
     private final FeedbackService feedbackService;
     private final ContactService contactService;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final INotificationService notificationService;
 
     public AdminDashboardStatsResponse getDashboardStats() {
         long totalUsers = userRepository.count();
@@ -90,6 +93,89 @@ public class AdminService {
             .completedVaccinations(completedVaccinations)
             .totalNews(totalNews)
             .build();
+    }
+
+    public SearchAnalyticsResponse getSearchAnalytics() {
+        LocalDateTime since = LocalDate.now().minusDays(29).atStartOfDay();
+        List<SearchLog> logs = searchLogRepository.findBySearchedAtAfter(since);
+
+        List<SearchMetricResponse> topCities = logs.stream()
+            .map(log -> {
+                String primary = log.getCity();
+                if (primary != null && !primary.isBlank()) {
+                    return primary.trim();
+                }
+                String fallback = log.getDetectedCity();
+                return fallback == null || fallback.isBlank() ? null : fallback.trim();
+            })
+            .filter(value -> value != null && !value.isBlank())
+            .collect(Collectors.groupingBy(value -> value, Collectors.counting()))
+            .entrySet().stream()
+            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+            .limit(6)
+            .map(entry -> new SearchMetricResponse(entry.getKey(), entry.getValue()))
+            .toList();
+
+        List<SearchMetricResponse> topKeywords = logs.stream()
+            .map(SearchLog::getNormalizedQuery)
+            .filter(value -> value != null && !value.isBlank() && !"nearby centers".equals(value))
+            .collect(Collectors.groupingBy(value -> value, Collectors.counting()))
+            .entrySet().stream()
+            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+            .limit(6)
+            .map(entry -> new SearchMetricResponse(entry.getKey(), entry.getValue()))
+            .toList();
+
+        List<SearchTrendPointResponse> trends = logs.stream()
+            .collect(Collectors.groupingBy(log -> log.getSearchedAt().toLocalDate(), TreeMap::new, Collectors.counting()))
+            .entrySet().stream()
+            .map(entry -> new SearchTrendPointResponse(entry.getKey(), entry.getValue()))
+            .toList();
+
+        return new SearchAnalyticsResponse(logs.size(), topCities, topKeywords, trends);
+    }
+
+    public DashboardAnalyticsResponse getDashboardAnalytics() {
+        long totalUsers = userRepository.count();
+        long totalBookings = bookingRepository.count();
+        long activeDrives = driveRepository.countByStatusIn(List.of(Status.UPCOMING, Status.LIVE));
+        long availableSlots = slotRepository.sumAvailableCapacity();
+
+        String mostSearchedCity = searchLogRepository.findAll().stream()
+            .map(log -> {
+                String primary = log.getCity();
+                if (primary != null && !primary.isBlank()) {
+                    return primary.trim();
+                }
+                String fallback = log.getDetectedCity();
+                return fallback == null || fallback.isBlank() ? null : fallback.trim();
+            })
+            .filter(value -> value != null && !value.isBlank())
+            .collect(Collectors.groupingBy(value -> value, Collectors.counting()))
+            .entrySet().stream()
+            .max(Map.Entry.<String, Long>comparingByValue().thenComparing(Map.Entry::getKey))
+            .map(Map.Entry::getKey)
+            .orElse("N/A");
+
+        String mostBookedVaccine = bookingRepository.findAll().stream()
+            .map(booking -> booking.getSlot())
+            .filter(slot -> slot != null && slot.getDrive() != null)
+            .map(slot -> slot.getDrive().getVaccineType())
+            .filter(vaccine -> vaccine != null && !vaccine.isBlank())
+            .collect(Collectors.groupingBy(vaccine -> vaccine, Collectors.counting()))
+            .entrySet().stream()
+            .max(Map.Entry.<String, Long>comparingByValue().thenComparing(Map.Entry::getKey))
+            .map(Map.Entry::getKey)
+            .orElse("N/A");
+
+        return new DashboardAnalyticsResponse(
+            totalUsers,
+            totalBookings,
+            activeDrives,
+            availableSlots,
+            mostSearchedCity,
+            mostBookedVaccine
+        );
     }
 
     public Map<String, Object> getAllBookings(PageRequest pageRequest, BookingStatus status, String city) {
@@ -140,7 +226,10 @@ public class AdminService {
         }
 
         Booking savedBooking = bookingRepository.save(booking);
-        auditService.log("booking-" + bookingId, "UPDATE_BOOKING_STATUS", "BOOKING", "Booking status updated to " + newStatus, request);
+        if (newStatus == BookingStatus.CONFIRMED) {
+            notificationService.queueBookingConfirmedNotification(savedBooking);
+        }
+        auditService.logAction("UPDATE_BOOKING_STATUS", "BOOKING", bookingId, "Booking status updated from " + previousStatus + " to " + newStatus, request);
         return BookingResponse.from(savedBooking);
     }
 
@@ -158,11 +247,29 @@ public class AdminService {
         }
 
         booking.setStatus(BookingStatus.COMPLETED);
+        LocalDateTime completionTime = booking.getAssignedTime() != null
+            ? booking.getAssignedTime()
+            : booking.getSlot() != null ? booking.getSlot().getDateTime() : LocalDateTime.now();
+        booking.setFirstDoseDate(completionTime);
+        boolean secondDoseRequired = booking.getSlot() != null
+            && booking.getSlot().getDrive() != null
+            && Boolean.TRUE.equals(booking.getSlot().getDrive().getSecondDoseRequired());
+        booking.setSecondDoseRequired(secondDoseRequired);
+        if (secondDoseRequired && booking.getSlot() != null && booking.getSlot().getDrive() != null) {
+            Integer gapDays = booking.getSlot().getDrive().getSecondDoseGapDays();
+            if (gapDays != null && gapDays > 0) {
+                booking.setNextDoseDueDate(completionTime.plusDays(gapDays));
+            }
+        } else {
+            booking.setNextDoseDueDate(null);
+        }
         Booking savedBooking = bookingRepository.saveAndFlush(booking);
 
         if (!certificateService.certificateExistsForBooking(savedBooking.getId())) {
             certificateService.generate(savedBooking);
         }
+        notificationService.queueVaccinationCompletedNotification(savedBooking);
+        auditService.logAction("COMPLETE_BOOKING", "BOOKING", savedBooking.getId(), "Booking marked as completed");
 
         return savedBooking;
     }
@@ -193,8 +300,8 @@ public class AdminService {
             slotRepository.save(slot);
         }
 
-        bookingRepository.delete(booking);
-        auditService.log("booking-" + bookingId, "DELETE_BOOKING", "BOOKING", "Booking deleted", request);
+        softDeleteBooking(booking, auditService.getCurrentActor());
+        auditService.logAction("SOFT_DELETE_BOOKING", "BOOKING", bookingId, "Booking soft deleted", request);
     }
 
     public List<VaccinationCenter> getAllCenters() {
@@ -224,7 +331,10 @@ public class AdminService {
                 .workingHours(req.workingHours())
                 .dailyCapacity(req.dailyCapacity())
                 .build();
-        return centerRepository.save(center);
+        VaccinationCenter savedCenter = centerRepository.save(center);
+        log.info("Center created id={} city={} name={}", savedCenter.getId(), savedCenter.getCity(), savedCenter.getName());
+        auditService.logAction("CREATE_CENTER", "CENTER", savedCenter.getId(), "Center created: " + savedCenter.getName());
+        return savedCenter;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -241,7 +351,10 @@ public class AdminService {
         center.setEmail(req.email());
         center.setWorkingHours(req.workingHours());
         center.setDailyCapacity(req.dailyCapacity());
-        return centerRepository.save(center);
+        VaccinationCenter savedCenter = centerRepository.save(center);
+        log.info("Center updated id={} city={} name={}", savedCenter.getId(), savedCenter.getCity(), savedCenter.getName());
+        auditService.logAction("UPDATE_CENTER", "CENTER", savedCenter.getId(), "Center updated: " + savedCenter.getName());
+        return savedCenter;
     }
 
     public Map<String, Object> getAllDrives(PageRequest pageable) {
@@ -278,6 +391,12 @@ public class AdminService {
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public VaccinationDrive createDrive(DriveRequest req) {
+        if (req.centerId() == null) {
+            throw new AppException("Center is required");
+        }
+        if (req.driveDate() == null) {
+            throw new AppException("Drive date is required");
+        }
         VaccinationCenter center = centerRepository.findById(req.centerId())
                 .orElseThrow(() -> new AppException("Center not found"));
 
@@ -292,10 +411,15 @@ public class AdminService {
                 .startTime(java.time.LocalTime.of(9, 0))
                 .endTime(java.time.LocalTime.of(17, 0))
                 .totalSlots(req.totalSlots() != null ? req.totalSlots() : 100)
+                .secondDoseRequired(req.secondDoseRequired() != null ? req.secondDoseRequired() : false)
+                .secondDoseGapDays(Boolean.TRUE.equals(req.secondDoseRequired()) ? req.secondDoseGapDays() : null)
                 .status(req.status() != null ? req.status() : Status.UPCOMING)
                 .active(req.active() != null ? req.active() : true)
                 .build();
-        return driveRepository.save(drive);
+        VaccinationDrive savedDrive = driveRepository.save(drive);
+        log.info("Drive created id={} centerId={} date={} vaccine={}", savedDrive.getId(), center.getId(), savedDrive.getDriveDate(), savedDrive.getVaccineType());
+        auditService.logAction("CREATE_DRIVE", "DRIVE", savedDrive.getId(), "Drive created: " + savedDrive.getTitle());
+        return savedDrive;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -329,13 +453,25 @@ public class AdminService {
         if (req.totalSlots() != null) {
             drive.setTotalSlots(req.totalSlots());
         }
+        if (req.secondDoseRequired() != null) {
+            drive.setSecondDoseRequired(req.secondDoseRequired());
+            if (!req.secondDoseRequired()) {
+                drive.setSecondDoseGapDays(null);
+            }
+        }
+        if (req.secondDoseGapDays() != null) {
+            drive.setSecondDoseGapDays(req.secondDoseGapDays());
+        }
         if (req.status() != null) {
             drive.setStatus(req.status());
         }
         if (req.active() != null) {
             drive.setActive(req.active());
         }
-        return driveRepository.save(drive);
+        VaccinationDrive savedDrive = driveRepository.save(drive);
+        log.info("Drive updated id={} centerId={} date={} vaccine={}", savedDrive.getId(), savedDrive.getCenter() != null ? savedDrive.getCenter().getId() : null, savedDrive.getDriveDate(), savedDrive.getVaccineType());
+        auditService.logAction("UPDATE_DRIVE", "DRIVE", savedDrive.getId(), "Drive updated: " + savedDrive.getTitle());
+        return savedDrive;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -349,7 +485,11 @@ public class AdminService {
                 .endTime(req.getEndDate().toLocalTime())
                 .capacity(req.getCapacity())
                 .build();
-        return slotRepository.save(slot);
+        Slot savedSlot = slotRepository.save(slot);
+        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
+        log.info("Slot created id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), req.getStartDate(), req.getEndDate(), savedSlot.getCapacity());
+        auditService.logAction("CREATE_SLOT", "SLOT", savedSlot.getId(), "Slot created for drive " + drive.getId());
+        return savedSlot;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -370,11 +510,15 @@ public class AdminService {
         slot.setStartTime(req.getStartDate().toLocalTime());
         slot.setEndTime(req.getEndDate().toLocalTime());
         slot.setCapacity(requestedCapacity);
-        return slotRepository.save(slot);
+        Slot savedSlot = slotRepository.save(slot);
+        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
+        log.info("Slot updated id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), req.getStartDate(), req.getEndDate(), savedSlot.getCapacity());
+        auditService.logAction("UPDATE_SLOT", "SLOT", savedSlot.getId(), "Slot updated for drive " + drive.getId());
+        return savedSlot;
     }
 
     public Map<String, Object> getDriveSlots(Long driveId) {
-        List<AdminSlotResponse> slots = slotRepository.findByDriveIdOrderByStartTimeAsc(driveId).stream()
+        List<AdminSlotResponse> slots = slotRepository.findByDrive_IdOrderByDateTimeAsc(driveId).stream()
             .sorted(Comparator.comparing(Slot::getDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
             .map(this::toAdminSlotResponse)
             .toList();
@@ -386,7 +530,11 @@ public class AdminService {
     }
 
     public Map<String, Object> getAllUsersPaginated(PageRequest pageable) {
-        List<User> users = userRepository.findAll();
+        List<User> users = userRepository.findAll().stream()
+            .sorted(Comparator
+                .comparing(User::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(User::getId, Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
         long total = users.size();
         List<User> pageContent = users.stream()
             .skip(pageable.getOffset())
@@ -399,6 +547,7 @@ public class AdminService {
         User user = userRepository.findById(userId).orElseThrow();
         user.setEnabled(true);
         userRepository.save(user);
+        auditService.logAction("ENABLE_USER", "USER", userId, "User enabled: " + user.getEmail());
         return Map.of("message", "User enabled");
     }
 
@@ -406,6 +555,7 @@ public class AdminService {
         User user = userRepository.findById(userId).orElseThrow();
         user.setEnabled(false);
         userRepository.save(user);
+        auditService.logAction("DISABLE_USER", "USER", userId, "User disabled: " + user.getEmail());
         return Map.of("message", "User disabled");
     }
 
@@ -414,7 +564,7 @@ public class AdminService {
 
         if (req.email() != null && !req.email().isBlank()) {
             String email = req.email().trim().toLowerCase();
-            if (!email.equals(user.getEmail()) && userRepository.existsByEmail(email)) {
+            if (!email.equals(user.getEmail()) && userRepository.existsAnyByEmail(email)) {
                 throw new AppException("Email already exists");
             }
             user.setEmail(email);
@@ -432,7 +582,9 @@ public class AdminService {
             user.setEnabled(req.enabled());
         }
 
-        return userRepository.save(user);
+        User savedUser = userRepository.save(user);
+        auditService.logAction("UPDATE_USER", "USER", savedUser.getId(), "User updated: " + savedUser.getEmail());
+        return savedUser;
     }
 
     public Map<String, Object> getAllFeedback(PageRequest pageRequest) {
@@ -488,7 +640,7 @@ public class AdminService {
 
     @Transactional
     public void createAdmin(AdminCreateRequest req, HttpServletRequest request) {
-        if (userRepository.existsByEmail(req.email())) {
+        if (userRepository.existsAnyByEmail(req.email())) {
             throw new AppException("Email already exists");
         }
         Role adminRole = roleRepository.findByName(RoleName.ADMIN).orElseThrow();
@@ -502,7 +654,7 @@ public class AdminService {
             .enabled(true)
             .build();
         userRepository.save(admin);
-        auditService.log(req.email(), "CREATE_ADMIN", "USER", "Admin created", request);
+        auditService.logAction("CREATE_ADMIN", "USER", admin.getId(), "Admin created: " + req.email(), request);
     }
 
     public List<User> getAllAdmins() {
@@ -514,36 +666,37 @@ public class AdminService {
     @Transactional
     public void deleteAdmin(Long adminId, HttpServletRequest request) {
         User admin = userRepository.findById(adminId).orElseThrow();
-        userRepository.delete(admin);
-        auditService.log(admin.getEmail(), "DELETE_ADMIN", "USER", "Admin deleted", request);
+        softDeleteUser(admin, auditService.getCurrentActor());
+        auditService.logAction("SOFT_DELETE_ADMIN", "USER", adminId, "Admin soft deleted: " + admin.getEmail(), request);
     }
 
     @Transactional
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public void deleteCenter(Long centerId, HttpServletRequest request) {
         VaccinationCenter center = centerRepository.findById(centerId).orElseThrow();
+        String actor = auditService.getCurrentActor();
         for (VaccinationDrive drive : driveRepository.findByCenterId(centerId)) {
-            deleteDriveInternal(drive);
+            deleteDriveInternal(drive, actor);
         }
         reviewRepository.deleteByCenterId(centerId);
-        centerRepository.delete(center);
-        auditService.log("center-" + centerId, "DELETE_CENTER", "CENTER", "Center deleted", request);
+        softDeleteCenter(center, actor);
+        auditService.logAction("SOFT_DELETE_CENTER", "CENTER", centerId, "Center soft deleted: " + center.getName(), request);
     }
 
     @Transactional
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public void deleteDrive(Long driveId, HttpServletRequest request) {
         VaccinationDrive drive = driveRepository.findById(driveId).orElseThrow();
-        deleteDriveInternal(drive);
-        auditService.log("drive-" + driveId, "DELETE_DRIVE", "DRIVE", "Drive deleted", request);
+        deleteDriveInternal(drive, auditService.getCurrentActor());
+        auditService.logAction("SOFT_DELETE_DRIVE", "DRIVE", driveId, "Drive soft deleted: " + drive.getTitle(), request);
     }
 
     @Transactional
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public void deleteSlot(Long slotId, HttpServletRequest request) {
         Slot slot = slotRepository.findById(slotId).orElseThrow(() -> new AppException("Slot not found"));
-        deleteSlotInternal(slot);
-        auditService.log("slot-" + slotId, "DELETE_SLOT", "SLOT", "Slot deleted", request);
+        deleteSlotInternal(slot, auditService.getCurrentActor());
+        auditService.logAction("SOFT_DELETE_SLOT", "SLOT", slotId, "Slot soft deleted", request);
     }
 
     @Transactional
@@ -551,6 +704,7 @@ public class AdminService {
     public void deleteUser(Long userId, HttpServletRequest request) {
         User user = userRepository.findById(userId).orElseThrow(() -> new AppException("User not found"));
         List<Booking> bookings = bookingRepository.findByUserId(userId);
+        String actor = auditService.getCurrentActor();
 
         for (Booking booking : bookings) {
             Slot slot = booking.getSlot();
@@ -558,19 +712,19 @@ public class AdminService {
                 slot.setBookedCount(Math.max(0, (slot.getBookedCount() == null ? 0 : slot.getBookedCount()) - 1));
                 slotRepository.save(slot);
             }
+            softDeleteBooking(booking, actor);
         }
 
-        bookingRepository.deleteAll(bookings);
         feedbackRepository.deleteByUserId(userId);
-        contactRepository.deleteByUserId(userId);
+        contactRepository.deleteByUser_Id(userId);
         reviewRepository.deleteByUserId(userId);
         emailVerificationRepository.deleteByUserEmail(user.getEmail());
         passwordResetRepository.deleteByUserEmail(user.getEmail());
         if (user.getPhoneNumber() != null && !user.getPhoneNumber().isBlank()) {
             phoneVerificationRepository.deleteByPhoneNumber(user.getPhoneNumber());
         }
-        userRepository.delete(user);
-        auditService.log(user.getEmail(), "DELETE_USER", "USER", "User deleted", request);
+        softDeleteUser(user, actor);
+        auditService.logAction("SOFT_DELETE_USER", "USER", userId, "User soft deleted: " + user.getEmail(), request);
     }
 
     @Transactional
@@ -580,20 +734,69 @@ public class AdminService {
         user.getRoles().clear();
         user.getRoles().add(roleEntity);
         userRepository.save(user);
-        auditService.log(user.getEmail(), "UPDATE_ROLE", "USER", "Role updated to " + role, request);
+        auditService.logAction("UPDATE_ROLE", "USER", userId, "Role updated to " + role, request);
     }
 
-    private void deleteDriveInternal(VaccinationDrive drive) {
+    private void deleteDriveInternal(VaccinationDrive drive, String actor) {
         feedbackRepository.deleteByDriveId(drive.getId());
-        for (Slot slot : slotRepository.findByDriveId(drive.getId())) {
-            deleteSlotInternal(slot);
+        for (Slot slot : slotRepository.findByDrive_Id(drive.getId())) {
+            deleteSlotInternal(slot, actor);
         }
-        driveRepository.delete(drive);
+        softDeleteDrive(drive, actor);
     }
 
-    private void deleteSlotInternal(Slot slot) {
-        bookingRepository.deleteAll(bookingRepository.findBySlotId(slot.getId()));
-        slotRepository.delete(slot);
+    private void deleteSlotInternal(Slot slot, String actor) {
+        for (Booking booking : bookingRepository.findBySlotId(slot.getId())) {
+            softDeleteBooking(booking, actor);
+        }
+        softDeleteSlot(slot, actor);
+    }
+
+    private void softDeleteBooking(Booking booking, String actor) {
+        if (booking.isDeleted()) {
+            return;
+        }
+        booking.setDeletedAt(LocalDateTime.now());
+        booking.setDeletedBy(actor);
+        bookingRepository.save(booking);
+    }
+
+    private void softDeleteUser(User user, String actor) {
+        if (user.isDeleted()) {
+            return;
+        }
+        user.setDeletedAt(LocalDateTime.now());
+        user.setDeletedBy(actor);
+        user.setEnabled(false);
+        userRepository.save(user);
+    }
+
+    private void softDeleteCenter(VaccinationCenter center, String actor) {
+        if (center.isDeleted()) {
+            return;
+        }
+        center.setDeletedAt(LocalDateTime.now());
+        center.setDeletedBy(actor);
+        centerRepository.save(center);
+    }
+
+    private void softDeleteDrive(VaccinationDrive drive, String actor) {
+        if (drive.isDeleted()) {
+            return;
+        }
+        drive.setDeletedAt(LocalDateTime.now());
+        drive.setDeletedBy(actor);
+        drive.setActive(false);
+        driveRepository.save(drive);
+    }
+
+    private void softDeleteSlot(Slot slot, String actor) {
+        if (slot.isDeleted()) {
+            return;
+        }
+        slot.setDeletedAt(LocalDateTime.now());
+        slot.setDeletedBy(actor);
+        slotRepository.save(slot);
     }
 
     private AdminSlotResponse toAdminSlotResponse(Slot slot) {
@@ -641,7 +844,7 @@ public class AdminService {
         LocalDateTime requestedStart = req.getStartDate();
         LocalDateTime requestedEnd = req.getEndDate();
 
-        boolean overlapsExistingSlot = slotRepository.findByDriveId(req.getDriveId()).stream()
+        boolean overlapsExistingSlot = slotRepository.findByDrive_Id(req.getDriveId()).stream()
             .filter(existing -> currentSlotId == null || !existing.getId().equals(currentSlotId))
             .anyMatch(existing -> {
                 LocalDateTime existingStart = existing.getDateTime();
