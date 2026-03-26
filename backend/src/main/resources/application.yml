@@ -62,9 +62,11 @@ app:
 logging:
   level:
     root: INFO
-    com.vaccine: DEBUG
-    com.vaccine.security: TRACE
-    org.springframework.web: DEBUG
+    com.vaccine: INFO
+    com.vaccine.security: INFO
+    org.springframework.web: WARN
+  file:
+    name: ${LOG_FILE_PATH:../Logs/application.log}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 

@@ -580,7 +580,6 @@ public class AdminService {
         slot.setStartDateTime(req.getStartDate());
         slot.setEndDateTime(req.getEndDate());
         Slot savedSlot = slotRepository.save(slot);
-        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getStartDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
         log.info("Slot created id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), req.getStartDate(), req.getEndDate(), savedSlot.getCapacity());
         auditService.logAction("CREATE_SLOT", "SLOT", savedSlot.getId(), "Slot created for drive " + drive.getId());
         return savedSlot;
@@ -608,7 +607,6 @@ public class AdminService {
         slot.setEndDateTime(normalizedRequest.getEndDate());
         slot.setCapacity(requestedCapacity);
         Slot savedSlot = slotRepository.save(slot);
-        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getStartDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
         log.info("Slot updated id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), normalizedRequest.getStartDate(), normalizedRequest.getEndDate(), savedSlot.getCapacity());
         auditService.logAction("UPDATE_SLOT", "SLOT", savedSlot.getId(), "Slot updated for drive " + drive.getId());
         return savedSlot;

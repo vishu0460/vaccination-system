@@ -45,14 +45,12 @@ public class UserController {
     @PostMapping("/bookings")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<BookingResponse>> book(@Valid @RequestBody BookingRequest req, Authentication auth) {
-        log.info("Booking slot for user={}, slotId={}", auth.getName(), req.slotId());
         Booking booking = bookingService.book(auth.getName(), req);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(BookingResponse.from(booking), "Booking created successfully"));
     }
 
     @GetMapping("/bookings")
     public ResponseEntity<ApiResponse<List<BookingResponse>>> myBookings(Authentication auth) {
-        log.info("Get bookings for user={}", auth.getName());
         List<BookingResponse> bookings = bookingService.getMyBookings(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(bookings));
     }
@@ -60,7 +58,6 @@ public class UserController {
     @PatchMapping("/bookings/{bookingId}/cancel")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<BookingResponse>> cancel(@PathVariable Long bookingId, Authentication auth) {
-        log.info("Cancel booking {} for user={}", bookingId, auth.getName());
         Booking booking = bookingService.cancel(auth.getName(), bookingId);
         return ResponseEntity.ok(ApiResponse.success(BookingResponse.from(booking), "Booking cancelled"));
     }
@@ -70,7 +67,6 @@ public class UserController {
     public ResponseEntity<ApiResponse<BookingResponse>> reschedule(@PathVariable Long bookingId,
                                               @Valid @RequestBody BookingRequest req,
                                               Authentication auth) {
-        log.info("Reschedule booking {} to slot {} for user={}", bookingId, req.slotId(), auth.getName());
         Booking booking = bookingService.reschedule(auth.getName(), bookingId, req);
         return ResponseEntity.ok(ApiResponse.success(BookingResponse.from(booking), "Booking rescheduled"));
     }
@@ -81,7 +77,6 @@ public class UserController {
                                                      @RequestParam(required = false) String city,
                                                      @RequestParam(defaultValue = "5") int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 20));
-        log.info("Recommend slots for user={}, city={}, limit={}", auth.getName(), city, safeLimit);
         List<Slot> slots = bookingService.recommendSlots(auth.getName(), city, safeLimit);
         return ResponseEntity.ok(ApiResponse.success(slots));
     }
@@ -89,7 +84,6 @@ public class UserController {
     @GetMapping("/notifications")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<List<NotificationResponse>>> notifications(Authentication auth) {
-        log.info("Get notifications for user={}", auth.getName());
         List<NotificationResponse> notifications = userService.getNotificationsByEmail(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(notifications));
     }
@@ -97,14 +91,12 @@ public class UserController {
     @PatchMapping("/notifications/read-all")
     @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<Void>> markNotificationsRead(Authentication auth) {
-        log.info("Mark notifications as read for user={}", auth.getName());
         userService.markNotificationsRead(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(null, "Notifications marked as read"));
     }
 
     @GetMapping("/account")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getAccount(Authentication auth) {
-        log.info("Get account info for user={}", auth.getName());
         User user = profileService.getProfile(auth.getName());
         Map<String, Object> profile = Map.of(
             "fullName", user.getFullName(),

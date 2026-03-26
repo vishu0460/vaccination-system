@@ -50,8 +50,8 @@ public class BookingService {
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Booking book(String email, BookingRequest req) {
-        log.info("Creating booking for user={}, slotId={}, driveId={}", email, req.slotId(), req.driveId());
         User user = userRepository.findByEmail(email).orElseThrow(() -> new AppException("User not found"));
+        log.info("Creating booking for userId={}, slotId={}, driveId={}", user.getId(), req.slotId(), req.driveId());
         if (req.userId() != null && !req.userId().equals(user.getId())) {
             throw new AppException("Booking request user does not match the logged-in user");
         }
@@ -125,15 +125,15 @@ public class BookingService {
 
         Booking saved = bookingRepository.save(booking);
         auditService.logActionAs(user.getEmail(), "CREATE_BOOKING", "BOOKING", saved.getId(), "Booking created for slot " + slot.getId(), null);
-        log.info("Booking created successfully for user={}, bookingId={}, status={}, assignedTime={}", email, saved.getId(), saved.getStatus(), saved.getAssignedTime());
+        log.info("Booking created successfully for userId={}, bookingId={}, status={}, assignedTime={}", user.getId(), saved.getId(), saved.getStatus(), saved.getAssignedTime());
         return saved;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Booking cancel(String email, Long bookingId) {
-        log.info("Cancelling bookingId={} for user={}", bookingId, email);
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
+        log.info("Cancelling bookingId={} for userId={}", bookingId, booking.getUser().getId());
         if (!booking.getUser().getEmail().equalsIgnoreCase(email)) {
             throw new AppException("You can only cancel your own booking");
         }
@@ -166,9 +166,9 @@ public class BookingService {
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Booking reschedule(String email, Long bookingId, BookingRequest req) {
-        log.info("Rescheduling bookingId={} for user={} to slotId={}", bookingId, email, req.slotId());
         Booking booking = bookingRepository.findById(bookingId)
             .orElseThrow(() -> new AppException("Booking not found"));
+        log.info("Rescheduling bookingId={} for userId={} to slotId={}", bookingId, booking.getUser().getId(), req.slotId());
         if (!booking.getUser().getEmail().equalsIgnoreCase(email)) {
             throw new AppException("You can only reschedule your own booking");
         }

@@ -132,8 +132,6 @@ public class AdminController {
 
     @PutMapping({"/slots/{slotId}", "/slot/{slotId}"})
     public ResponseEntity<SlotDetailResponse> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
-        System.out.println("Updating slot ID: " + slotId);
-        System.out.println("Payload: " + req);
         log.info("Update slot id={} driveId={} startDate={} endDate={}", slotId, req.getDriveId(), req.getStartDate(), req.getEndDate());
         Slot updatedSlot = adminService.updateSlot(slotId, req);
         return ResponseEntity.ok(SlotDetailResponse.from(updatedSlot));

@@ -30,7 +30,6 @@ public class ProfileController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<Map<String, Object>>> getProfile(Authentication auth) {
-        log.info("Get profile for user: {}", auth.getName());
         User user = profileService.getProfile(auth.getName());
         Map<String, Object> response = new HashMap<>();
         response.put("id", user.getId());
@@ -53,7 +52,6 @@ public class ProfileController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateProfile(
             @Valid @RequestBody ProfileUpdateRequest request,
             Authentication auth) {
-        log.info("Update profile for user: {}", auth.getName());
         User user = profileService.updateProfile(auth.getName(), request);
         return ResponseEntity.ok(ApiResponse.success(Map.of(
             "message", "Profile updated successfully",
@@ -64,7 +62,6 @@ public class ProfileController {
 
     @PostMapping("/change-password/request-otp")
     public ResponseEntity<ApiMessage> requestPasswordChangeOtp(Authentication auth) {
-        log.info("Password change OTP requested for user: {}", auth.getName());
         profileService.sendPasswordChangeOtp(auth.getName());
         return ResponseEntity.ok(new ApiMessage("OTP sent to your email for verification."));
     }
@@ -73,14 +70,12 @@ public class ProfileController {
     public ResponseEntity<ApiResponse<Void>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             Authentication auth) {
-        log.info("Change password for user: {}", auth.getName());
         profileService.changePassword(auth.getName(), request);
         return ResponseEntity.ok(ApiResponse.success(null, "Password changed successfully"));
     }
 
     @PostMapping("/deactivate")
     public ResponseEntity<ApiResponse<Void>> deactivateAccount(Authentication auth) {
-        log.warn("Account deactivation requested for user: {}", auth.getName());
         profileService.deactivateAccount(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(null, "Account deactivated successfully"));
     }

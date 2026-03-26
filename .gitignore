@@ -32,6 +32,8 @@ dependency-reduced-pom.xml
 # Logs
 **/*.log
 logs/
+/Logs/*
+*.log
 
 # OS generated
 .DS_Store

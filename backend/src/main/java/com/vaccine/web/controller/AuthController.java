@@ -25,13 +25,11 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
-        log.info("Registration request received for email: {}", req.email());
         return ResponseEntity.ok(authService.register(req, request));
     }
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req, HttpServletRequest request) {
-        log.info("Login request received for email: {}", req.email());
         return ResponseEntity.ok(authService.login(req, request));
     }
 

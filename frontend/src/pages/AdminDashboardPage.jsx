@@ -910,13 +910,6 @@ export default function AdminDashboardPage() {
         startDate: editSlotStartDate,
         endDate: editSlotEndDate
       }, editingSlot);
-      console.log('Updating slot payload', {
-        slotId: editingSlot?.id,
-        selectedDate: slotPayload.startDate,
-        selectedTime: slotPayload.endDate,
-        capacity: slotPayload.capacity,
-        driveId: slotPayload.driveId
-      });
       const nextStatus = getSlotStatusPreview(slotPayload.startDate, slotPayload.endDate);
       if (!editingSlot?.id) {
         throw new Error('Slot ID is missing');

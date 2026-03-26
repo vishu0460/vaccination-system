@@ -226,7 +226,7 @@ public class NotificationService implements INotificationService {
         try {
             JavaMailSender javaMailSender = mailSenderProvider.getIfAvailable();
             if (javaMailSender == null) {
-                log.info("Email delivery skipped for user={} because JavaMailSender is not configured", user.getEmail());
+                log.info("Email delivery skipped because JavaMailSender is not configured");
                 return;
             }
             SimpleMailMessage mail = new SimpleMailMessage();
@@ -235,9 +235,9 @@ public class NotificationService implements INotificationService {
             mail.setText(message);
             mail.setFrom(mailFrom);
             javaMailSender.send(mail);
-            log.info("Email delivered to user={} subject={}", user.getEmail(), subject);
+            log.debug("Email delivered successfully for userId={} subject={}", user.getId(), subject);
         } catch (Exception ex) {
-            log.warn("Email delivery skipped for user={} subject={} reason={}", user.getEmail(), subject, ex.getMessage());
+            log.warn("Email delivery skipped for userId={} subject={} reason={}", user.getId(), subject, ex.getMessage());
         }
     }
 
@@ -246,7 +246,7 @@ public class NotificationService implements INotificationService {
         if (user == null || user.getPhoneNumber() == null || user.getPhoneNumber().isBlank()) {
             return;
         }
-        log.info("SMS delivery prepared for phone={}", user.getPhoneNumber());
+        log.debug("SMS delivery prepared for userId={}", user.getId());
     }
 
     private Notification queueNotification(User user, NotificationType type, String title, String message,

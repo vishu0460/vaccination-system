@@ -31,7 +31,6 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<NotificationResponse>>> getNotifications(Authentication auth) {
-        log.info("Get notifications for user={}", auth.getName());
         return ResponseEntity.ok(ApiResponse.success(notificationService.getNotificationsForUser(auth.getName())));
     }
 
@@ -55,21 +54,18 @@ public class NotificationController {
 
     @PostMapping("/slots/subscribe/{driveId}")
     public ResponseEntity<ApiResponse<Void>> subscribeToSlot(@PathVariable Long driveId, Authentication auth) {
-        log.info("User {} subscribing to drive {}", auth.getName(), driveId);
         slotNotificationService.subscribe(auth.getName(), driveId);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(null, "Subscribed to slot notifications"));
     }
 
     @PostMapping("/slots/unsubscribe/{driveId}")
     public ResponseEntity<ApiResponse<Void>> unsubscribeFromSlot(@PathVariable Long driveId, Authentication auth) {
-        log.info("User {} unsubscribing from drive {}", auth.getName(), driveId);
         slotNotificationService.unsubscribe(auth.getName(), driveId);
         return ResponseEntity.ok(ApiResponse.success(null, "Unsubscribed from slot notifications"));
     }
 
     @GetMapping("/slots/subscriptions")
     public ResponseEntity<ApiResponse<List<Map<String, Object>>>> getSubscriptions(Authentication auth) {
-        log.info("Get subscriptions for user {}", auth.getName());
         List<Map<String, Object>> subscriptions = slotNotificationService.getUserSubscriptions(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(subscriptions));
     }

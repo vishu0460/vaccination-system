@@ -17,9 +17,8 @@ const getChannel = () => {
 };
 
 export const debugDataSync = (label, payload) => {
-  if (import.meta.env.DEV) {
-    console.log(`[data-sync] ${label}`, payload);
-  }
+  void label;
+  void payload;
 };
 
 export const broadcastDataUpdated = (detail = {}) => {

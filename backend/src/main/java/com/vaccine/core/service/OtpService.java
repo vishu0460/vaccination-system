@@ -64,7 +64,7 @@ public class OtpService {
             );
             return new OtpDispatchResult(otp, true);
         } catch (AppException exception) {
-            log.warn("OTP email delivery failed for email={} purpose={}: {}", user.getEmail(), purpose, exception.getMessage());
+            log.warn("OTP email delivery failed for userId={} purpose={}: {}", user.getId(), purpose, exception.getMessage());
             return new OtpDispatchResult(otp, false);
         }
     }
@@ -73,12 +73,12 @@ public class OtpService {
     public void verifyOtp(User user, String otp, OtpPurpose expectedPurpose, boolean markUserVerified) {
         LocalDateTime now = LocalDateTime.now();
         if (user.getOtpBlockedUntil() != null && user.getOtpBlockedUntil().isAfter(now)) {
-            log.warn("Blocked OTP verification attempt for email={} purpose={} until={}", user.getEmail(), expectedPurpose, user.getOtpBlockedUntil());
+            log.warn("Blocked OTP verification attempt for userId={} purpose={} until={}", user.getId(), expectedPurpose, user.getOtpBlockedUntil());
             throw new AppException("Too many attempts. Try later.");
         }
 
         if (user.getOtpPurpose() != expectedPurpose) {
-            log.warn("OTP purpose mismatch for email={} expected={} actual={}", user.getEmail(), expectedPurpose, user.getOtpPurpose());
+            log.warn("OTP purpose mismatch for userId={} expected={} actual={}", user.getId(), expectedPurpose, user.getOtpPurpose());
             throw new AppException("Invalid OTP");
         }
 
@@ -91,7 +91,7 @@ public class OtpService {
         if (user.getOtpAttempts() != null && user.getOtpAttempts() >= maxOtpAttempts) {
             user.setOtpBlockedUntil(now.plusMinutes(otpBlockMinutes));
             userRepository.save(user);
-            log.warn("OTP attempt threshold exceeded for email={} purpose={}", user.getEmail(), expectedPurpose);
+            log.warn("OTP attempt threshold exceeded for userId={} purpose={}", user.getId(), expectedPurpose);
             throw new AppException("Too many attempts. Try later.");
         }
 
@@ -100,7 +100,7 @@ public class OtpService {
             user.setOtpAttempts(nextAttempts);
             if (nextAttempts >= maxOtpAttempts) {
                 user.setOtpBlockedUntil(now.plusMinutes(otpBlockMinutes));
-                log.warn("Suspicious OTP activity: email={} purpose={} failedAttempts={}", user.getEmail(), expectedPurpose, nextAttempts);
+                log.warn("Suspicious OTP activity: userId={} purpose={} failedAttempts={}", user.getId(), expectedPurpose, nextAttempts);
             }
             userRepository.save(user);
             throw new AppException(nextAttempts >= maxOtpAttempts ? "Too many attempts. Try later." : "Invalid OTP");
@@ -140,7 +140,7 @@ public class OtpService {
         }
 
         if (currentCount >= maxOtpRequestsPerMinute) {
-            log.warn("OTP request rate limit exceeded for email={} purpose={}", user.getEmail(), purpose);
+            log.warn("OTP request rate limit exceeded for userId={} purpose={}", user.getId(), purpose);
             throw new AppException("Too many OTP requests. Please wait before trying again.");
         }
 

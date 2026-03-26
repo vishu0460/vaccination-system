@@ -86,9 +86,6 @@ public class AuthService {
         String normalizedPhone = normalizePhone(req.phoneNumber());
         int normalizedAge = req.age() == null ? 18 : req.age();
 
-        log.info("Register request: email={}, fullName={}, phoneNumber={}, age={}",
-            normalizedEmail, normalizedName, normalizedPhone, normalizedAge);
-
         if (userRepository.existsAnyByEmail(normalizedEmail)) {
             throw new AppException("Email already registered");
         }
@@ -140,21 +137,19 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest req, HttpServletRequest request) {
-        log.info("Login attempt for email: {}", req.email());
-
         User user = userRepository.findByEmail(req.email().toLowerCase())
                 .orElseThrow(() -> {
-                    log.warn("User not found: {}", req.email());
+                    log.warn("Authentication failed for unknown account");
                     return new BadCredentialsException("Invalid credentials");
                 });
 
         if (!user.getEnabled()) {
-            log.warn("User account disabled: {}", req.email());
+            log.warn("Disabled account login attempt for userId={}", user.getId());
             throw new AppException("Account is disabled. Please contact administrator.");
         }
 
         if (user.getLockUntil() != null && user.getLockUntil().isAfter(LocalDateTime.now())) {
-            log.warn("User account locked: {}", req.email());
+            log.warn("Locked account login attempt for userId={}", user.getId());
             throw new AppException("Account locked. Try again later.");
         }
 
@@ -165,15 +160,14 @@ public class AuthService {
                             req.password()
                     )
             );
-            log.info("Authentication successful for email: {}", req.email());
         } catch (Exception e) {
-            log.warn("Authentication failed for email: {} - {}", req.email(), e.getMessage());
+            log.warn("Authentication failed for userId={}", user.getId());
 
             user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
 
             if (user.getFailedLoginAttempts() >= maxAttempts) {
                 user.setLockUntil(LocalDateTime.now().plusMinutes(lockMinutes));
-                log.warn("User account locked due to too many failed attempts: {}", req.email());
+                log.warn("Account locked after repeated failures for userId={}", user.getId());
             }
 
             userRepository.save(user);
@@ -182,7 +176,7 @@ public class AuthService {
         }
 
         if (!user.getEmailVerified()) {
-            log.warn("Email not verified for: {}", req.email());
+            log.warn("Login blocked because email is not verified for userId={}", user.getId());
             throw new AppException("Email not verified. Please verify your email first.");
         }
 
