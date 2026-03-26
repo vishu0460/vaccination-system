@@ -3,6 +3,8 @@ import { Link, useNavigate } from "react-router-dom";
 import NearbyCentersSection from "../components/NearbyCentersSection";
 import Seo from "../components/Seo";
 import SmartSearch from "../components/SmartSearch";
+import useCurrentTime from "../hooks/useCurrentTime";
+import { getCountdownLabel, getRealtimeStatus, getStatusBadgeClass, isDriveBookable } from "../utils/realtimeStatus";
 import { usePublicCatalog } from "../context/PublicCatalogContext";
 
 const mapDrive = (drive) => ({
@@ -12,14 +14,18 @@ const mapDrive = (drive) => ({
   centerName: drive.center?.name || drive.centerName,
   availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
   totalSlots: drive.totalSlots || 0,
-  startTime: drive.startTime || "N/A",
-  endTime: drive.endTime || "N/A"
+  startTime: drive.startTime || drive.startDateTime || "N/A",
+  endTime: drive.endTime || drive.endDateTime || "N/A",
+  startDateTime: drive.startDateTime || drive.startTime || null,
+  endDateTime: drive.endDateTime || drive.endTime || null,
+  realtimeStatus: drive.realtimeStatus || getRealtimeStatus(drive.startDateTime || drive.startTime, drive.endDateTime || drive.endTime)
 });
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [recentDrives, setRecentDrives] = useState([]);
   const { drives, summary, loading, error, refreshCatalog } = usePublicCatalog();
+  const now = useCurrentTime(1000);
 
   useEffect(() => {
     setRecentDrives(drives.map(mapDrive).slice(0, 6));
@@ -212,13 +218,28 @@ export default function HomePage() {
                   <div className="drive-card h-100">
                     <div className="card-header d-flex justify-content-between align-items-center">
                       <h5 className="mb-0 fs-6">{drive.name}</h5>
-                      {drive.availableSlots > 0 ? (
+                      {isDriveBookable(drive, now) ? (
                         <span className="badge bg-white text-primary">{drive.availableSlots} left</span>
+                      ) : drive.availableSlots > 0 ? (
+                        <span className="badge bg-danger">Expired</span>
                       ) : (
                         <span className="badge bg-danger">Full</span>
                       )}
                     </div>
                     <div className="card-body">
+                      <div className="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                        <span className={`badge ${getStatusBadgeClass(getRealtimeStatus(drive.startDateTime, drive.endDateTime, now))}`}>
+                          {getRealtimeStatus(drive.startDateTime, drive.endDateTime, now)}
+                        </span>
+                        <small className="text-muted">
+                          {getCountdownLabel(
+                            getRealtimeStatus(drive.startDateTime, drive.endDateTime, now),
+                            drive.startDateTime,
+                            drive.endDateTime,
+                            now
+                          )}
+                        </small>
+                      </div>
                       <div className="info-item">
                         <i className="bi bi-calendar-event"></i>
                         <span>{new Date(drive.date).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
@@ -251,13 +272,13 @@ export default function HomePage() {
                       </div>
                     </div>
                     <div className="card-footer bg-white border-top-0 pt-0">
-                      {drive.availableSlots > 0 ? (
+                      {isDriveBookable(drive, now) ? (
                         <Link to={`/drives?book=${drive.id}`} className="btn btn-primary w-100">
                           <i className="bi bi-bookmark-plus me-2"></i>Book Now
                         </Link>
                       ) : (
                         <button className="btn btn-secondary w-100" disabled>
-                          <i className="bi bi-x-circle me-2"></i>No Slots Available
+                          <i className="bi bi-x-circle me-2"></i>{drive.availableSlots > 0 ? "Expired" : "Full"}
                         </button>
                       )}
                     </div>

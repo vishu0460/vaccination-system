@@ -2,6 +2,7 @@ package com.vaccine.common.dto;
 
 import com.vaccine.domain.Status;
 import com.vaccine.domain.VaccinationDrive;
+import com.vaccine.util.DriveStatusResolver;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,19 +16,24 @@ public record DriveResponse(
     LocalDateTime startTime,
     LocalDateTime endTime,
     int availableSlots,
-    Status status
+    Status status,
+    String realtimeStatus,
+    Boolean bookable
 ) {
     public static DriveResponse from(VaccinationDrive drive) {
+        String realtimeStatus = DriveStatusResolver.resolve(drive);
         return new DriveResponse(
             drive.getId(),
             drive.getTitle(),
             drive.getVaccineType(),
             drive.getDriveDate(),
             drive.getCenter().getName(),
-            drive.getStartTime().atDate(drive.getDriveDate()),
-            drive.getEndTime().atDate(drive.getDriveDate()),
+            DriveStatusResolver.resolveStart(drive),
+            DriveStatusResolver.resolveEnd(drive),
             drive.getTotalSlots(),
-            drive.getStatus()
+            drive.getStatus(),
+            realtimeStatus,
+            !"EXPIRED".equals(realtimeStatus)
         );
     }
     

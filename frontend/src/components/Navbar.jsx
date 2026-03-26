@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Modal, Spinner } from "react-bootstrap";
 import { notificationAPI, unwrapApiData } from "../api/client";
 import { clearAuth, getRole, isAuthenticated } from "../utils/auth";
+import { connectNotificationSocket } from "../utils/notificationSocket";
 import ThemeToggle from "./ThemeToggle";
 
 const REPLY_NOTIFICATION_TYPES = new Set(["CONTACT_REPLY", "FEEDBACK_REPLY"]);
@@ -45,6 +46,7 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [unreadCountState, setUnreadCountState] = useState(0);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -69,15 +71,25 @@ export default function Navbar() {
   }, [location]);
 
   useEffect(() => {
-    if (!isLoggedIn || role === "ADMIN" || role === "SUPER_ADMIN") {
+    if (!isLoggedIn) {
       setNotifications([]);
+      setUnreadCountState(0);
       return;
     }
 
     loadNotifications({ includeList: true });
-    const pollId = window.setInterval(() => {
-      loadNotifications();
-    }, 30000);
+    const disconnectSocket = connectNotificationSocket({
+      onNotification: (notification) => {
+        setNotifications((current) => {
+          const next = [notification, ...current.filter((item) => item.id !== notification.id)];
+          return next.slice(0, 20);
+        });
+        setUnreadCountState((current) => current + (notification?.read ? 0 : 1));
+      },
+      onUnreadCount: ({ unreadCount }) => {
+        setUnreadCountState(Number(unreadCount || 0));
+      }
+    });
 
     const handleDataUpdated = () => {
       loadNotifications({ includeList: true });
@@ -85,7 +97,7 @@ export default function Navbar() {
 
     window.addEventListener("vaxzone:data-updated", handleDataUpdated);
     return () => {
-      window.clearInterval(pollId);
+      disconnectSocket();
       window.removeEventListener("vaxzone:data-updated", handleDataUpdated);
     };
   }, [isLoggedIn, role]);
@@ -103,6 +115,7 @@ export default function Navbar() {
         const response = await notificationAPI.getNotifications();
         const nextNotifications = unwrapApiData(response) || [];
         setNotifications(nextNotifications);
+        setUnreadCountState(unreadCount);
         if (unreadCount === 0) {
           setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
         }
@@ -111,9 +124,11 @@ export default function Navbar() {
         const response = await notificationAPI.getNotifications();
         const nextNotifications = unwrapApiData(response) || [];
         setNotifications(nextNotifications);
+        setUnreadCountState(unreadCount);
         return nextNotifications;
       } else {
         setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+        setUnreadCountState(0);
         return [];
       }
     } catch (error) {
@@ -145,6 +160,7 @@ export default function Navbar() {
       try {
         await notificationAPI.markAllRead();
         setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+        setUnreadCountState(0);
       } catch (error) {
         // Keep the modal usable even if the read-state sync fails.
       }
@@ -152,7 +168,7 @@ export default function Navbar() {
   };
 
   const isActive = (path) => location.pathname === path;
-  const unreadCount = notifications.filter((notification) => !notification.read).length;
+  const unreadCount = unreadCountState || notifications.filter((notification) => !notification.read).length;
   const brandGradientId = "navShieldGrad";
 
   return (

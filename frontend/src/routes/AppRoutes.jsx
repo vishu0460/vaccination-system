@@ -54,6 +54,7 @@ export default function AppRoutes() {
         <Route path="/contact" element={<ContactPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
+        <Route path="/verify" element={<VerifyEmailPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
         <Route path="/verify/certificate" element={<VerifyCertificatePage />} />
         <Route path="/verify/certificate/:certNumber" element={<VerifyCertificatePage />} />
@@ -71,7 +72,7 @@ export default function AppRoutes() {
         <Route
           path="/user/bookings"
           element={(
-            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
+            <ProtectedRoute roles={["USER"]}>
               <UserBookingsPage />
             </ProtectedRoute>
           )}
@@ -79,7 +80,7 @@ export default function AppRoutes() {
         <Route
           path="/profile"
           element={(
-            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
+            <ProtectedRoute roles={["USER"]}>
               <ProfilePage />
             </ProtectedRoute>
           )}
@@ -87,7 +88,7 @@ export default function AppRoutes() {
         <Route
           path="/certificates"
           element={(
-            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
+            <ProtectedRoute roles={["USER"]}>
               <CertificatePage />
             </ProtectedRoute>
           )}
@@ -95,7 +96,7 @@ export default function AppRoutes() {
         <Route
           path="/my-feedback"
           element={(
-            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
+            <ProtectedRoute roles={["USER"]}>
               <MyFeedbackPage />
             </ProtectedRoute>
           )}
@@ -103,7 +104,7 @@ export default function AppRoutes() {
         <Route
           path="/my-inquiries"
           element={(
-            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
+            <ProtectedRoute roles={["USER"]}>
               <MyContactPage />
             </ProtectedRoute>
           )}

@@ -1,0 +1,21 @@
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR(120);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expiry TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_otp VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_expiry TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_hash VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_attempts INT DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_purpose VARCHAR(50);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_blocked_until TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_request_window_start TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_request_count INT DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS otp_last_sent_at TIMESTAMP;
+
+UPDATE users SET otp_attempts = 0 WHERE otp_attempts IS NULL;
+UPDATE users SET otp_request_count = 0 WHERE otp_request_count IS NULL;
+
+ALTER TABLE users ALTER COLUMN otp_attempts SET DEFAULT 0;
+ALTER TABLE users ALTER COLUMN otp_attempts SET NOT NULL;
+ALTER TABLE users ALTER COLUMN otp_request_count SET DEFAULT 0;
+ALTER TABLE users ALTER COLUMN otp_request_count SET NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token);

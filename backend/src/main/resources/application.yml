@@ -10,7 +10,7 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: ${MAIL_USERNAME:}
+    username: ${MAIL_USERNAME:vaxzone.vaccine@gmail.com}
     password: ${MAIL_PASSWORD:}
     properties:
       mail:
@@ -21,6 +21,8 @@ spring:
 
 server:
   port: 8080
+  error:
+    include-message: always
   servlet:
     encoding:
       charset: UTF-8
@@ -31,13 +33,13 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4173,http://localhost:5173,http://localhost:5174,http://localhost:3000}
   mail:
-    from: ${MAIL_FROM:noreply@vaccination-system.com}
-    base-url: ${APP_BASE_URL:http://localhost:5173}
+    from: ${MAIL_FROM:vaxzone.vaccine@gmail.com}
+    base-url: ${APP_BASE_URL:http://localhost:5174}
   admin:
     email: ${DEFAULT_ADMIN_EMAIL:vaxzone.vaccine@gmail.com}
     password: ${DEFAULT_ADMIN_PASSWORD:Vaccine@#6030}
   dev:
-    auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:true}
+    auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:false}
   seed:
     enabled: ${APP_SEED_ENABLED:false}
   notifications:
@@ -62,6 +64,7 @@ logging:
     root: INFO
     com.vaccine: DEBUG
     com.vaccine.security: TRACE
+    org.springframework.web: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -80,6 +83,11 @@ security:
   brute-force:
     max-attempts: 5
     lock-minutes: 15
+  otp:
+    expiry-minutes: ${OTP_EXPIRY_MINUTES:10}
+    max-attempts: ${OTP_MAX_ATTEMPTS:5}
+    block-minutes: ${OTP_BLOCK_MINUTES:15}
+    max-requests-per-minute: ${OTP_MAX_REQUESTS_PER_MINUTE:3}
 
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4173,http://localhost:5173,http://localhost:5174,http://localhost:3000}

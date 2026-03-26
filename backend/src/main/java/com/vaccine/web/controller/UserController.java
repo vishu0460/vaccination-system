@@ -4,12 +4,14 @@ import com.vaccine.common.dto.ApiResponse;
 import com.vaccine.common.dto.BookingRequest;
 import com.vaccine.common.dto.BookingResponse;
 import com.vaccine.common.dto.NotificationResponse;
+import com.vaccine.common.dto.WaitlistEntryResponse;
 import com.vaccine.domain.Booking;
 import com.vaccine.domain.Slot;
 import com.vaccine.domain.User;
 import com.vaccine.core.service.BookingService;
 import com.vaccine.core.service.ProfileService;
 import com.vaccine.core.service.UserService;
+import com.vaccine.core.service.WaitlistService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -31,14 +33,17 @@ public class UserController {
     private final BookingService bookingService;
     private final ProfileService profileService;
     private final UserService userService;
+    private final WaitlistService waitlistService;
 
-    public UserController(BookingService bookingService, ProfileService profileService, UserService userService) {
+    public UserController(BookingService bookingService, ProfileService profileService, UserService userService, WaitlistService waitlistService) {
         this.bookingService = bookingService;
         this.profileService = profileService;
         this.userService = userService;
+        this.waitlistService = waitlistService;
     }
 
     @PostMapping("/bookings")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<BookingResponse>> book(@Valid @RequestBody BookingRequest req, Authentication auth) {
         log.info("Booking slot for user={}, slotId={}", auth.getName(), req.slotId());
         Booking booking = bookingService.book(auth.getName(), req);
@@ -53,6 +58,7 @@ public class UserController {
     }
 
     @PatchMapping("/bookings/{bookingId}/cancel")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<BookingResponse>> cancel(@PathVariable Long bookingId, Authentication auth) {
         log.info("Cancel booking {} for user={}", bookingId, auth.getName());
         Booking booking = bookingService.cancel(auth.getName(), bookingId);
@@ -60,6 +66,7 @@ public class UserController {
     }
 
     @PatchMapping("/bookings/{bookingId}/reschedule")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<BookingResponse>> reschedule(@PathVariable Long bookingId,
                                               @Valid @RequestBody BookingRequest req,
                                               Authentication auth) {
@@ -69,6 +76,7 @@ public class UserController {
     }
 
     @GetMapping("/recommendations/slots")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<List<Slot>>> recommendSlots(Authentication auth,
                                                      @RequestParam(required = false) String city,
                                                      @RequestParam(defaultValue = "5") int limit) {
@@ -79,6 +87,7 @@ public class UserController {
     }
 
     @GetMapping("/notifications")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<List<NotificationResponse>>> notifications(Authentication auth) {
         log.info("Get notifications for user={}", auth.getName());
         List<NotificationResponse> notifications = userService.getNotificationsByEmail(auth.getName());
@@ -86,6 +95,7 @@ public class UserController {
     }
 
     @PatchMapping("/notifications/read-all")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<ApiResponse<Void>> markNotificationsRead(Authentication auth) {
         log.info("Mark notifications as read for user={}", auth.getName());
         userService.markNotificationsRead(auth.getName());
@@ -103,5 +113,17 @@ public class UserController {
             "emailVerified", user.getEmailVerified()
         );
         return ResponseEntity.ok(ApiResponse.success(profile));
+    }
+
+    @PostMapping("/slots/{slotId}/waitlist")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<ApiResponse<WaitlistEntryResponse>> joinWaitlist(@PathVariable Long slotId, Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.success(waitlistService.joinWaitlist(auth.getName(), slotId), "Joined waitlist successfully"));
+    }
+
+    @GetMapping("/waitlist")
+    @PreAuthorize("hasRole('USER')")
+    public ResponseEntity<ApiResponse<List<WaitlistEntryResponse>>> getWaitlist(Authentication auth) {
+        return ResponseEntity.ok(ApiResponse.success(waitlistService.getUserWaitlist(auth.getName())));
     }
 }

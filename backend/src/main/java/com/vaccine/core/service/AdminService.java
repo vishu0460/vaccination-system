@@ -17,8 +17,12 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -153,6 +157,13 @@ public class AdminService {
         long totalBookings = bookingRepository.count();
         long activeDrives = driveRepository.countByStatusIn(List.of(Status.UPCOMING, Status.LIVE));
         long availableSlots = slotRepository.sumAvailableCapacity();
+        long totalSlotCapacity = slotRepository.findAll().stream()
+            .mapToLong(slot -> slot.getCapacity() == null ? 0 : slot.getCapacity())
+            .sum();
+        long totalBookedSlots = slotRepository.findAll().stream()
+            .mapToLong(slot -> slot.getBookedCount() == null ? 0 : slot.getBookedCount())
+            .sum();
+        double slotFillRate = totalSlotCapacity <= 0 ? 0d : ((double) totalBookedSlots / totalSlotCapacity) * 100.0;
 
         String mostSearchedCity = searchLogRepository.findAll().stream()
             .map(log -> {
@@ -181,13 +192,55 @@ public class AdminService {
             .map(Map.Entry::getKey)
             .orElse("N/A");
 
+        List<PopularSlotInsightResponse> mostPopularSlots = slotRepository.findAll().stream()
+            .map(slot -> {
+                long bookingCount = bookingRepository.findBySlotId(slot.getId()).stream()
+                    .filter(booking -> booking.getStatus() != null && booking.getStatus() != BookingStatus.CANCELLED)
+                    .count();
+                double fillRateValue = (slot.getCapacity() == null || slot.getCapacity() <= 0)
+                    ? 0d
+                    : ((double) (slot.getBookedCount() == null ? 0 : slot.getBookedCount()) / slot.getCapacity()) * 100.0;
+                return new PopularSlotInsightResponse(
+                    slot.getId(),
+                    slot.getDrive() != null ? slot.getDrive().getTitle() : "N/A",
+                    slot.getDrive() != null && slot.getDrive().getCenter() != null ? slot.getDrive().getCenter().getName() : "N/A",
+                    bookingCount,
+                    Math.round(fillRateValue * 100.0) / 100.0
+                );
+            })
+            .sorted(Comparator
+                .comparing(PopularSlotInsightResponse::bookingCount, Comparator.reverseOrder())
+                .thenComparing(PopularSlotInsightResponse::fillRate, Comparator.reverseOrder()))
+            .limit(5)
+            .toList();
+
+        List<BookingTrendPointResponse> dailyBookings = bookingRepository.findAll().stream()
+            .filter(booking -> booking.getBookedAt() != null)
+            .collect(Collectors.groupingBy(booking -> booking.getBookedAt().toLocalDate(), TreeMap::new, Collectors.counting()))
+            .entrySet().stream()
+            .map(entry -> new BookingTrendPointResponse(entry.getKey().toString(), entry.getValue()))
+            .toList();
+
+        List<BookingTrendPointResponse> slotUsage = slotRepository.findAll().stream()
+            .sorted(Comparator.comparing(Slot::getId))
+            .limit(10)
+            .map(slot -> new BookingTrendPointResponse(
+                "Slot #" + slot.getId(),
+                Long.valueOf(slot.getBookedCount() == null ? 0 : slot.getBookedCount())
+            ))
+            .toList();
+
         return new DashboardAnalyticsResponse(
             totalUsers,
             totalBookings,
             activeDrives,
             availableSlots,
+            Math.round(slotFillRate * 100.0) / 100.0,
             mostSearchedCity,
-            mostBookedVaccine
+            mostBookedVaccine,
+            mostPopularSlots,
+            dailyBookings,
+            slotUsage
         );
     }
 
@@ -522,13 +575,12 @@ public class AdminService {
         Slot slot = Slot.builder()
                 .drive(drive)
                 .adminId(resolveSlotOwnerId(drive))
-                .dateTime(req.getStartDate())
-                .startTime(req.getStartDate().toLocalTime())
-                .endTime(req.getEndDate().toLocalTime())
                 .capacity(req.getCapacity())
                 .build();
+        slot.setStartDateTime(req.getStartDate());
+        slot.setEndDateTime(req.getEndDate());
         Slot savedSlot = slotRepository.save(slot);
-        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
+        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getStartDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
         log.info("Slot created id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), req.getStartDate(), req.getEndDate(), savedSlot.getCapacity());
         auditService.logAction("CREATE_SLOT", "SLOT", savedSlot.getId(), "Slot created for drive " + drive.getId());
         return savedSlot;
@@ -536,28 +588,28 @@ public class AdminService {
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
     public Slot updateSlot(Long slotId, SlotRequest req) {
-        validateSlotRequest(req, slotId);
         Slot slot = slotRepository.findById(slotId)
             .orElseThrow(() -> new AppException("Slot not found"));
         assertSlotAccess(slot);
-        VaccinationDrive drive = findDriveOrThrow(req.getDriveId());
+        SlotRequest normalizedRequest = normalizeSlotRequestForUpdate(req, slot);
+        validateSlotRequest(normalizedRequest, slotId);
+        VaccinationDrive drive = findDriveOrThrow(normalizedRequest.getDriveId());
         assertDriveAccess(drive);
 
         int currentBooked = slot.getBookedCount() != null ? slot.getBookedCount() : 0;
-        int requestedCapacity = req.getCapacity() != null ? req.getCapacity() : slot.getCapacity();
+        int requestedCapacity = normalizedRequest.getCapacity() != null ? normalizedRequest.getCapacity() : slot.getCapacity();
         if (requestedCapacity < currentBooked) {
             throw new AppException("Capacity cannot be less than existing bookings");
         }
 
         slot.setDrive(drive);
         slot.setAdminId(resolveSlotOwnerId(drive));
-        slot.setDateTime(req.getStartDate());
-        slot.setStartTime(req.getStartDate().toLocalTime());
-        slot.setEndTime(req.getEndDate().toLocalTime());
+        slot.setStartDateTime(normalizedRequest.getStartDate());
+        slot.setEndDateTime(normalizedRequest.getEndDate());
         slot.setCapacity(requestedCapacity);
         Slot savedSlot = slotRepository.save(slot);
-        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
-        log.info("Slot updated id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), req.getStartDate(), req.getEndDate(), savedSlot.getCapacity());
+        System.out.println("Saved Slot: id=" + savedSlot.getId() + ", startDate=" + savedSlot.getStartDateTime() + ", endDate=" + SlotStatusResolver.resolveEnd(savedSlot));
+        log.info("Slot updated id={} driveId={} startDate={} endDate={} capacity={}", savedSlot.getId(), drive.getId(), normalizedRequest.getStartDate(), normalizedRequest.getEndDate(), savedSlot.getCapacity());
         auditService.logAction("UPDATE_SLOT", "SLOT", savedSlot.getId(), "Slot updated for drive " + drive.getId());
         return savedSlot;
     }
@@ -990,18 +1042,31 @@ public class AdminService {
     private AdminSlotResponse toAdminSlotResponse(Slot slot) {
         int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
         int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
+        int remaining = Math.max(0, capacity - bookedCount);
+        boolean available = remaining > 0;
+        boolean bookable = available && SlotStatusResolver.resolve(slot) != SlotStatus.EXPIRED;
+        double fillRate = capacity <= 0 ? 0d : (double) bookedCount / capacity;
+        boolean almostFull = capacity > 0 && remaining <= Math.max(1, Math.ceil(capacity * 0.2));
+        String demandLevel = fillRate >= 0.85 ? "HIGH_DEMAND" : almostFull ? "ALMOST_FULL" : "NORMAL";
 
         return new AdminSlotResponse(
             slot.getId(),
-            slot.getDateTime(),
+            slot.getStartDateTime(),
+            SlotStatusResolver.resolveEnd(slot),
+            slot.getStartDateTime(),
             SlotStatusResolver.resolveEnd(slot),
             capacity,
             bookedCount,
-            Math.max(0, capacity - bookedCount),
+            remaining,
+            available,
+            bookable,
             slot.getDrive() != null && slot.getDrive().getCenter() != null ? slot.getDrive().getCenter().getId() : null,
             slot.getDrive() != null && slot.getDrive().getCenter() != null ? slot.getDrive().getCenter().getName() : null,
+            slot.getDrive() != null && slot.getDrive().getCenter() != null ? slot.getDrive().getCenter().getCity() : null,
             slot.getDrive() != null ? slot.getDrive().getId() : null,
             slot.getDrive() != null ? slot.getDrive().getTitle() : null,
+            almostFull,
+            demandLevel,
             SlotStatusResolver.resolve(slot).name()
         );
     }
@@ -1035,10 +1100,8 @@ public class AdminService {
         boolean overlapsExistingSlot = slotRepository.findByDrive_Id(req.getDriveId()).stream()
             .filter(existing -> currentSlotId == null || !existing.getId().equals(currentSlotId))
             .anyMatch(existing -> {
-                LocalDateTime existingStart = existing.getDateTime();
-                LocalDateTime existingEnd = existingStart == null || existing.getEndTime() == null
-                    ? null
-                    : existingStart.toLocalDate().atTime(existing.getEndTime());
+                LocalDateTime existingStart = existing.getStartDateTime();
+                LocalDateTime existingEnd = SlotStatusResolver.resolveEnd(existing);
 
                 if (existingStart == null || existingEnd == null || !existingEnd.isAfter(existingStart)) {
                     return false;
@@ -1051,5 +1114,98 @@ public class AdminService {
         if (overlapsExistingSlot) {
             throw new AppException("Slot timing overlaps with another slot for this drive");
         }
+    }
+
+    private SlotRequest normalizeSlotRequestForUpdate(SlotRequest req, Slot slot) {
+        LocalDateTime existingStart = slot.getDateTime();
+        LocalDateTime existingEnd = SlotStatusResolver.resolveEnd(slot);
+        Duration existingDuration = resolveSlotDuration(existingStart, existingEnd);
+
+        LocalDateTime resolvedStart = req.getStartDate();
+        if (resolvedStart == null) {
+            resolvedStart = parseLegacySlotDateTime(req.getDate(), req.getTime(), existingStart);
+        }
+        if (resolvedStart == null) {
+            resolvedStart = existingStart;
+        }
+
+        LocalDateTime resolvedEnd = req.getEndDate();
+        if (resolvedEnd == null && req.getTime() != null && req.getDate() == null) {
+            resolvedEnd = parseLegacySlotDateTime(
+                resolvedStart != null ? resolvedStart.toLocalDate().toString() : null,
+                req.getTime(),
+                existingEnd
+            );
+        }
+        if (resolvedEnd == null && resolvedStart != null) {
+            resolvedEnd = resolvedStart.plus(existingDuration);
+        }
+        if (resolvedEnd == null) {
+            resolvedEnd = existingEnd;
+        }
+
+        Integer resolvedCapacity = req.getCapacity() != null ? req.getCapacity() : slot.getCapacity();
+        Long resolvedDriveId = req.getDriveId() != null
+            ? req.getDriveId()
+            : slot.getDrive() != null ? slot.getDrive().getId() : null;
+
+        SlotRequest normalizedRequest = new SlotRequest();
+        normalizedRequest.setDriveId(resolvedDriveId);
+        normalizedRequest.setStartDate(resolvedStart);
+        normalizedRequest.setEndDate(resolvedEnd);
+        normalizedRequest.setCapacity(resolvedCapacity);
+        normalizedRequest.setDate(req.getDate());
+        normalizedRequest.setTime(req.getTime());
+        normalizedRequest.setAvailable(req.getAvailable());
+        return normalizedRequest;
+    }
+
+    private Duration resolveSlotDuration(LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate == null || endDate == null || !endDate.isAfter(startDate)) {
+            return Duration.ofHours(1);
+        }
+        return Duration.between(startDate, endDate);
+    }
+
+    private LocalDateTime parseLegacySlotDateTime(String dateValue, String timeValue, LocalDateTime fallback) {
+        if ((dateValue == null || dateValue.isBlank()) && (timeValue == null || timeValue.isBlank())) {
+            return null;
+        }
+
+        if (timeValue != null && !timeValue.isBlank()) {
+            try {
+                return LocalDateTime.parse(timeValue, DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+            } catch (DateTimeParseException ignored) {
+                // Fall through to date + time parsing below.
+            }
+        }
+
+        LocalDate resolvedDate;
+        if (dateValue != null && !dateValue.isBlank()) {
+            try {
+                resolvedDate = LocalDate.parse(dateValue, DateTimeFormatter.ISO_LOCAL_DATE);
+            } catch (DateTimeParseException ex) {
+                throw new AppException("Slot date must use yyyy-MM-dd format");
+            }
+        } else if (fallback != null) {
+            resolvedDate = fallback.toLocalDate();
+        } else {
+            throw new AppException("Slot date is required");
+        }
+
+        LocalTime resolvedTime;
+        if (timeValue != null && !timeValue.isBlank()) {
+            try {
+                resolvedTime = LocalTime.parse(timeValue, DateTimeFormatter.ofPattern("H:mm[:ss]"));
+            } catch (DateTimeParseException ex) {
+                throw new AppException("Slot time must use HH:mm or HH:mm:ss format");
+            }
+        } else if (fallback != null) {
+            resolvedTime = fallback.toLocalTime();
+        } else {
+            throw new AppException("Slot time is required");
+        }
+
+        return resolvedDate.atTime(resolvedTime);
     }
 }

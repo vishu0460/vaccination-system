@@ -10,6 +10,7 @@ import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationCenterRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
+import com.vaccine.util.DriveStatusResolver;
 import com.vaccine.util.SlotStatusResolver;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -95,6 +96,7 @@ public class PublicService {
                 long visibleTotalSlots = matchingSlots.isEmpty()
                     ? (drive.getTotalSlots() == null ? 0 : drive.getTotalSlots())
                     : totalSlots;
+                String realtimeStatus = DriveStatusResolver.resolve(drive);
 
                 Map<String, Object> view = new HashMap<>();
                 view.put("id", drive.getId());
@@ -106,7 +108,12 @@ public class PublicService {
                 view.put("maxAge", drive.getMaxAge());
                 view.put("startTime", drive.getStartTime());
                 view.put("endTime", drive.getEndTime());
+                view.put("startDateTime", DriveStatusResolver.resolveStart(drive));
+                view.put("endDateTime", DriveStatusResolver.resolveEnd(drive));
                 view.put("status", drive.getStatus());
+                view.put("realtimeStatus", realtimeStatus);
+                view.put("bookable", !"EXPIRED".equals(realtimeStatus) && availableSlots > 0);
+                view.put("available", availableSlots > 0);
                 view.put("centerName", drive.getCenter() != null ? drive.getCenter().getName() : null);
                 view.put("centerCity", drive.getCenter() != null ? drive.getCenter().getCity() : null);
                 view.put("totalSlots", visibleTotalSlots);

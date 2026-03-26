@@ -117,7 +117,7 @@ export default function LoginPage() {
 
     try {
       const response = await authAPI.resendVerification(resendEmail.trim());
-      setServerMessage(response.data?.message || "Verification email sent.");
+      setServerMessage(response.data?.message || "Verification OTP sent.");
     } catch (error) {
       setServerMessage(getErrorMessage(error, "Unable to resend verification email."));
     }
@@ -227,7 +227,7 @@ export default function LoginPage() {
                 <i className="bi bi-envelope-check"></i>
                 <div>
                   <strong>Email not verified?</strong>
-                  <p>Resend your verification email and complete setup.</p>
+                  <p>Resend your verification OTP and complete setup securely.</p>
                 </div>
               </div>
               <div className="auth-inline-actions">

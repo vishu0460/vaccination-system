@@ -5,6 +5,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage, publicAPI, unwrapApiData, userAPI } from "../api/client";
 import CityAutocomplete from "../components/CityAutocomplete";
 import useDebounce from "../hooks/useDebounce";
+import useCurrentTime from "../hooks/useCurrentTime";
+import { getCountdownLabel, getRealtimeStatus, getStatusBadgeClass, isAtCapacity, isDriveBookable, isSlotBookable } from "../utils/realtimeStatus";
 import { isAuthenticated } from "../utils/auth";
 import { broadcastDataUpdated } from "../utils/dataSync";
 import { usePublicCatalog } from "../context/PublicCatalogContext";
@@ -35,24 +37,30 @@ const mapDrive = (drive) => ({
   hasSlots: (drive.availableSlots ?? drive.totalSlots ?? 0) > 0,
   availableSlots: drive.availableSlots ?? drive.totalSlots ?? 0,
   totalSlots: drive.totalSlots || 0,
-  startTime: drive.startTime || "N/A",
-  endTime: drive.endTime || "N/A",
+  startTime: drive.startTime || drive.startDateTime || "N/A",
+  endTime: drive.endTime || drive.endDateTime || "N/A",
+  startDateTime: drive.startDateTime || drive.startTime || null,
+  endDateTime: drive.endDateTime || drive.endTime || null,
+  realtimeStatus: drive.realtimeStatus || getRealtimeStatus(drive.startDateTime || drive.startTime, drive.endDateTime || drive.endTime),
   ageLabel: drive.ageLabel || `${drive.minAge}+`
 });
 
+const getSlotStartDateTime = (slot) =>
+  slot?.startDateTime || slot?.startDate || slot?.dateTime || slot?.startTime || "";
+
 const combineSlotEndDateTime = (slot) => {
-  if (slot?.endDate) {
-    return slot.endDate;
-  }
   if (slot?.endDateTime) {
     return slot.endDateTime;
+  }
+  if (slot?.endDate) {
+    return slot.endDate;
   }
   if (slot?.dateTime && slot?.endTime && !String(slot.endTime).includes("T")) {
     const base = new Date(slot.dateTime);
     if (!Number.isNaN(base.getTime())) {
       const [hours = "0", minutes = "0", seconds = "0"] = String(slot.endTime).split(":");
       base.setHours(Number(hours), Number(minutes), Number(seconds), 0);
-      return base.toISOString();
+      return base;
     }
   }
   return slot?.endTime || "";
@@ -81,7 +89,9 @@ export default function DrivesPage() {
   const [bookingSlots, setBookingSlots] = useState([]);
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingSubmittingId, setBookingSubmittingId] = useState(null);
+  const [waitlistSubmittingId, setWaitlistSubmittingId] = useState(null);
   const [bookingMessage, setBookingMessage] = useState("");
+  const now = useCurrentTime(1000);
   const debouncedFilters = useDebounce(filters, 300);
 
   const formatAppointmentTime = (value) => {
@@ -243,7 +253,10 @@ export default function DrivesPage() {
     driveId: drive.id,
     driveTitle: drive.title || drive.name,
     centerName: drive.center?.name || drive.centerName,
+    startDateTime: getSlotStartDateTime(slot),
     endDate: combineSlotEndDateTime(slot),
+    endDateTime: combineSlotEndDateTime(slot),
+    slotStatus: slot.slotStatus || getRealtimeStatus(getSlotStartDateTime(slot), combineSlotEndDateTime(slot), now),
     availableCapacity: Math.max(0, (slot.capacity || 0) - (slot.bookedCount || 0))
   });
 
@@ -261,7 +274,7 @@ export default function DrivesPage() {
       const response = await publicAPI.getDriveSlots(drive.id);
       const slots = (unwrapApiData(response) || [])
         .map((slot) => normalizeSlot(slot, drive))
-        .filter((slot) => slot.availableCapacity > 0);
+        .filter((slot) => slot.availableCapacity > 0 && slot.slotStatus !== "EXPIRED");
 
       setBookingSlots(slots);
     } catch (requestError) {
@@ -326,6 +339,22 @@ export default function DrivesPage() {
     }
   };
 
+  const joinWaitlist = async (slot) => {
+    if (!slot?.id) {
+      return;
+    }
+    setWaitlistSubmittingId(slot.id);
+    setBookingMessage("");
+    try {
+      await userAPI.joinWaitlist(slot.id);
+      setBookingMessage("Joined waitlist successfully. We will notify you if a seat opens up.");
+    } catch (requestError) {
+      setBookingMessage(getErrorMessage(requestError, "Failed to join the waitlist."));
+    } finally {
+      setWaitlistSubmittingId(null);
+    }
+  };
+
   const eventJsonLd = useMemo(() => ({
     "@context": "https://schema.org",
     "@type": "ItemList",
@@ -363,10 +392,19 @@ export default function DrivesPage() {
   }, [filters]);
 
   const renderBookButton = (drive) => {
+    const realtimeStatus = getRealtimeStatus(drive.startDateTime, drive.endDateTime, now);
     if (!drive.hasSlots || drive.availableSlots <= 0) {
       return (
         <button className="btn btn-secondary w-100" disabled>
-          <i className="bi bi-x-circle me-2"></i>No Slots Available
+          <i className="bi bi-x-circle me-2"></i>Full
+        </button>
+      );
+    }
+
+    if (!isDriveBookable({ ...drive, realtimeStatus }, now)) {
+      return (
+        <button className="btn btn-secondary w-100" disabled>
+          <i className="bi bi-clock-history me-2"></i>Expired
         </button>
       );
     }
@@ -586,10 +624,10 @@ export default function DrivesPage() {
                         <h5 className="mb-0 fs-6">{drive.name}</h5>
                         {!drive.hasSlots ? (
                           <span className="badge bg-warning">No Slots</span>
-                        ) : drive.availableSlots > 0 ? (
+                        ) : isDriveBookable(drive, now) ? (
                           <span className="badge bg-white text-primary">{drive.availableSlots} left</span>
                         ) : (
-                          <span className="badge bg-danger">Full</span>
+                          <span className="badge bg-danger">{drive.availableSlots > 0 ? "Expired" : "Full"}</span>
                         )}
                       </div>
                     ) : null}
@@ -605,13 +643,26 @@ export default function DrivesPage() {
                             <h5 className="fw-bold mb-0">{drive.name}</h5>
                             {!drive.hasSlots ? (
                               <span className="badge bg-warning">No Slots</span>
-                            ) : drive.availableSlots > 0 ? (
+                            ) : isDriveBookable(drive, now) ? (
                               <span className="badge bg-success">{drive.availableSlots} slots left</span>
                             ) : (
-                              <span className="badge bg-danger">Full</span>
+                              <span className="badge bg-danger">{drive.availableSlots > 0 ? "Expired" : "Full"}</span>
                             )}
                           </div>
                         ) : null}
+                        <div className="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                          <span className={`badge ${getStatusBadgeClass(getRealtimeStatus(drive.startDateTime, drive.endDateTime, now))}`}>
+                            {getRealtimeStatus(drive.startDateTime, drive.endDateTime, now)}
+                          </span>
+                          <small className="text-muted">
+                            {getCountdownLabel(
+                              getRealtimeStatus(drive.startDateTime, drive.endDateTime, now),
+                              drive.startDateTime,
+                              drive.endDateTime,
+                              now
+                            )}
+                          </small>
+                        </div>
                         <div className="row g-2">
                           <div className="col-6">
                             <div className="info-item">
@@ -634,7 +685,7 @@ export default function DrivesPage() {
                           <div className="col-6">
                             <div className="info-item">
                               <i className="bi bi-broadcast"></i>
-                              <span>{drive.status || "UPCOMING"}</span>
+                              <span>{getRealtimeStatus(drive.startDateTime, drive.endDateTime, now)}</span>
                             </div>
                           </div>
                           <div className="col-6">
@@ -749,6 +800,7 @@ export default function DrivesPage() {
                     <th>Slot ID</th>
                     <th>Start</th>
                     <th>End</th>
+                    <th>Status</th>
                     <th>Available</th>
                     <th className="text-end">Action</th>
                   </tr>
@@ -757,16 +809,45 @@ export default function DrivesPage() {
                   {bookingSlots.map((slot) => (
                     <tr key={slot.id}>
                       <td>#{slot.id}</td>
-                      <td>{slot.dateTime ? new Date(slot.dateTime).toLocaleString() : "N/A"}</td>
-                      <td>{slot.endDate ? new Date(slot.endDate).toLocaleString() : "N/A"}</td>
+                      <td>{slot.startDateTime ? new Date(slot.startDateTime).toLocaleString() : "N/A"}</td>
+                      <td>{slot.endDateTime ? new Date(slot.endDateTime).toLocaleString() : "N/A"}</td>
+                      <td>
+                        <div className="d-flex flex-column gap-1">
+                          <span className={`badge ${getStatusBadgeClass(slot.slotStatus || getRealtimeStatus(slot.startDateTime, slot.endDateTime, now))}`}>
+                            {slot.slotStatus || getRealtimeStatus(slot.startDateTime, slot.endDateTime, now)}
+                          </span>
+                          <small className="text-muted">
+                            {getCountdownLabel(
+                              slot.slotStatus || getRealtimeStatus(slot.startDateTime, slot.endDateTime, now),
+                              slot.startDateTime,
+                              slot.endDateTime,
+                              now
+                            )}
+                          </small>
+                        </div>
+                      </td>
                       <td>{slot.availableCapacity}</td>
                       <td className="text-end">
-                        <Button
-                          onClick={() => submitBooking(slot)}
-                          disabled={bookingSubmittingId === slot.id}
-                        >
-                          {bookingSubmittingId === slot.id ? "Booking..." : "Book"}
-                        </Button>
+                        {isSlotBookable(slot, now) ? (
+                          <Button
+                            onClick={() => submitBooking(slot)}
+                            disabled={bookingSubmittingId === slot.id}
+                          >
+                            {bookingSubmittingId === slot.id ? "Booking..." : "Book Now"}
+                          </Button>
+                        ) : isAtCapacity(slot) ? (
+                          <Button
+                            variant="outline-warning"
+                            onClick={() => joinWaitlist(slot)}
+                            disabled={waitlistSubmittingId === slot.id}
+                          >
+                            {waitlistSubmittingId === slot.id ? "Joining..." : "Join Waitlist"}
+                          </Button>
+                        ) : (
+                          <Button disabled>Expired</Button>
+                        )}
+                        {slot.demandLevel === "HIGH_DEMAND" && <div className="text-danger small mt-1">🔥 High Demand</div>}
+                        {slot.almostFull && slot.demandLevel !== "HIGH_DEMAND" && <div className="text-warning small mt-1">Almost Full</div>}
                       </td>
                     </tr>
                   ))}

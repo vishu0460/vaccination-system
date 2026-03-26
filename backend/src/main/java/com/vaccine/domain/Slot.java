@@ -7,6 +7,7 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.hibernate.annotations.SQLRestriction;
+import jakarta.persistence.Transient;
 
 @Entity
 @Table(name = "slots")
@@ -61,5 +62,32 @@ public class Slot {
 
     public boolean isDeleted() {
         return deletedAt != null;
+    }
+
+    @Transient
+    public LocalDateTime getStartDateTime() {
+        return dateTime;
+    }
+
+    public void setStartDateTime(LocalDateTime startDateTime) {
+        this.dateTime = startDateTime;
+        this.startTime = startDateTime != null ? startDateTime.toLocalTime() : null;
+    }
+
+    @Transient
+    public LocalDateTime getEndDateTime() {
+        if (dateTime == null) {
+            return null;
+        }
+        if (endTime == null) {
+            return dateTime;
+        }
+
+        LocalDateTime endDateTime = dateTime.toLocalDate().atTime(endTime);
+        return endDateTime.isBefore(dateTime) ? endDateTime.plusDays(1) : endDateTime;
+    }
+
+    public void setEndDateTime(LocalDateTime endDateTime) {
+        this.endTime = endDateTime != null ? endDateTime.toLocalTime() : null;
     }
 }

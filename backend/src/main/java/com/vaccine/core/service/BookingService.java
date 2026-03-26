@@ -8,6 +8,7 @@ import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.SlotRepository;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import com.vaccine.infrastructure.persistence.repository.VaccinationDriveRepository;
+import com.vaccine.util.DriveStatusResolver;
 import com.vaccine.util.SlotStatusResolver;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
@@ -32,16 +33,19 @@ public class BookingService {
     private final VaccinationDriveRepository driveRepository;
     private final INotificationService notificationService;
     private final AuditService auditService;
+    private final WaitlistService waitlistService;
 
     public BookingService(BookingRepository bookingRepository, SlotRepository slotRepository,
                           UserRepository userRepository, VaccinationDriveRepository driveRepository,
-                          INotificationService notificationService, AuditService auditService) {
+                          INotificationService notificationService, AuditService auditService,
+                          WaitlistService waitlistService) {
         this.bookingRepository = bookingRepository;
         this.slotRepository = slotRepository;
         this.userRepository = userRepository;
         this.driveRepository = driveRepository;
         this.notificationService = notificationService;
         this.auditService = auditService;
+        this.waitlistService = waitlistService;
     }
 
     @CacheEvict(cacheNames = {"public-summary", "public-centers"}, allEntries = true)
@@ -66,6 +70,9 @@ public class BookingService {
         if (!BOOKABLE_DRIVE_STATUSES.contains(drive.getStatus())) {
             throw new AppException("Booking is only allowed for drives marked LIVE or UPCOMING");
         }
+        if ("EXPIRED".equals(DriveStatusResolver.resolve(drive))) {
+            throw new AppException("Cannot book a slot for an expired drive");
+        }
         if (SlotStatusResolver.resolve(slot) == SlotStatus.EXPIRED) {
             throw new AppException("Cannot book an expired slot");
         }
@@ -76,7 +83,7 @@ public class BookingService {
             throw new AppException("Age not eligible for this drive");
         }
 
-        LocalDateTime slotDateTime = slot.getDateTime();
+        LocalDateTime slotDateTime = slot.getStartDateTime();
         boolean hasConflict = slotDateTime != null && bookingRepository.existsByUserIdAndSlotDateTimeBetweenAndStatusIn(
             user.getId(),
             slotDateTime.minusHours(2),
@@ -90,7 +97,7 @@ public class BookingService {
         int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
         int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
         if (bookedCount >= capacity) {
-            throw new AppException("Slot is full");
+            throw new AppException("Slot is full. You can join the waitlist.");
         }
 
         boolean alreadyBooked = bookingRepository.existsByUserIdAndSlotIdAndStatusIn(
@@ -140,6 +147,7 @@ public class BookingService {
             int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
             slot.setBookedCount(Math.max(0, bookedCount - 1));
             slotRepository.save(slot);
+            waitlistService.promoteNextUserIfAvailable(slot);
         }
         notificationService.sendEmail(booking.getUser(), "Booking Cancelled", 
             buildCancellationMessage(booking));
@@ -174,6 +182,9 @@ public class BookingService {
         if (newSlot.getDrive() == null || !BOOKABLE_DRIVE_STATUSES.contains(newSlot.getDrive().getStatus())) {
             throw new AppException("Selected slot is not available for booking");
         }
+        if (newSlot.getDrive() != null && "EXPIRED".equals(DriveStatusResolver.resolve(newSlot.getDrive()))) {
+            throw new AppException("Cannot reschedule to a slot for an expired drive");
+        }
         if (SlotStatusResolver.resolve(newSlot) == SlotStatus.EXPIRED) {
             throw new AppException("Cannot reschedule to an expired slot");
         }
@@ -204,7 +215,14 @@ public class BookingService {
     public List<Slot> recommendSlots(String email, String city, int limit) {
         // Simple recommendation logic
         User user = userRepository.findByEmail(email).orElseThrow();
-        return slotRepository.findAvailableSlots(LocalDateTime.now()).stream()
+        return slotRepository.findAll().stream()
+            .filter(slot -> {
+                int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
+                int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
+                return capacity > bookedCount;
+            })
+            .filter(slot -> SlotStatusResolver.resolve(slot) != SlotStatus.EXPIRED)
+            .filter(slot -> slot.getDrive() != null && BOOKABLE_DRIVE_STATUSES.contains(slot.getDrive().getStatus()))
             .filter(s -> user.getAge() >= s.getDrive().getMinAge() && user.getAge() <= s.getDrive().getMaxAge())
             .limit(limit)
             .collect(Collectors.toList());
@@ -228,12 +246,13 @@ public class BookingService {
     }
 
     private LocalDateTime calculateAssignedTime(Slot slot, int alreadyBookedCount) {
-        LocalDateTime slotStart = slot.getDateTime();
+        LocalDateTime slotStart = slot.getStartDateTime();
         if (slotStart == null) {
             throw new AppException("Slot start time is not configured");
         }
 
-        if (slot.getEndTime() == null) {
+        LocalDateTime slotEnd = SlotStatusResolver.resolveEnd(slot);
+        if (slotEnd == null) {
             throw new AppException("Slot end time is not configured");
         }
 
@@ -242,7 +261,6 @@ public class BookingService {
             throw new AppException("Slot capacity must be at least 1");
         }
 
-        LocalDateTime slotEnd = slotStart.toLocalDate().atTime(slot.getEndTime());
         if (!slotEnd.isAfter(slotStart)) {
             throw new AppException("Slot end time must be after slot start time");
         }

@@ -146,6 +146,8 @@ public class SuperAdminController {
 
     @PutMapping({"/slots/{slotId}", "/slot/{slotId}"})
     public ResponseEntity<ApiResponse<SlotDetailResponse>> updateSlot(@PathVariable Long slotId, @Valid @RequestBody SlotRequest req) {
+        System.out.println("Updating slot ID: " + slotId);
+        System.out.println("Payload: " + req);
         log.info("Super admin update slot id={} driveId={} startDate={} endDate={}", slotId, req.getDriveId(), req.getStartDate(), req.getEndDate());
         return ResponseEntity.ok(ApiResponse.success(SlotDetailResponse.from(adminService.updateSlot(slotId, req)), "Slot updated successfully"));
     }

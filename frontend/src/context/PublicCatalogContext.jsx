@@ -52,15 +52,9 @@ export function PublicCatalogProvider({ children }) {
 
   useEffect(() => {
     refreshCatalog();
-
-    const handleFocus = () => refreshCatalog();
-    const intervalId = window.setInterval(refreshCatalog, 30000);
-    window.addEventListener("focus", handleFocus);
-    const unsubscribe = subscribeToDataUpdates(handleFocus);
+    const unsubscribe = subscribeToDataUpdates(() => refreshCatalog());
 
     return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleFocus);
       unsubscribe();
     };
   }, []);

@@ -12,4 +12,6 @@ public interface DriveSubscriptionRepository extends JpaRepository<DriveSubscrip
     void deleteByUserEmailAndDriveId(String userEmail, Long driveId);
 
     List<DriveSubscription> findByUserEmailOrderByCreatedAtDesc(String userEmail);
+
+    List<DriveSubscription> findByDriveId(Long driveId);
 }

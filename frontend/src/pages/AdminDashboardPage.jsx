@@ -2,10 +2,12 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Container, Row, Col, Card, Table, Badge, Button, Spinner, Modal, Form, Alert, Tab, Tabs } from 'react-bootstrap';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
-import { adminAPI, newsAPI, superAdminAPI, unwrapApiData } from '../api/client';
+import { adminAPI, getErrorMessage, newsAPI, superAdminAPI, unwrapApiData } from '../api/client';
 import ErrorState from '../components/ErrorState';
 import SearchInput from '../components/SearchInput';
+import useCurrentTime from '../hooks/useCurrentTime';
 import { getRole } from '../utils/auth';
+import { getCountdownLabel, getRealtimeStatus } from '../utils/realtimeStatus';
 import { broadcastDataUpdated, debugDataSync, subscribeToDataUpdates } from '../utils/dataSync';
 import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
 import useDebounce from '../hooks/useDebounce';
@@ -34,8 +36,12 @@ const EMPTY_DASHBOARD_ANALYTICS = {
   totalBookings: 0,
   activeDrives: 0,
   availableSlots: 0,
+  slotFillRate: 0,
   mostSearchedCity: 'N/A',
-  mostBookedVaccine: 'N/A'
+  mostBookedVaccine: 'N/A',
+  mostPopularSlots: [],
+  dailyBookings: [],
+  slotUsage: []
 };
 
 const EMPTY_CONTACT_ANALYTICS = {
@@ -200,14 +206,14 @@ const combineSlotDateTime = (baseDateTime, timeValue) => {
   return formatDateTimeLocal(parsed);
 };
 
-const getSlotStartValue = (slot) => slot?.startDate || slot?.time || slot?.dateTime || slot?.startTime || '';
+const getSlotStartValue = (slot) => slot?.startDateTime || slot?.startDate || slot?.time || slot?.dateTime || slot?.startTime || '';
 
 const getSlotEndValue = (slot) => {
-  if (slot?.endDate) {
-    return slot.endDate;
-  }
   if (slot?.endDateTime) {
     return slot.endDateTime;
+  }
+  if (slot?.endDate) {
+    return slot.endDate;
   }
   if (slot?.dateEndTime) {
     return slot.dateEndTime;
@@ -242,16 +248,25 @@ const formatSlotEndDisplay = (slot) => {
   return formatDateTime(endDateTime);
 };
 
-const buildSlotPayload = (formState) => {
-  const normalizedRange = normalizeSlotDateRange(formState.startDate, formState.endDate);
+const buildSlotPayload = (formState, fallbackSlot = null) => {
+  const fallbackRange = normalizeSlotDateRange(
+    fallbackSlot?.editStartDate || fallbackSlot?.startDate || '',
+    fallbackSlot?.editEndDate || fallbackSlot?.endDate || ''
+  );
+  const normalizedRange = normalizeSlotDateRange(
+    formState.startDate || fallbackRange.startDate,
+    formState.endDate || fallbackRange.endDate
+  );
   const startDate = formatApiDateTime(normalizedRange.startDate) || normalizedRange.startDate;
   const endDate = formatApiDateTime(normalizedRange.endDate) || normalizedRange.endDate;
+  const resolvedDriveId = formState.driveId || fallbackSlot?.driveId || fallbackSlot?.drive?.id || '';
+  const resolvedCapacity = formState.capacity ?? fallbackSlot?.capacity ?? 50;
 
   return {
-    driveId: Number(formState.driveId),
+    driveId: Number(resolvedDriveId),
     startDate,
     endDate,
-    capacity: Number(formState.capacity)
+    capacity: Number(resolvedCapacity)
   };
 };
 
@@ -349,6 +364,7 @@ export default function AdminDashboardPage() {
   const [createAdminLoading, setCreateAdminLoading] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
   const refreshInFlightRef = useRef(false);
+  const now = useCurrentTime(1000);
 
   const requestRefresh = useCallback(() => {
     setRefreshTick((current) => current + 1);
@@ -860,14 +876,23 @@ export default function AdminDashboardPage() {
     await loadDriveSlots(drive.id, true);
   };
 
+  const closeEditSlotModal = () => {
+    setShowEditSlotModal(false);
+    setEditingSlot(null);
+    setEditSlotForm({ driveId: '', startDate: '', endDate: '', capacity: 50 });
+    setEditSlotStartDate('');
+    setEditSlotEndDate('');
+  };
+
   const openEditSlotModal = (slot) => {
     const normalizedSlot = normalizeSlotForEditing(slot);
+    setError(null);
     setEditingSlot(normalizedSlot);
     const isExpired = normalizedSlot.slotStatus === 'EXPIRED';
     setEditSlotStartDate(normalizedSlot.editStartDate || '');
     setEditSlotEndDate(normalizedSlot.editEndDate || '');
     setEditSlotForm({
-      driveId: normalizedSlot.driveId || '',
+      driveId: normalizedSlot.driveId || selectedDrive?.id || '',
       capacity: normalizedSlot.capacity || 50
     });
     if (isExpired) {
@@ -884,10 +909,20 @@ export default function AdminDashboardPage() {
         ...editSlotForm,
         startDate: editSlotStartDate,
         endDate: editSlotEndDate
+      }, editingSlot);
+      console.log('Updating slot payload', {
+        slotId: editingSlot?.id,
+        selectedDate: slotPayload.startDate,
+        selectedTime: slotPayload.endDate,
+        capacity: slotPayload.capacity,
+        driveId: slotPayload.driveId
       });
       const nextStatus = getSlotStatusPreview(slotPayload.startDate, slotPayload.endDate);
       if (!editingSlot?.id) {
         throw new Error('Slot ID is missing');
+      }
+      if (!Number.isFinite(slotPayload.driveId) || slotPayload.driveId <= 0) {
+        throw new Error('Drive ID is missing from the slot payload');
       }
       const response = await (isSuperAdmin ? superAdminAPI.updateSlot(editingSlot.id, slotPayload) : adminAPI.updateSlot(editingSlot.id, slotPayload));
       const updatedSlot = normalizeSlotForEditing(unwrapApiData(response));
@@ -895,21 +930,17 @@ export default function AdminDashboardPage() {
       setSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
       setDriveSlots((currentSlots) => mergeUpdatedSlot(currentSlots, updatedSlot));
 
-      setShowEditSlotModal(false);
-      setEditingSlot(null);
-      setEditSlotForm({ driveId: '', startDate: '', endDate: '', capacity: 50 });
-      setEditSlotStartDate('');
-      setEditSlotEndDate('');
+      closeEditSlotModal();
 
       const updatedDriveId = Number(slotPayload.driveId);
       const updatedDrive = drives.find((drive) => Number(drive.id) === updatedDriveId) || selectedDrive;
       setSelectedDrive(updatedDrive || null);
 
       await Promise.all([
-        loadDashboardData(),
-        loadDrives(),
-        loadSlots(),
-        updatedDriveId ? loadDriveSlots(updatedDriveId, true) : Promise.resolve()
+        activeTab === 'slots' ? loadSlots({ silent: true }) : Promise.resolve(),
+        updatedDriveId && (showManageSlotsModal || Number(selectedDrive?.id) === updatedDriveId)
+          ? loadDriveSlots(updatedDriveId, showManageSlotsModal)
+          : Promise.resolve()
       ]);
 
       setSuccess(
@@ -919,7 +950,8 @@ export default function AdminDashboardPage() {
       );
       notifyDataUpdated();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update slot');
+      console.error('Failed to update slot', err);
+      setError(getErrorMessage(err, 'Failed to update slot'));
     } finally {
       setSlotActionLoading(false);
     }
@@ -1179,6 +1211,28 @@ const searchTrendChartData = useMemo(() => ({
       borderWidth: 2
     }]
   }), [searchAnalytics]);
+
+  const dailyBookingsChartData = useMemo(() => ({
+    labels: dashboardAnalytics.dailyBookings?.map((item) => item.label) || [],
+    datasets: [{
+      label: 'Daily bookings',
+      data: dashboardAnalytics.dailyBookings?.map((item) => item.value) || [],
+      backgroundColor: 'rgba(14, 165, 233, 0.25)',
+      borderColor: '#0ea5e9',
+      borderWidth: 2
+    }]
+  }), [dashboardAnalytics]);
+
+  const slotUsageChartData = useMemo(() => ({
+    labels: dashboardAnalytics.slotUsage?.map((item) => item.label) || [],
+    datasets: [{
+      label: 'Slot usage',
+      data: dashboardAnalytics.slotUsage?.map((item) => item.value) || [],
+      backgroundColor: 'rgba(16, 185, 129, 0.25)',
+      borderColor: '#10b981',
+      borderWidth: 2
+    }]
+  }), [dashboardAnalytics]);
 
   const contactTrendChartData = useMemo(() => ({
     labels: contactAnalytics.inquiriesByDay?.map((item) => item.label) || [],
@@ -1601,7 +1655,88 @@ const searchTrendChartData = useMemo(() => ({
                     <div className="fw-bold">{dashboardAnalytics.mostBookedVaccine || 'N/A'}</div>
                   </div>
                 </Col>
+                <Col md={6} xl={2}>
+                  <div className="border rounded-4 p-3 h-100">
+                    <div className="small text-muted mb-2">Slot Fill Rate</div>
+                    <div className="fw-bold">{dashboardAnalytics.slotFillRate || 0}%</div>
+                  </div>
+                </Col>
               </Row>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col lg={6}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Daily Bookings</h5>
+            </Card.Header>
+            <Card.Body>
+              <Bar
+                data={dailyBookingsChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } }
+                }}
+                height={250}
+              />
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={6}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Slot Usage</h5>
+            </Card.Header>
+            <Card.Body>
+              <Bar
+                data={slotUsageChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } }
+                }}
+                height={250}
+              />
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col xl={12}>
+          <Card className="border-0 shadow-sm h-100">
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Most Popular Slots</h5>
+            </Card.Header>
+            <Card.Body>
+              {dashboardAnalytics.mostPopularSlots?.length ? (
+                <div className="table-responsive">
+                  <Table hover className="mb-0">
+                    <thead>
+                      <tr>
+                        <th>Slot</th>
+                        <th>Drive</th>
+                        <th>Center</th>
+                        <th>Bookings</th>
+                        <th>Fill Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dashboardAnalytics.mostPopularSlots.map((slot) => (
+                        <tr key={slot.slotId}>
+                          <td>#{slot.slotId}</td>
+                          <td>{slot.driveName}</td>
+                          <td>{slot.centerName}</td>
+                          <td>{slot.bookingCount}</td>
+                          <td>{slot.fillRate}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+              ) : (
+                <p className="text-muted mb-0">Popular slot insights will appear once bookings accumulate.</p>
+              )}
             </Card.Body>
           </Card>
         </Col>
@@ -2199,13 +2334,25 @@ const searchTrendChartData = useMemo(() => ({
                   <td>{slot.centerName || 'N/A'}</td>
                   <td>{slot.driveName || 'N/A'}</td>
                   <td>{slot.bookedCount || 0} / {slot.capacity || 0}</td>
-                  <td>{getSlotStatusBadge(slot.slotStatus)}</td>
+                  <td>
+                    <div className="d-flex flex-column gap-1">
+                      {getSlotStatusBadge(getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now))}
+                      <small className="text-muted">
+                        {getCountdownLabel(
+                          getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now),
+                          getSlotStartValue(slot),
+                          getSlotEndValue(slot),
+                          now
+                        )}
+                      </small>
+                    </div>
+                  </td>
                   <td className="text-end pe-4">
                     <div className="d-flex justify-content-end gap-2">
-                      <Button variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
+                      <Button type="button" variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
                         <FaEdit />
                       </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
+                      <Button type="button" variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
                         <FaTrash />
                       </Button>
                     </div>
@@ -2798,16 +2945,26 @@ const searchTrendChartData = useMemo(() => ({
                 {driveSlots.map(slot => (
                   <tr key={slot.id}>
                     <td>#{slot.id}</td>
-                    <td>{formatDateTime(getSlotStartValue(slot))}</td>
+                    <td>
+                      <div>{formatDateTime(getSlotStartValue(slot))}</div>
+                      <small className="text-muted">
+                        {getCountdownLabel(
+                          getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now),
+                          getSlotStartValue(slot),
+                          getSlotEndValue(slot),
+                          now
+                        )}
+                      </small>
+                    </td>
                     <td>{formatSlotEndDisplay(slot)}</td>
                     <td>{slot.capacity}</td>
                     <td>{slot.bookedCount || 0}</td>
                     <td className="text-end">
                       <div className="d-flex justify-content-end gap-2">
-                        <Button variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
+                        <Button type="button" variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
                           <FaEdit />
                         </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
+                        <Button type="button" variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
                           <FaTrash />
                         </Button>
                       </div>
@@ -2823,7 +2980,7 @@ const searchTrendChartData = useMemo(() => ({
         </Modal.Footer>
       </Modal>
 
-      <Modal show={showEditSlotModal} onHide={() => setShowEditSlotModal(false)} size="lg" centered>
+      <Modal show={showEditSlotModal} onHide={closeEditSlotModal} size="lg" centered>
         <Modal.Header closeButton style={{background: '#f8fafc'}}>
           <Modal.Title><FaCalendarCheck className="me-2" />Edit Slot</Modal.Title>
         </Modal.Header>
@@ -2865,7 +3022,7 @@ const searchTrendChartData = useMemo(() => ({
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowEditSlotModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={closeEditSlotModal} style={{borderRadius: '0.5rem'}}>Cancel</Button>
             <Button type="submit" disabled={slotActionLoading} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>{slotActionLoading ? 'Saving...' : 'Update Slot'}</Button>
           </Modal.Footer>
         </Form>

@@ -24,7 +24,7 @@ public class AuthController {
     }
 
     @PostMapping("/register")
-    public ResponseEntity<ApiMessage> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
+    public ResponseEntity<RegisterResponse> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
         log.info("Registration request received for email: {}", req.email());
         return ResponseEntity.ok(authService.register(req, request));
     }
@@ -43,6 +43,11 @@ public class AuthController {
     @GetMapping("/verify-email")
     public ResponseEntity<ApiMessage> verifyEmail(@RequestParam String token) {
         return ResponseEntity.ok(authService.verifyEmail(token));
+    }
+
+    @PostMapping("/verify-otp")
+    public ResponseEntity<ApiMessage> verifyOtp(@Valid @RequestBody VerifyOtpRequest req) {
+        return ResponseEntity.ok(authService.verifyOtp(req));
     }
 
     @PostMapping("/resend-verification")

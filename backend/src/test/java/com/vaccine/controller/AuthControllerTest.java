@@ -67,14 +67,15 @@ class AuthControllerTest {
         );
 
         when(authService.register(any(), any()))
-                .thenReturn(new ApiMessage("Registration successful. You can log in now."));
+                .thenReturn(new RegisterResponse("Registration successful. You can log in now.", 200, false, false, "test@example.com", null));
 
         mockMvc.perform(post("/auth/register")
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Registration successful. You can log in now."));
+                .andExpect(jsonPath("$.message").value("Registration successful. You can log in now."))
+                .andExpect(jsonPath("$.status").value(200));
     }
 
     // ✅ LOGIN SUCCESS
@@ -149,20 +150,20 @@ class AuthControllerTest {
         ForgotPasswordRequest forgotReq = new ForgotPasswordRequest("user@example.com");
 
         when(authService.forgotPassword(any()))
-                .thenReturn(new ApiMessage("Password reset token sent"));
+                .thenReturn(new ApiMessage("If the account exists, a password reset OTP has been sent."));
 
         mockMvc.perform(post("/auth/forgot-password")
                         .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(forgotReq)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(forgotReq)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.message").value("Password reset token sent"));
+                .andExpect(jsonPath("$.message").value("If the account exists, a password reset OTP has been sent."));
     }
 
     // ✅ RESET PASSWORD (FIXED FOR VOID METHOD)
     @Test
     void resetPassword_WithValidToken_ShouldReturnSuccess() throws Exception {
-        ResetPasswordRequest resetReq = new ResetPasswordRequest("token", "newPassword123");
+        ResetPasswordRequest resetReq = new ResetPasswordRequest(null, null, null, "token", "newPassword123");
 
         doNothing().when(authService).resetPassword(any());
 

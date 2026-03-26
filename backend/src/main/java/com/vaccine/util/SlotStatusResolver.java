@@ -15,7 +15,7 @@ public final class SlotStatusResolver {
     }
 
     public static SlotStatus resolve(Slot slot, LocalDateTime now) {
-        LocalDateTime start = slot.getDateTime();
+        LocalDateTime start = slot != null ? slot.getStartDateTime() : null;
         LocalDateTime end = resolveEnd(slot);
 
         if (start == null) {
@@ -34,14 +34,6 @@ public final class SlotStatusResolver {
     }
 
     public static LocalDateTime resolveEnd(Slot slot) {
-        if (slot == null || slot.getDateTime() == null) {
-            return null;
-        }
-
-        if (slot.getEndTime() != null) {
-            return slot.getDateTime().toLocalDate().atTime(slot.getEndTime());
-        }
-
-        return slot.getDateTime();
+        return slot != null ? slot.getEndDateTime() : null;
     }
 }

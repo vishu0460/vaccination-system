@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useNavigate } from "react-router-dom";
-import { authAPI, getErrorMessage, getFieldErrors } from "../api/client";
+import { authAPI, getErrorMessage, getFieldErrors, unwrapApiMessage } from "../api/client";
 import FormContainer from "../components/auth/FormContainer";
 import InputField from "../components/auth/InputField";
 import PasswordField from "../components/auth/PasswordField";
@@ -62,11 +62,21 @@ export default function RegisterPage() {
     }
 
     const timer = window.setTimeout(() => {
-      navigate("/login", { replace: true });
+      if (successMessage.toLowerCase().includes("log in now")) {
+        navigate("/login", { replace: true });
+        return;
+      }
+
+      navigate(`/verify-email?email=${encodeURIComponent(form.email.trim())}`, {
+        replace: true,
+        state: {
+          registrationMessage: successMessage
+        }
+      });
     }, 1800);
 
     return () => window.clearTimeout(timer);
-  }, [navigate, successMessage]);
+  }, [form.email, navigate, successMessage]);
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -94,8 +104,10 @@ export default function RegisterPage() {
         age: Number.parseInt(form.age, 10)
       });
 
-      setSuccessMessage(response.data?.message || "Account created successfully. Redirecting to login...");
-      setForm(initialForm);
+      const registerPayload = response.data || {};
+      setSuccessMessage(
+        unwrapApiMessage(registerPayload, "Registration successful. Please verify the 7-digit OTP sent to your email.")
+      );
       setErrors({});
     } catch (error) {
       const backendFieldErrors = getFieldErrors(error);

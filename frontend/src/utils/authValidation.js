@@ -85,6 +85,15 @@ export const validateConfirmPassword = (password, confirmPassword) => {
   return password === confirmPassword ? "" : "Passwords do not match";
 };
 
+export const validateOtp = (value) => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    return "OTP is required";
+  }
+
+  return /^\d{7}$/.test(normalized) ? "" : "OTP must be exactly 7 digits";
+};
+
 export const getPasswordStrength = (password) => {
   const checks = getPasswordChecks(password);
   const passedChecks = Object.values(checks).filter(Boolean).length;

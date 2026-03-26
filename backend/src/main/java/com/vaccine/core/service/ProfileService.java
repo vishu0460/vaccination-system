@@ -1,7 +1,9 @@
 package com.vaccine.core.service;
 
+import com.vaccine.common.dto.ChangePasswordRequest;
 import com.vaccine.common.dto.ProfileUpdateRequest;
 import com.vaccine.domain.User;
+import com.vaccine.domain.OtpPurpose;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -12,10 +14,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class ProfileService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final OtpService otpService;
 
-    public ProfileService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public ProfileService(UserRepository userRepository, PasswordEncoder passwordEncoder, OtpService otpService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.otpService = otpService;
     }
 
     public User getProfile(String email) {
@@ -56,8 +60,16 @@ public class ProfileService {
     }
 
     @Transactional
-    public void changePassword(String email, String currentPassword, String newPassword) {
+    public void sendPasswordChangeOtp(String email) {
         User user = getProfile(email);
+        otpService.sendOtp(user, OtpPurpose.PASSWORD_CHANGE);
+    }
+
+    @Transactional
+    public void changePassword(String email, ChangePasswordRequest request) {
+        User user = getProfile(email);
+        String currentPassword = request.currentPassword();
+        String newPassword = request.newPassword();
 
         if (currentPassword == null || currentPassword.isBlank() || newPassword == null || newPassword.isBlank()) {
             throw new AppException("Current and new password are required");
@@ -70,6 +82,8 @@ public class ProfileService {
         if (newPassword.length() < 8) {
             throw new AppException("New password must be at least 8 characters");
         }
+
+        otpService.verifyOtp(user, request.otp(), OtpPurpose.PASSWORD_CHANGE, false);
         
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);

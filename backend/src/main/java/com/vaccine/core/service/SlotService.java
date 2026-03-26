@@ -37,8 +37,8 @@ public class SlotService {
                 .stream()
                 .map(slot -> new DriveResponse.SlotResponse(
                     slot.getId(), 
-                    slot.getStartTime().atDate(driveDate), 
-                    slot.getEndTime().atDate(driveDate), 
+                    slot.getStartDateTime() != null ? slot.getStartDateTime() : slot.getStartTime().atDate(driveDate), 
+                    slot.getEndDateTime() != null ? slot.getEndDateTime() : slot.getEndTime().atDate(driveDate), 
                     slot.getCapacity(), 
                     slot.getBookedCount()))
                 .collect(Collectors.toList());

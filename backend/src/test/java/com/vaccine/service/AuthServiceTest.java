@@ -24,6 +24,7 @@ import java.util.Set;
 import com.vaccine.core.service.AuthService;
 import com.vaccine.core.service.AuditService;
 import com.vaccine.core.service.NotificationService;
+import com.vaccine.core.service.OtpService;
 import com.vaccine.core.service.PhoneVerificationService;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,6 +52,8 @@ class AuthServiceTest {
     @Mock
     private JwtService jwtService;
     @Mock
+    private OtpService otpService;
+    @Mock
     private NotificationService notificationService;
     @Mock
     private AuditService auditService;
@@ -66,12 +69,13 @@ class AuthServiceTest {
         authService = new AuthService(
             userRepository, roleRepository, emailVerificationRepository,
             passwordResetRepository, phoneVerificationRepository, authenticationManager, passwordEncoder,
-            jwtService, notificationService, auditService, phoneVerificationService
+            jwtService, otpService, notificationService, auditService, phoneVerificationService
         );
         
         // Set @Value fields via reflection
         ReflectionTestUtils.setField(authService, "maxAttempts", 5);
         ReflectionTestUtils.setField(authService, "lockMinutes", 15);
+        ReflectionTestUtils.setField(authService, "includeOtpInMessages", false);
     }
 
 @Test
@@ -84,11 +88,34 @@ class AuthServiceTest {
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
         ReflectionTestUtils.setField(authService, "autoVerifyEmail", true);
 
-        ApiMessage result = authService.register(req, httpServletRequest);
+        RegisterResponse result = authService.register(req, httpServletRequest);
 
         assertNotNull(result);
         assertEquals("Registration successful. You can log in now.", result.message());
+        assertFalse(result.requiresVerification());
         verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    void register_WhenOtpEmailFails_ShouldStillCreateUserAndReturnVerificationResponse() {
+        RegisterRequest req = new RegisterRequest("otp@example.com", "Test User", "+1234567890", "Password123!", 25);
+
+        when(userRepository.existsAnyByEmail("otp@example.com")).thenReturn(false);
+        when(roleRepository.findByName(RoleName.USER)).thenReturn(Optional.of(Role.builder().name(RoleName.USER).build()));
+        when(passwordEncoder.encode(anyString())).thenReturn("encodedPassword");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(otpService.sendOtp(any(User.class), eq(OtpPurpose.EMAIL_VERIFICATION)))
+            .thenReturn(new OtpService.OtpDispatchResult("7654321", false));
+        ReflectionTestUtils.setField(authService, "autoVerifyEmail", false);
+        ReflectionTestUtils.setField(authService, "includeOtpInMessages", true);
+
+        RegisterResponse result = authService.register(req, httpServletRequest);
+
+        assertTrue(result.requiresVerification());
+        assertTrue(result.emailDeliveryFailed());
+        assertEquals("7654321", result.otpPreview());
+        assertTrue(result.message().contains("7654321"));
+        verify(userRepository, atLeastOnce()).save(any(User.class));
     }
 
     @Test
@@ -197,17 +224,11 @@ class AuthServiceTest {
         User user = User.builder()
             .id(1L)
             .email("user@example.com")
-            .build();
-        EmailVerification verification = EmailVerification.builder()
-            .userEmail("user@example.com")
-            .token("validToken")
-            .expiresAt(LocalDateTime.now().plusHours(1))
-            .verified(false)
+            .verificationToken("validToken")
+            .verificationTokenExpiry(LocalDateTime.now().plusHours(1))
             .build();
 
-        when(emailVerificationRepository.findByTokenAndExpiresAtAfter(eq("validToken"), any(LocalDateTime.class))).thenReturn(Optional.of(verification));
-        when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
-        when(emailVerificationRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.findByVerificationToken("validToken")).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
 
         ApiMessage result = authService.verifyEmail("validToken");
@@ -218,13 +239,13 @@ class AuthServiceTest {
 
     @Test
     void verifyEmail_WithExpiredToken_ShouldThrowException() {
-        EmailVerification verification = EmailVerification.builder()
-            .token("expiredToken")
-            .expiresAt(LocalDateTime.now().minusHours(1))
-            .verified(false)
+        User user = User.builder()
+            .email("user@example.com")
+            .verificationToken("expiredToken")
+            .verificationTokenExpiry(LocalDateTime.now().minusHours(1))
             .build();
 
-        when(emailVerificationRepository.findByTokenAndExpiresAtAfter(eq("expiredToken"), any(LocalDateTime.class))).thenReturn(Optional.of(verification));
+        when(userRepository.findByVerificationToken("expiredToken")).thenReturn(Optional.of(user));
 
         AppException exception = assertThrows(AppException.class, () -> authService.verifyEmail("expiredToken"));
         assertEquals("Invalid or expired verification token", exception.getMessage());
@@ -232,16 +253,28 @@ class AuthServiceTest {
 
     @Test
     void forgotPassword_WithValidEmail_ShouldSendResetToken() {
-        User user = User.builder().email("user@example.com").build();
+        User user = User.builder()
+            .email("user@example.com")
+            .fullName("Test User")
+            .enabled(true)
+            .build();
         
         when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
-        when(passwordResetRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         ApiMessage result = authService.forgotPassword(new ForgotPasswordRequest("user@example.com"));
 
         assertNotNull(result);
-        // Note: notificationService.sendEmail not called in actual implementation - test adjusted
-        verify(passwordResetRepository).save(any());
+        verify(otpService).sendOtp(user, OtpPurpose.PASSWORD_RESET);
+    }
+
+    @Test
+    void forgotPassword_WithUnknownEmail_ShouldReturnGenericSuccess() {
+        when(userRepository.findByEmail("missing@example.com")).thenReturn(Optional.empty());
+
+        ApiMessage result = authService.forgotPassword(new ForgotPasswordRequest("missing@example.com"));
+
+        assertEquals("If the account exists, a password reset OTP has been sent.", result.message());
+        verify(otpService, never()).sendOtp(any(User.class), any());
     }
 
     @Test
@@ -261,8 +294,9 @@ class AuthServiceTest {
         when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenReturn(user);
         when(passwordResetRepository.save(any(PasswordReset.class))).thenReturn(reset);
+        when(passwordEncoder.encode("newPassword")).thenReturn("encodedPassword");
 
-        authService.resetPassword(new ResetPasswordRequest("validToken", "newPassword"));
+        authService.resetPassword(new ResetPasswordRequest(null, null, null, "validToken", "newPassword"));
         
         verify(passwordEncoder).encode("newPassword");
         verify(userRepository).save(any(User.class));
@@ -280,8 +314,25 @@ class AuthServiceTest {
         when(passwordResetRepository.findByTokenAndExpiresAtAfter(eq("expiredToken"), any(LocalDateTime.class))).thenReturn(Optional.of(reset));
 
         AppException exception = assertThrows(AppException.class, () -> {
-            authService.resetPassword(new ResetPasswordRequest("expiredToken", "newPassword"));
+            authService.resetPassword(new ResetPasswordRequest(null, null, null, "expiredToken", "newPassword"));
         });
         assertEquals("Invalid or expired reset token", exception.getMessage());
+    }
+
+    @Test
+    void resetPassword_WithValidOtp_ShouldResetPassword() {
+        User user = User.builder()
+            .email("user@example.com")
+            .otpExpiry(LocalDateTime.now().plusMinutes(5))
+            .build();
+
+        when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode("Password123!")).thenReturn("encodedPassword");
+
+        authService.resetPassword(new ResetPasswordRequest("user@example.com", "1234567", "Password123!", null, null));
+
+        verify(passwordEncoder).encode("Password123!");
+        verify(userRepository).save(user);
+        verify(otpService).verifyOtp(user, "1234567", OtpPurpose.PASSWORD_RESET, false);
     }
 }

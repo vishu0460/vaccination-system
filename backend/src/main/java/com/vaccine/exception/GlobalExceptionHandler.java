@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -22,6 +23,7 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 @Order(-2)
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -54,6 +56,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({AppException.class, com.vaccine.common.exception.AppException.class, IllegalArgumentException.class, BadCredentialsException.class})
     public ResponseEntity<ApiResponse<?>> handleBusiness(RuntimeException ex) {
+        log.warn("Business exception: {}", ex.getMessage(), ex);
         return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage(), 400));
     }
 
@@ -69,7 +72,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiResponse<?>> handleJsonParse(HttpMessageNotReadableException ex) {
-        return ResponseEntity.badRequest().body(ApiResponse.error("Invalid JSON format", 400));
+        String message = ex.getMostSpecificCause() != null && ex.getMostSpecificCause().getMessage() != null
+            ? ex.getMostSpecificCause().getMessage()
+            : ex.getMessage();
+        log.warn("JSON parse error: {}", message, ex);
+        return ResponseEntity.badRequest().body(ApiResponse.error("Invalid JSON format: " + message, 400));
     }
 
     @ExceptionHandler(NullPointerException.class)
@@ -80,6 +87,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<?>> handleUnknown(Exception ex) {
         String message = ex.getMessage() != null ? ex.getMessage() : "An unexpected error occurred";
+        log.error("Unhandled exception", ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ApiResponse.error(message, 500));
     }

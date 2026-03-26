@@ -1,6 +1,8 @@
 package com.vaccine.web.controller;
 
+import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.common.dto.ApiResponse;
+import com.vaccine.common.dto.ChangePasswordRequest;
 import com.vaccine.common.dto.ProfileUpdateRequest;
 import com.vaccine.domain.User;
 import com.vaccine.core.service.ProfileService;
@@ -60,19 +62,19 @@ public class ProfileController {
         )));
     }
 
+    @PostMapping("/change-password/request-otp")
+    public ResponseEntity<ApiMessage> requestPasswordChangeOtp(Authentication auth) {
+        log.info("Password change OTP requested for user: {}", auth.getName());
+        profileService.sendPasswordChangeOtp(auth.getName());
+        return ResponseEntity.ok(new ApiMessage("OTP sent to your email for verification."));
+    }
+
     @PostMapping("/change-password")
     public ResponseEntity<ApiResponse<Void>> changePassword(
-            @RequestBody Map<String, String> passwords,
+            @Valid @RequestBody ChangePasswordRequest request,
             Authentication auth) {
         log.info("Change password for user: {}", auth.getName());
-        if (!passwords.containsKey("currentPassword") || !passwords.containsKey("newPassword")) {
-            throw new IllegalArgumentException("currentPassword and newPassword are required");
-        }
-        profileService.changePassword(
-            auth.getName(),
-            passwords.get("currentPassword"),
-            passwords.get("newPassword")
-        );
+        profileService.changePassword(auth.getName(), request);
         return ResponseEntity.ok(ApiResponse.success(null, "Password changed successfully"));
     }
 

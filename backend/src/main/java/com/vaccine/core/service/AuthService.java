@@ -15,6 +15,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
@@ -33,11 +34,10 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final OtpService otpService;
     private final NotificationService notificationService;
     private final AuditService auditService;
     private final PhoneVerificationService phoneVerificationService;
-
-    private final Random random = new Random();
 
     @Value("${security.brute-force.max-attempts}")
     private int maxAttempts;
@@ -48,6 +48,9 @@ public class AuthService {
     @Value("${app.dev.auto-verify-email:false}")
     private boolean autoVerifyEmail;
 
+    @Value("${app.dev.include-otp-in-messages:false}")
+    private boolean includeOtpInMessages;
+
     public AuthService(
             UserRepository userRepository,
             RoleRepository roleRepository,
@@ -57,7 +60,8 @@ public class AuthService {
             AuthenticationManager authenticationManager,
             PasswordEncoder passwordEncoder,
             JwtService jwtService,
-        NotificationService notificationService,
+            OtpService otpService,
+            NotificationService notificationService,
             AuditService auditService,
             PhoneVerificationService phoneVerificationService
     ) {
@@ -69,16 +73,21 @@ public class AuthService {
         this.authenticationManager = authenticationManager;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.otpService = otpService;
         this.notificationService = notificationService;
         this.auditService = auditService;
         this.phoneVerificationService = phoneVerificationService;
     }
 
-    public ApiMessage register(RegisterRequest req, HttpServletRequest request) {
+    @Transactional
+    public RegisterResponse register(RegisterRequest req, HttpServletRequest request) {
         String normalizedEmail = normalizeEmail(req.email());
         String normalizedName = normalizeFullName(req.fullName());
         String normalizedPhone = normalizePhone(req.phoneNumber());
         int normalizedAge = req.age() == null ? 18 : req.age();
+
+        log.info("Register request: email={}, fullName={}, phoneNumber={}, age={}",
+            normalizedEmail, normalizedName, normalizedPhone, normalizedAge);
 
         if (userRepository.existsAnyByEmail(normalizedEmail)) {
             throw new AppException("Email already registered");
@@ -98,6 +107,8 @@ public class AuthService {
                 .role(RoleName.USER.name())
                 .enabled(true)
                 .emailVerified(shouldAutoVerify)
+                .verificationToken(shouldAutoVerify ? null : UUID.randomUUID().toString())
+                .verificationTokenExpiry(shouldAutoVerify ? null : LocalDateTime.now().plusHours(24))
                 .phoneVerified(false)
                 .twoFactorEnabled(false)
                 .roles(new HashSet<>(Set.of(role)))
@@ -106,26 +117,26 @@ public class AuthService {
 
         user = userRepository.save(user);
 
+        OtpService.OtpDispatchResult otpDispatchResult = null;
+
         if (!shouldAutoVerify) {
-            String token = UUID.randomUUID().toString();
-            emailVerificationRepository.save(
-                    EmailVerification.builder()
-                            .userEmail(user.getEmail())
-                            .token(token)
-                            .expiresAt(LocalDateTime.now().plusHours(24))
-                            .verified(false)
-                            .createdAt(LocalDateTime.now())
-                            .build()
-            );
+            otpDispatchResult = otpService.sendOtp(user, OtpPurpose.EMAIL_VERIFICATION);
         }
 
         auditService.logActionAs(user.getEmail(), "REGISTER", "USER", user.getId(), "User registered", request);
 
         if (shouldAutoVerify) {
-            return new ApiMessage("Registration successful. You can log in now.");
+            return new RegisterResponse(
+                "Registration successful. You can log in now.",
+                200,
+                false,
+                false,
+                user.getEmail(),
+                null
+            );
         }
 
-        return new ApiMessage("Registration successful. Please verify your email before logging in.");
+        return buildRegisterResponse(user, otpDispatchResult);
     }
 
     public AuthResponse login(LoginRequest req, HttpServletRequest request) {
@@ -223,45 +234,56 @@ public class AuthService {
     }
 
     public ApiMessage verifyEmail(String token) {
-        EmailVerification verification =
-                emailVerificationRepository.findByTokenAndExpiresAtAfter(token, LocalDateTime.now())
-                        .filter(v -> !v.isVerified())
-                        .filter(v -> v.getExpiresAt() != null && v.getExpiresAt().isAfter(LocalDateTime.now()))
-                        .orElseThrow(() -> new AppException("Invalid or expired verification token"));
+        if (token == null || token.isBlank()) {
+            throw new AppException("Verification token is required");
+        }
 
-        User user = userRepository.findByEmail(verification.getUserEmail())
-                .orElseThrow(() -> new AppException("User not found"));
+        User user = userRepository.findByVerificationToken(token.trim())
+                .orElseThrow(() -> new AppException("Invalid or expired verification token"));
+
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            return new ApiMessage("Email already verified");
+        }
+        if (user.getVerificationTokenExpiry() == null || user.getVerificationTokenExpiry().isBefore(LocalDateTime.now())) {
+            throw new AppException("Invalid or expired verification token");
+        }
 
         user.setEmailVerified(true);
+        user.setVerificationToken(null);
+        user.setVerificationTokenExpiry(null);
         userRepository.save(user);
-
-        verification.setVerified(true);
-        emailVerificationRepository.save(verification);
 
         return new ApiMessage("Email verified successfully");
     }
 
+    @Transactional
+    public ApiMessage verifyOtp(VerifyOtpRequest req) {
+        User user = userRepository.findByEmail(normalizeEmail(req.email()))
+            .orElseThrow(() -> new AppException("User not found"));
+
+        otpService.verifyOtp(user, req.otp(), req.purpose(), req.purpose() == OtpPurpose.EMAIL_VERIFICATION);
+        return new ApiMessage(switch (req.purpose()) {
+            case EMAIL_VERIFICATION -> "Email verified successfully";
+            case PASSWORD_RESET -> "OTP verified successfully";
+            case PASSWORD_CHANGE -> "Security verification successful";
+            case ADMIN_SENSITIVE_ACTION -> "Admin verification successful";
+        });
+    }
+
+    @Transactional
     public ApiMessage resendEmailVerification(ResendVerificationRequest req) {
-        User user = userRepository.findByEmail(req.email().toLowerCase())
-                .orElseThrow(() -> new AppException("User not found"));
+        User user = userRepository.findByEmail(req.email().toLowerCase()).orElse(null);
+
+        if (user == null) {
+            return new ApiMessage("If the account exists, a verification email has been sent.");
+        }
 
         if (user.getEmailVerified()) {
             return new ApiMessage("Email already verified");
         }
 
-        String token = UUID.randomUUID().toString();
-
-        emailVerificationRepository.save(
-                EmailVerification.builder()
-                        .userEmail(user.getEmail())
-                        .token(token)
-                        .expiresAt(LocalDateTime.now().plusHours(24))
-                        .verified(false)
-                        .createdAt(LocalDateTime.now())
-                        .build()
-        );
-
-        return new ApiMessage("Verification token generated (email send mock for dev)");
+        OtpService.OtpDispatchResult dispatchResult = otpService.sendOtp(user, OtpPurpose.EMAIL_VERIFICATION);
+        return new ApiMessage(buildVerificationMessage(dispatchResult, "OTP sent to your email for verification."));
     }
 
     public ApiMessage sendPhoneVerificationOTP(String email) {
@@ -322,23 +344,39 @@ public class AuthService {
         );
     }
 
+    @Transactional
     public ApiMessage forgotPassword(ForgotPasswordRequest req) {
-        User user = userRepository.findByEmail(req.email().toLowerCase())
-                .orElseThrow(() -> new AppException("User not found"));
+        User user = userRepository.findByEmail(req.email().toLowerCase()).orElse(null);
+        if (user == null || !Boolean.TRUE.equals(user.getEnabled())) {
+            return new ApiMessage("If the account exists, a password reset OTP has been sent.");
+        }
 
-        String resetToken = UUID.randomUUID().toString();
-        passwordResetRepository.save(PasswordReset.builder()
-                .userEmail(user.getEmail())
-                .token(resetToken)
-                .expiresAt(LocalDateTime.now().plusHours(1))
-                .used(false)
-                .createdAt(LocalDateTime.now())
-                .build());
+        otpService.sendOtp(user, OtpPurpose.PASSWORD_RESET);
 
-        return new ApiMessage("Password reset token generated (email send mock for dev)");
+        return new ApiMessage("If the account exists, a password reset OTP has been sent.");
     }
 
+    @Transactional
     public void resetPassword(ResetPasswordRequest req) {
+        if (hasText(req.email()) && hasText(req.otp()) && hasText(req.resolvedPassword())) {
+            resetPasswordWithOtp(req);
+            return;
+        }
+
+        resetPasswordWithLegacyToken(req);
+    }
+
+    private void resetPasswordWithOtp(ResetPasswordRequest req) {
+        User user = userRepository.findByEmail(normalizeEmail(req.email()))
+                .orElseThrow(() -> new AppException("Invalid or expired OTP"));
+
+        otpService.verifyOtp(user, req.otp(), OtpPurpose.PASSWORD_RESET, false);
+
+        user.setPassword(passwordEncoder.encode(req.resolvedPassword()));
+        userRepository.save(user);
+    }
+
+    private void resetPasswordWithLegacyToken(ResetPasswordRequest req) {
         PasswordReset reset = passwordResetRepository.findByTokenAndExpiresAtAfter(req.token(), LocalDateTime.now())
                 .filter(r -> !r.isUsed())
                 .filter(r -> r.getExpiresAt() != null && r.getExpiresAt().isAfter(LocalDateTime.now()))
@@ -347,11 +385,17 @@ public class AuthService {
         User user = userRepository.findByEmail(reset.getUserEmail())
                 .orElseThrow(() -> new AppException("User not found"));
 
-        user.setPassword(passwordEncoder.encode(req.password()));
+        user.setPassword(passwordEncoder.encode(req.resolvedPassword()));
+        clearResetOtp(user);
         userRepository.save(user);
 
         reset.setUsed(true);
         passwordResetRepository.save(reset);
+    }
+
+    private void clearResetOtp(User user) {
+        user.setResetOtp(null);
+        user.setOtpExpiry(null);
     }
 
     private String getUserRole(User user) {
@@ -368,5 +412,39 @@ public class AuthService {
 
     private String normalizePhone(String phoneNumber) {
         return phoneNumber == null ? "" : phoneNumber.replaceAll("\\s+", "");
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private RegisterResponse buildRegisterResponse(User user, OtpService.OtpDispatchResult otpDispatchResult) {
+        String message = buildVerificationMessage(otpDispatchResult, "Registration successful. Please verify the 7-digit OTP sent to your email.");
+        return new RegisterResponse(
+            message,
+            200,
+            true,
+            otpDispatchResult != null && !otpDispatchResult.delivered(),
+            user.getEmail(),
+            shouldExposeOtpPreview(otpDispatchResult) ? otpDispatchResult.otp() : null
+        );
+    }
+
+    private String buildVerificationMessage(OtpService.OtpDispatchResult otpDispatchResult, String deliveredMessage) {
+        if (otpDispatchResult == null || otpDispatchResult.delivered()) {
+            return deliveredMessage;
+        }
+
+        if (shouldExposeOtpPreview(otpDispatchResult)) {
+            return "Registration successful. Email delivery is unavailable in local mode. Use OTP "
+                + otpDispatchResult.otp()
+                + " to verify your account.";
+        }
+
+        return "Registration successful, but we could not send the verification OTP right now. Please use resend OTP to try again.";
+    }
+
+    private boolean shouldExposeOtpPreview(OtpService.OtpDispatchResult otpDispatchResult) {
+        return otpDispatchResult != null && !otpDispatchResult.delivered() && includeOtpInMessages;
     }
 }

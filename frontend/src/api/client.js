@@ -266,6 +266,8 @@ export const authAPI = {
   login: (data) => apiClient.post("/auth/login", data),
   register: (data) => apiClient.post("/auth/register", data),
   refresh: (refreshToken) => apiClient.post("/auth/refresh", { refreshToken }),
+  sendOtp: (data) => apiClient.post("/auth/resend-verification", { email: data.email }),
+  verifyOtp: (data) => apiClient.post("/auth/verify-otp", data),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }),
   resetPassword: (data) => apiClient.post("/auth/reset-password", data),
   verifyEmail: (token) => apiClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`),
@@ -293,6 +295,7 @@ export const publicAPI = {
 export const userAPI = {
   getProfile: () => apiClient.get("/profile"),
   updateProfile: (data) => apiClient.put("/profile", data),
+  requestPasswordChangeOtp: () => apiClient.post("/profile/change-password/request-otp"),
   changePassword: (data) => apiClient.post("/profile/change-password", data),
   getAccount: () => apiClient.get("/user/account"),
   getBookings: () => apiClient.get("/user/bookings"),
@@ -301,7 +304,9 @@ export const userAPI = {
   rescheduleBooking: (bookingId, data) => apiClient.patch(`/user/bookings/${bookingId}/reschedule`, data),
   getNotifications: () => apiClient.get("/user/notifications"),
   markNotificationsRead: () => apiClient.patch("/user/notifications/read-all"),
-  getSlotRecommendations: (params) => apiClient.get("/user/recommendations/slots", { params })
+  getSlotRecommendations: (params) => apiClient.get("/user/recommendations/slots", { params }),
+  joinWaitlist: (slotId) => apiClient.post(`/user/slots/${slotId}/waitlist`),
+  getWaitlist: () => apiClient.get("/user/waitlist")
 };
 
 const notificationEndpoints = {

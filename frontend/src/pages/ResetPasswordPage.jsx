@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { authAPI, unwrapApiMessage } from "../api/client";
+import { authAPI, getErrorMessage, unwrapApiMessage } from "../api/client";
+import { validateConfirmPassword, validatePassword } from "../utils/authValidation";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -22,8 +23,10 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    if (newPassword.length < 8) {
-      setMsg("Password must be at least 8 characters");
+    const passwordError = validatePassword(newPassword);
+    const confirmError = validateConfirmPassword(newPassword, confirmPassword);
+    if (passwordError || confirmError) {
+      setMsg(passwordError || confirmError);
       return;
     }
 
@@ -33,7 +36,7 @@ export default function ResetPasswordPage() {
       setMsg(unwrapApiMessage(response, "Password reset successful!"));
       setSuccess(true);
     } catch (err) {
-      setMsg(err.response?.data?.message || "Reset failed. Please check your token.");
+      setMsg(getErrorMessage(err, "Reset failed. Please check your token."));
     } finally {
       setLoading(false);
     }
@@ -136,9 +139,9 @@ export default function ResetPasswordPage() {
 
             <div className="text-center mt-4">
               <p className="text-muted mb-0">
-                Need a new token?{" "}
+                Prefer OTP-based recovery?{" "}
                 <Link to="/forgot-password" className="text-decoration-none fw-bold text-primary">
-                  Request here
+                  Use forgot password
                 </Link>
               </p>
             </div>

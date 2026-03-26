@@ -1,11 +1,20 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { jsPDF } from "jspdf";
 import api, { certificateAPI, newsAPI, publicAPI, unwrapApiData } from "../api/client";
 import ModalPopup from "../components/ModalPopup";
 import Seo from "../components/Seo";
+import useCurrentTime from "../hooks/useCurrentTime";
+import { getCountdownLabel, getRealtimeStatus, getStatusBadgeClass, isAtCapacity, isSlotBookable } from "../utils/realtimeStatus";
 import { broadcastDataUpdated, subscribeToDataUpdates } from "../utils/dataSync";
 import { usePublicCatalog } from "../context/PublicCatalogContext";
 
 const REPLY_NOTIFICATION_TYPES = new Set(["CONTACT_REPLY", "FEEDBACK_REPLY"]);
+
+const getSlotStartDateTime = (slot) =>
+  slot?.startDateTime || slot?.startDate || slot?.dateTime || slot?.startTime || "";
+
+const getSlotEndDateTime = (slot) =>
+  slot?.endDateTime || slot?.endDate || slot?.endTime || "";
 
 const getNotificationCopy = (notification) => {
   if (notification?.type === "NEWS") {
@@ -42,8 +51,12 @@ export default function UserBookingsPage() {
   const [activeTab, setActiveTab] = useState("bookings");
   const [forms, setForms] = useState({ slotId: "" });
   const [bookingToCancel, setBookingToCancel] = useState(null);
+  const [waitlistEntries, setWaitlistEntries] = useState([]);
+  const [waitlistLoadingId, setWaitlistLoadingId] = useState(null);
+  const [slotCityFilter, setSlotCityFilter] = useState("");
   const dataRequestInFlightRef = useRef(false);
   const slotsRequestInFlightRef = useRef(false);
+  const now = useCurrentTime(1000);
 
   const formatAppointmentTime = (value) => {
     if (!value) {
@@ -66,17 +79,19 @@ export default function UserBookingsPage() {
       setLoading(true);
     }
     try {
-      const [bookingsRes, notificationsRes, profileRes, newsRes, certificatesRes] = await Promise.all([
+      const [bookingsRes, notificationsRes, profileRes, newsRes, certificatesRes, waitlistRes] = await Promise.all([
         api.get("/user/bookings"),
         api.get("/user/notifications"),
         api.get("/profile"),
         newsAPI.getAllNews(0, 10),
-        certificateAPI.getMyCertificates()
+        certificateAPI.getMyCertificates(),
+        api.get("/user/waitlist").catch(() => ({ data: { data: [] } }))
       ]);
 
       setBookings(unwrapApiData(bookingsRes) || []);
       setProfile(unwrapApiData(profileRes) || null);
       setCertificates(unwrapApiData(certificatesRes) || certificatesRes.data || []);
+      setWaitlistEntries(unwrapApiData(waitlistRes) || []);
 
       const baseNotifications = unwrapApiData(notificationsRes) || [];
       const latestNews = unwrapApiData(newsRes) || [];
@@ -120,19 +135,26 @@ export default function UserBookingsPage() {
       slotResponses.forEach((slotResponse, index) => {
         const drive = publicDrives[index];
         (unwrapApiData(slotResponse) || []).forEach((slot) => {
-          const endDate = slot.endDate || slot.endDateTime || slot.endTime;
+          const startDateTime = getSlotStartDateTime(slot);
+          const endDateTime = getSlotEndDateTime(slot);
           slots.push({
             ...slot,
             driveId: drive.id,
             driveTitle: drive.title,
             driveDate: drive.driveDate,
             centerName: drive.center?.name || drive.centerName,
-            endDate
+            centerCity: slot.centerCity || drive.center?.city || drive.centerCity,
+            startDateTime,
+            endDate: endDateTime,
+            endDateTime,
+            slotStatus: slot.slotStatus || getRealtimeStatus(startDateTime, endDateTime)
           });
         });
       });
 
-      setAvailableSlots(slots.filter((slot) => slot.capacity > (slot.bookedCount || 0)));
+      setAvailableSlots(
+        slots.filter((slot) => slot.capacity > (slot.bookedCount || 0) && getRealtimeStatus(slot.startDateTime, slot.endDateTime) !== "EXPIRED")
+      );
     } finally {
       slotsRequestInFlightRef.current = false;
     }
@@ -161,6 +183,20 @@ export default function UserBookingsPage() {
       slotId,
       driveId: selectedSlot?.driveId
     };
+  };
+
+  const downloadReceipt = (booking) => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text("Vaccination Booking Receipt", 20, 20);
+    doc.setFontSize(12);
+    doc.text(`Booking ID: ${booking.id}`, 20, 40);
+    doc.text(`Drive: ${booking.driveName || "-"}`, 20, 50);
+    doc.text(`Center: ${booking.centerName || "-"}`, 20, 60);
+    doc.text(`Slot Time: ${booking.slotTime ? new Date(booking.slotTime).toLocaleString() : "-"}`, 20, 70);
+    doc.text(`Appointment: ${booking.assignedTime ? new Date(booking.assignedTime).toLocaleString() : "-"}`, 20, 80);
+    doc.text(`Status: ${booking.status || "-"}`, 20, 90);
+    doc.save(`booking-receipt-${booking.id}.pdf`);
   };
 
   const bookSlot = async (slotId) => {
@@ -197,6 +233,20 @@ export default function UserBookingsPage() {
     }
   };
 
+  const joinWaitlist = async (slotId) => {
+    try {
+      setWaitlistLoadingId(slotId);
+      const response = await api.post(`/user/slots/${slotId}/waitlist`);
+      const entry = unwrapApiData(response);
+      setWaitlistEntries((current) => [entry, ...current.filter((item) => item.id !== entry.id)]);
+      setMsg("Joined waitlist successfully.");
+    } catch (error) {
+      setMsg(error.response?.data?.message || "Failed to join waitlist.");
+    } finally {
+      setWaitlistLoadingId(null);
+    }
+  };
+
   const getStatusBadge = (status) => {
     const badges = {
       PENDING: "bg-warning text-dark",
@@ -210,6 +260,8 @@ export default function UserBookingsPage() {
   const pendingBookings = bookings.filter((booking) => booking.status === "PENDING");
   const confirmedBookings = bookings.filter((booking) => booking.status === "CONFIRMED");
   const completedBookings = bookings.filter((booking) => booking.status === "COMPLETED");
+  const slotCityOptions = [...new Set(availableSlots.map((slot) => slot.centerCity || slot.drive?.center?.city || "").filter(Boolean))].sort();
+  const filteredAvailableSlots = availableSlots.filter((slot) => !slotCityFilter || (slot.centerCity || slot.drive?.center?.city || "").toLowerCase() === slotCityFilter.toLowerCase());
 
   const getCertificateForBooking = (bookingId) => certificates.find((certificate) => certificate.bookingId === bookingId);
 
@@ -369,6 +421,9 @@ export default function UserBookingsPage() {
                               <i className="bi bi-x-circle"></i>
                             </button>
                           )}
+                          <button className="btn btn-outline-primary btn-sm ms-2" title="Download Receipt" onClick={() => downloadReceipt(booking)}>
+                            <i className="bi bi-file-earmark-pdf"></i>
+                          </button>
                           {booking.status === "COMPLETED" && getCertificateForBooking(booking.id) && (
                             <button className="btn btn-outline-success btn-sm" title="Download Certificate" onClick={() => window.location.href = `/certificates`}>
                               <i className="bi bi-download"></i>
@@ -433,7 +488,14 @@ export default function UserBookingsPage() {
             <span className="badge bg-success">{availableSlots.length} Available</span>
           </div>
           <div className="card-body p-0">
-            {availableSlots.length === 0 ? (
+            <div className="p-3 border-bottom">
+              <label className="form-label mb-1">Filter by city</label>
+              <select className="form-select" value={slotCityFilter} onChange={(event) => setSlotCityFilter(event.target.value)}>
+                <option value="">All cities</option>
+                {slotCityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+              </select>
+            </div>
+            {filteredAvailableSlots.length === 0 ? (
               <div className="empty-state">
                 <i className="bi bi-calendar-x"></i>
                 <h5>No Slots Available</h5>
@@ -446,24 +508,57 @@ export default function UserBookingsPage() {
                     <tr>
                       <th><i className="bi bi-hash"></i> ID</th>
                       <th><i className="bi bi-calendar-event me-1"></i>Drive</th>
-                      <th><i className="bi bi-clock me-1"></i>Time</th>
+                      <th><i className="bi bi-clock me-1"></i>Start</th>
+                      <th><i className="bi bi-clock-history me-1"></i>End</th>
+                      <th><i className="bi bi-broadcast me-1"></i>Status</th>
                       <th><i className="bi bi-building me-1"></i>Center</th>
                       <th><i className="bi bi-people me-1"></i>Capacity</th>
                       <th><i className="bi bi-gear me-1"></i>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {availableSlots.map((slot) => (
+                    {filteredAvailableSlots.map((slot) => (
                       <tr key={slot.id}>
                         <td><strong>#{slot.id}</strong></td>
                         <td>{slot.driveTitle || slot.drive?.title}</td>
-                        <td><small>{slot.dateTime ? new Date(slot.dateTime).toLocaleString() : "-"}</small></td>
-                        <td><small>{slot.centerName || slot.drive?.center?.name}</small></td>
+                        <td><small>{slot.startDateTime ? new Date(slot.startDateTime).toLocaleString() : "-"}</small></td>
+                        <td><small>{slot.endDateTime ? new Date(slot.endDateTime).toLocaleString() : "-"}</small></td>
+                        <td>
+                          <div className="d-flex flex-column gap-1">
+                            <span className={`badge ${getStatusBadgeClass(getRealtimeStatus(slot.startDateTime, slot.endDateTime, now))}`}>
+                              {getRealtimeStatus(slot.startDateTime, slot.endDateTime, now)}
+                            </span>
+                            <small className="text-muted">
+                              {getCountdownLabel(
+                                getRealtimeStatus(slot.startDateTime, slot.endDateTime, now),
+                                slot.startDateTime,
+                                slot.endDateTime,
+                                now
+                              )}
+                            </small>
+                          </div>
+                        </td>
+                        <td>
+                          <small>{slot.centerName || slot.drive?.center?.name}</small>
+                          <div className="text-muted small">{slot.centerCity || slot.drive?.center?.city || "-"}</div>
+                        </td>
                         <td>{(slot.capacity || 0) - (slot.bookedCount || 0)} / {slot.capacity}</td>
                         <td>
-                          <button className="btn btn-primary btn-sm" onClick={() => bookSlot(slot.id)}>
-                            <i className="bi bi-bookmark-plus me-1"></i>Book
-                          </button>
+                          {isSlotBookable(slot, now) ? (
+                            <button className="btn btn-primary btn-sm" onClick={() => bookSlot(slot.id)} disabled={!isSlotBookable(slot, now)}>
+                              <i className="bi bi-bookmark-plus me-1"></i>Book Now
+                            </button>
+                          ) : isAtCapacity(slot) ? (
+                            <button className="btn btn-outline-warning btn-sm" onClick={() => joinWaitlist(slot.id)} disabled={waitlistLoadingId === slot.id}>
+                              <i className="bi bi-hourglass-split me-1"></i>{waitlistLoadingId === slot.id ? "Joining..." : "Join Waitlist"}
+                            </button>
+                          ) : (
+                            <button className="btn btn-secondary btn-sm" disabled>
+                              <i className="bi bi-clock-history me-1"></i>Expired
+                            </button>
+                          )}
+                          {slot.demandLevel === "HIGH_DEMAND" && <div className="text-danger small mt-1">🔥 High Demand</div>}
+                          {slot.almostFull && slot.demandLevel !== "HIGH_DEMAND" && <div className="text-warning small mt-1">Almost Full</div>}
                         </td>
                       </tr>
                     ))}
@@ -471,6 +566,38 @@ export default function UserBookingsPage() {
                 </table>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {waitlistEntries.length > 0 && (
+        <div className="card mt-4">
+          <div className="card-header"><i className="bi bi-hourglass-split me-2"></i>My Waitlist</div>
+          <div className="card-body p-0">
+            <div className="table-responsive">
+              <table className="table table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Drive</th>
+                    <th>Center</th>
+                    <th>Status</th>
+                    <th>Joined</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {waitlistEntries.map((entry) => (
+                    <tr key={entry.id}>
+                      <td>#{entry.id}</td>
+                      <td>{entry.driveName}</td>
+                      <td>{entry.centerName} <small className="text-muted">{entry.centerCity}</small></td>
+                      <td><span className={`badge ${entry.status === "PROMOTED" ? "bg-success" : "bg-warning text-dark"}`}>{entry.status}</span></td>
+                      <td>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

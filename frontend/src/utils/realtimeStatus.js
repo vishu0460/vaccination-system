@@ -1,0 +1,99 @@
+const parseDateValue = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const getRealtimeStatus = (startValue, endValue, nowValue = Date.now()) => {
+  const start = parseDateValue(startValue);
+  const end = parseDateValue(endValue);
+  const now = parseDateValue(nowValue) || new Date();
+
+  if (!start || !end) {
+    return "EXPIRED";
+  }
+  if (now < start) {
+    return "UPCOMING";
+  }
+  if (now > end) {
+    return "EXPIRED";
+  }
+  return "LIVE";
+};
+
+export const getStatusBadgeClass = (status) => {
+  switch (status) {
+    case "LIVE":
+      return "bg-success";
+    case "EXPIRED":
+      return "bg-danger";
+    case "UPCOMING":
+    default:
+      return "bg-primary";
+  }
+};
+
+export const isAtCapacity = (slot) => Number(slot?.bookedCount || 0) >= Number(slot?.capacity || 0);
+
+export const isAvailableFlag = (slot) => {
+  if (typeof slot?.available === "boolean") {
+    return slot.available;
+  }
+  if (typeof slot?.availability === "string") {
+    return slot.availability.toUpperCase() === "AVAILABLE";
+  }
+  return !isAtCapacity(slot);
+};
+
+export const isSlotBookable = (slot, nowValue = Date.now()) => {
+  const status = getRealtimeStatus(
+    slot?.startDateTime || slot?.startDate || slot?.dateTime || slot?.startTime,
+    slot?.endDateTime || slot?.endDate || slot?.endTime,
+    nowValue
+  );
+  return (status === "UPCOMING" || status === "LIVE") && isAvailableFlag(slot) && !isAtCapacity(slot);
+};
+
+export const isDriveBookable = (drive, nowValue = Date.now()) => {
+  const status = getRealtimeStatus(
+    drive?.startDateTime || drive?.startTime,
+    drive?.endDateTime || drive?.endTime,
+    nowValue
+  );
+  const availableSlots = Number(drive?.availableSlots || 0);
+  return (status === "UPCOMING" || status === "LIVE") && availableSlots > 0 && drive?.bookable !== false;
+};
+
+export const formatCountdown = (targetValue, nowValue = Date.now()) => {
+  const target = parseDateValue(targetValue);
+  const now = parseDateValue(nowValue) || new Date();
+
+  if (!target) {
+    return "Expired";
+  }
+
+  const diff = target.getTime() - now.getTime();
+  if (diff <= 0) {
+    return "Expired";
+  }
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+};
+
+export const getCountdownLabel = (status, startValue, endValue, nowValue = Date.now()) => {
+  if (status === "UPCOMING") {
+    return `Starts in: ${formatCountdown(startValue, nowValue)}`;
+  }
+  if (status === "LIVE") {
+    return `Ends in: ${formatCountdown(endValue, nowValue)}`;
+  }
+  return "Expired";
+};

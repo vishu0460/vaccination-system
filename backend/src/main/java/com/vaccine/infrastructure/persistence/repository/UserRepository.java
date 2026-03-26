@@ -12,6 +12,7 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
+    Optional<User> findByVerificationToken(String verificationToken);
     Optional<User> findByPhoneNumber(String phoneNumber);
     boolean existsByEmail(String email);
     @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END FROM users WHERE lower(email) = lower(:email)", nativeQuery = true)

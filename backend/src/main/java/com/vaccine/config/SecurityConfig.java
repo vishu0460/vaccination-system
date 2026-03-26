@@ -55,6 +55,7 @@ public class SecurityConfig {
                 .requestMatchers("/auth/**", "/api/auth/**").permitAll()
                 .requestMatchers("/public/**", "/v1/public/**", "/api/public/**", "/api/v1/public/**").permitAll()
                 .requestMatchers("/health/**", "/v1/health/**", "/api/health/**", "/api/v1/health/**").permitAll()
+                .requestMatchers("/ws/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/contact", "/api/contact").permitAll()
                 .requestMatchers("/reviews/center/**", "/v1/reviews/center/**", "/api/reviews/center/**", "/api/v1/reviews/center/**").permitAll()
                 .requestMatchers("/certificates/verify/**", "/api/certificates/verify/**").permitAll()

@@ -17,7 +17,10 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,11 @@ public class NotificationService implements INotificationService {
 
     private final NotificationRepository notificationRepository;
     private final BookingRepository bookingRepository;
+    private final NotificationRealtimeService notificationRealtimeService;
+    private final ObjectProvider<JavaMailSender> mailSenderProvider;
+
+    @Value("${app.mail.from:noreply@vaccination-system.com}")
+    private String mailFrom;
 
     @Value("${app.notifications.max-retries:5}")
     private int maxRetries;
@@ -197,6 +205,7 @@ public class NotificationService implements INotificationService {
         List<Notification> unreadNotifications = notificationRepository.findByUserEmailAndIsReadFalseOrderByCreatedAtDesc(email);
         unreadNotifications.forEach(this::markAsRead);
         notificationRepository.saveAll(unreadNotifications);
+        notificationRealtimeService.pushUnreadCount(email, 0);
     }
 
     @Override
@@ -206,6 +215,7 @@ public class NotificationService implements INotificationService {
             .orElseThrow(() -> new AppException("Notification not found"));
         markAsRead(notification);
         notificationRepository.save(notification);
+        notificationRealtimeService.pushUnreadCount(email, getUnreadCount(email));
     }
 
     @Override
@@ -213,7 +223,22 @@ public class NotificationService implements INotificationService {
         if (user == null || user.getEmail() == null || user.getEmail().isBlank()) {
             return;
         }
-        log.info("Email delivery prepared for user={} subject={}", user.getEmail(), subject);
+        try {
+            JavaMailSender javaMailSender = mailSenderProvider.getIfAvailable();
+            if (javaMailSender == null) {
+                log.info("Email delivery skipped for user={} because JavaMailSender is not configured", user.getEmail());
+                return;
+            }
+            SimpleMailMessage mail = new SimpleMailMessage();
+            mail.setTo(user.getEmail());
+            mail.setSubject(subject);
+            mail.setText(message);
+            mail.setFrom(mailFrom);
+            javaMailSender.send(mail);
+            log.info("Email delivered to user={} subject={}", user.getEmail(), subject);
+        } catch (Exception ex) {
+            log.warn("Email delivery skipped for user={} subject={} reason={}", user.getEmail(), subject, ex.getMessage());
+        }
     }
 
     @Override
@@ -310,6 +335,14 @@ public class NotificationService implements INotificationService {
             notification.setNextAttemptAt(now);
             notification.setLastError(null);
             notificationRepository.save(notification);
+            long unreadCount = notification.getUser() != null && notification.getUser().getEmail() != null
+                ? notificationRepository.countByUserEmailAndIsReadFalse(notification.getUser().getEmail())
+                : 0L;
+            notificationRealtimeService.pushNotification(
+                notification.getUser() != null ? notification.getUser().getEmail() : null,
+                toNotificationResponse(notification),
+                unreadCount
+            );
             log.info("Notification {} dispatched successfully with type={}", notification.getId(), notification.getType());
         } catch (Exception exception) {
             int retries = (notification.getRetryCount() == null ? 0 : notification.getRetryCount()) + 1;

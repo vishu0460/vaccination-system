@@ -31,6 +31,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -42,12 +44,21 @@ class NotificationServiceTest {
 
     @Mock
     private BookingRepository bookingRepository;
+    @Mock
+    private NotificationRealtimeService notificationRealtimeService;
+    @Mock
+    private ObjectProvider<JavaMailSender> mailSenderProvider;
 
     private NotificationService notificationService;
 
     @BeforeEach
     void setUp() {
-        notificationService = new NotificationService(notificationRepository, bookingRepository);
+        notificationService = new NotificationService(
+            notificationRepository,
+            bookingRepository,
+            notificationRealtimeService,
+            mailSenderProvider
+        );
         ReflectionTestUtils.setField(notificationService, "maxRetries", 3);
         ReflectionTestUtils.setField(notificationService, "dispatchBatchSize", 100);
         ReflectionTestUtils.setField(notificationService, "reconcileWindowDays", 45);

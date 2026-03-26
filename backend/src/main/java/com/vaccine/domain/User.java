@@ -42,6 +42,51 @@ public class User {
     @Builder.Default
     private Boolean emailVerified = false;
 
+    @Column(name = "verification_token", unique = true, length = 120)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String verificationToken;
+
+    @Column(name = "verification_token_expiry")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private LocalDateTime verificationTokenExpiry;
+
+    @Column(name = "reset_otp", length = 255)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String resetOtp;
+
+    @Column(name = "otp_expiry")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private LocalDateTime otpExpiry;
+
+    @Column(name = "otp_hash", length = 255)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String otpHash;
+
+    @Column(name = "otp_attempts", nullable = false)
+    @Builder.Default
+    private Integer otpAttempts = 0;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "otp_purpose", length = 50)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private OtpPurpose otpPurpose;
+
+    @Column(name = "otp_blocked_until")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private LocalDateTime otpBlockedUntil;
+
+    @Column(name = "otp_request_window_start")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private LocalDateTime otpRequestWindowStart;
+
+    @Column(name = "otp_request_count", nullable = false)
+    @Builder.Default
+    private Integer otpRequestCount = 0;
+
+    @Column(name = "otp_last_sent_at")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private LocalDateTime otpLastSentAt;
+
     @Column(name = "failed_login_attempts")
     @Builder.Default
     private Integer failedLoginAttempts = 0;
@@ -131,6 +176,8 @@ public class User {
         if (isSuperAdmin == null) isSuperAdmin = false;
         if (isAdmin == null) isAdmin = false;
         if (failedLoginAttempts == null) failedLoginAttempts = 0;
+        if (otpAttempts == null) otpAttempts = 0;
+        if (otpRequestCount == null) otpRequestCount = 0;
     }
 
     @PreUpdate

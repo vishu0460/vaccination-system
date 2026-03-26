@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { userAPI, unwrapApiData } from '../api/client';
+import { getErrorMessage, unwrapApiData, unwrapApiMessage, userAPI } from '../api/client';
 import Skeleton from '../components/Skeleton';
+import { validateOtp } from '../utils/authValidation';
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
@@ -8,8 +9,26 @@ export default function ProfilePage() {
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState({ fullName: '', age: '' });
-  const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '' });
+  const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', otp: '' });
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [passwordOtpCooldown, setPasswordOtpCooldown] = useState(0);
+  const [passwordOtpExpiry, setPasswordOtpExpiry] = useState(0);
+
+  useEffect(() => {
+    if (passwordOtpCooldown <= 0) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setPasswordOtpCooldown((current) => current - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [passwordOtpCooldown]);
+
+  useEffect(() => {
+    if (passwordOtpExpiry <= 0) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setPasswordOtpExpiry((current) => Math.max(0, current - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [passwordOtpExpiry]);
 
   useEffect(() => {
     fetchProfile();
@@ -42,12 +61,29 @@ export default function ProfilePage() {
 
   const handlePasswordChange = async (e) => {
     e.preventDefault();
+    const otpError = validateOtp(passwordData.otp);
+    if (otpError) {
+      setMessage({ type: 'danger', text: otpError });
+      return;
+    }
     try {
       await userAPI.changePassword(passwordData);
       setMessage({ type: 'success', text: 'Password changed successfully' });
-      setPasswordData({ currentPassword: '', newPassword: '' });
+      setPasswordData({ currentPassword: '', newPassword: '', otp: '' });
+      setPasswordOtpExpiry(0);
     } catch (err) {
-      setMessage({ type: 'danger', text: 'Failed to change password' });
+      setMessage({ type: 'danger', text: getErrorMessage(err, 'Failed to change password') });
+    }
+  };
+
+  const requestPasswordOtp = async () => {
+    try {
+      const response = await userAPI.requestPasswordChangeOtp();
+      setMessage({ type: 'success', text: unwrapApiMessage(response, 'OTP sent to your email for verification.') });
+      setPasswordOtpCooldown(30);
+      setPasswordOtpExpiry(600);
+    } catch (err) {
+      setMessage({ type: 'danger', text: getErrorMessage(err, 'Failed to send OTP') });
     }
   };
 
@@ -144,7 +180,28 @@ export default function ProfilePage() {
                       required
                     />
                   </div>
-                  <button type="submit" className="btn btn-warning">Change Password</button>
+                  <div className="mb-3">
+                    <label className="form-label">7-digit OTP</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={passwordData.otp}
+                      onChange={(e) => setPasswordData({ ...passwordData, otp: e.target.value.replace(/\D/g, '').slice(0, 7) })}
+                      placeholder="Enter OTP sent to your email"
+                      required
+                    />
+                    <small className="text-muted">
+                      {passwordOtpExpiry > 0
+                        ? `OTP expires in ${String(Math.floor(passwordOtpExpiry / 60)).padStart(2, '0')}:${String(passwordOtpExpiry % 60).padStart(2, '0')}`
+                        : 'Request a new OTP before changing your password.'}
+                    </small>
+                  </div>
+                  <div className="d-flex gap-2">
+                    <button type="button" className="btn btn-outline-secondary" disabled={passwordOtpCooldown > 0} onClick={requestPasswordOtp}>
+                      {passwordOtpCooldown > 0 ? `Resend OTP in ${passwordOtpCooldown}s` : 'Send OTP'}
+                    </button>
+                    <button type="submit" className="btn btn-warning">Change Password</button>
+                  </div>
                 </form>
               </div>
             </div>
