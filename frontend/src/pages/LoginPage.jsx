@@ -40,6 +40,7 @@ export default function LoginPage() {
     }
     return nextErrors;
   }, [form.email, form.password]);
+  const isSubmitDisabled = loading || Object.keys(formIsValid).length > 0;
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -134,26 +135,13 @@ export default function LoginPage() {
       </Helmet>
 
       <FormContainer
-        eyebrow="Secure Access"
-        title="Welcome back to a smoother vaccination workflow."
-        description="Sign in to manage bookings, monitor updates, and keep every appointment moving with confidence."
-        helper={(
-          <>
-            <span className="auth-form-kicker">{show2FA ? "Security checkpoint" : "Account access"}</span>
-            <h2 className="auth-form-title">{show2FA ? "Two-factor verification" : "Sign in"}</h2>
-            <p className="auth-form-subtitle">
-              {show2FA
-                ? "Add your final verification step before entering the dashboard."
-                : "Use your registered email to continue into your account."}
-            </p>
-          </>
-        )}
+        eyebrow={show2FA ? "Verification" : "Welcome back"}
+        title={show2FA ? "Two-factor verification" : "Sign in"}
+        description={show2FA ? "Enter the code from your authenticator app." : "Use your email and password to continue."}
         footer={(
-          <>
-            <p className="mb-0">
-              New to VaxZone? <Link to="/register">Create an account</Link>
-            </p>
-          </>
+          <p className="mb-0">
+            Don&apos;t have an account? <Link to="/register">Register</Link>
+          </p>
         )}
       >
         {serverMessage ? (
@@ -165,17 +153,6 @@ export default function LoginPage() {
 
         {!show2FA ? (
           <form className="auth-form-grid" onSubmit={handleSubmit} noValidate>
-            <div className="auth-context-bar">
-              <div className="auth-context-pill">
-                <i className="bi bi-lightning-charge"></i>
-                <span>Fast sign-in</span>
-              </div>
-              <div className="auth-context-pill">
-                <i className="bi bi-shield-check"></i>
-                <span>Protected session</span>
-              </div>
-            </div>
-
             <InputField
               id="login-email"
               label="Email address"
@@ -183,7 +160,7 @@ export default function LoginPage() {
               name="email"
               type="email"
               autoComplete="email"
-              placeholder="name@company.com"
+              placeholder="Enter your email"
               value={form.email}
               error={errors.email || (form.email ? formIsValid.email : "")}
               onChange={(event) => updateField("email", event.target.value)}
@@ -202,61 +179,41 @@ export default function LoginPage() {
               onChange={(event) => updateField("password", event.target.value)}
             />
 
-            <div className="auth-row">
-              <label className="auth-checkbox">
-                <input
-                  type="checkbox"
-                  checked={form.rememberMe}
-                  onChange={(event) => updateField("rememberMe", event.target.checked)}
-                />
-                <span>Remember me for future sessions</span>
-              </label>
-
+            <div className="auth-row auth-row--end">
               <Link to="/forgot-password" className="auth-link-muted">
                 Forgot Password?
               </Link>
             </div>
 
-            <Button type="submit" loading={loading} loadingLabel="Signing you in...">
-              <i className="bi bi-box-arrow-in-right"></i>
-              <span>Sign in</span>
+            <Button type="submit" loading={loading} loadingLabel="Signing in..." disabled={isSubmitDisabled}>
+              <span>Sign In</span>
             </Button>
 
-            <div className="auth-subcard">
-              <div className="auth-subcard__header">
-                <i className="bi bi-envelope-check"></i>
-                <div>
-                  <strong>Email not verified?</strong>
-                  <p>Resend your verification OTP and complete setup securely.</p>
+            {resendEmail ? (
+              <div className="auth-subcard auth-subcard--compact">
+                <div className="auth-subcard__header">
+                  <div>
+                    <strong>Email not verified?</strong>
+                    <p>Resend your verification OTP.</p>
+                  </div>
+                </div>
+                <div className="auth-inline-actions">
+                  <input
+                    className="auth-inline-input"
+                    type="email"
+                    placeholder="Registered email address"
+                    value={resendEmail}
+                    onChange={(event) => setResendEmail(event.target.value)}
+                  />
+                  <button type="button" className="auth-secondary-button" onClick={handleResendVerification}>
+                    Resend
+                  </button>
                 </div>
               </div>
-              <div className="auth-inline-actions">
-                <input
-                  className="auth-inline-input"
-                  type="email"
-                  placeholder="Registered email address"
-                  value={resendEmail}
-                  onChange={(event) => setResendEmail(event.target.value)}
-                />
-                <button type="button" className="auth-secondary-button" onClick={handleResendVerification}>
-                  Resend
-                </button>
-              </div>
-            </div>
+            ) : null}
           </form>
         ) : (
           <form className="auth-form-grid" onSubmit={handleTwoFactorSubmit} noValidate>
-            <div className="auth-context-bar">
-              <div className="auth-context-pill">
-                <i className="bi bi-phone"></i>
-                <span>Authenticator ready</span>
-              </div>
-              <div className="auth-context-pill">
-                <i className="bi bi-lock"></i>
-                <span>Final security step</span>
-              </div>
-            </div>
-
             {twoFactorMessage ? (
               <div className={`auth-alert ${twoFactorMessage.toLowerCase().includes("enter") ? "" : "is-error"}`}>
                 <i className={`bi ${twoFactorMessage.toLowerCase().includes("enter") ? "bi-info-circle" : "bi-exclamation-octagon"}`}></i>
@@ -279,8 +236,7 @@ export default function LoginPage() {
               hint="Use the 6-digit code generated by your authenticator app."
             />
 
-            <Button type="submit" loading={loading} loadingLabel="Verifying code...">
-              <i className="bi bi-patch-check"></i>
+            <Button type="submit" loading={loading} loadingLabel="Verifying code..." disabled={loading || verificationCode.trim().length !== 6}>
               <span>Verify and continue</span>
             </Button>
 

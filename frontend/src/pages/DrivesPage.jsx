@@ -14,13 +14,11 @@ import { usePublicCatalog } from "../context/PublicCatalogContext";
 const EMPTY_FILTERS = {
   city: "",
   date: "",
-  age: "",
   vaccineType: "",
   availability: "",
   slot: ""
 };
 
-const AGE_OPTIONS = ["18+", "45+"];
 const VACCINE_OPTIONS = ["Covishield", "Covaxin", "Others"];
 const AVAILABILITY_OPTIONS = [
   { value: "available", label: "Available" },
@@ -69,7 +67,6 @@ const combineSlotEndDateTime = (slot) => {
 const parseFilters = (searchParams) => ({
   city: searchParams.get("city") || "",
   date: searchParams.get("date") || "",
-  age: searchParams.get("age") || "",
   vaccineType: searchParams.get("vaccineType") || "",
   availability: searchParams.get("availability") || "",
   slot: searchParams.get("slot") || ""
@@ -85,6 +82,7 @@ export default function DrivesPage() {
   const { drives: allDrives, summary, loading, error: catalogError, refreshCatalog } = usePublicCatalog();
   const [viewMode, setViewMode] = useState("grid");
   const [error, setError] = useState("");
+  const [eligibilityNotice, setEligibilityNotice] = useState("");
   const [bookingDrive, setBookingDrive] = useState(null);
   const [bookingSlots, setBookingSlots] = useState([]);
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -111,8 +109,6 @@ export default function DrivesPage() {
     const driveVaccine = String(drive.vaccineType || "").toLowerCase();
     const driveDate = drive.driveDate || drive.date;
     const driveAvailableSlots = drive.availableSlots ?? drive.totalSlots ?? 0;
-    const driveMinAge = Number(drive.minAge ?? 0);
-    const driveMaxAge = Number(drive.maxAge ?? 200);
     const driveStartTime = String(drive.startTime || "").toLowerCase();
 
     if (normalizedCity && !driveCity.includes(normalizedCity)) {
@@ -120,14 +116,6 @@ export default function DrivesPage() {
     }
 
     if (nextFilters.date && driveDate !== nextFilters.date) {
-      return false;
-    }
-
-    if (nextFilters.age === "18+" && !(driveMinAge <= 18 && driveMaxAge >= 18)) {
-      return false;
-    }
-
-    if (nextFilters.age === "45+" && !(driveMinAge <= 45 && driveMaxAge >= 45)) {
       return false;
     }
 
@@ -164,6 +152,52 @@ export default function DrivesPage() {
 
     return true;
   }, []);
+
+  const getDriveEligibility = useCallback((drive) => {
+    if (!isAuthenticated()) {
+      return {
+        isEligible: null,
+        eligibilityReason: "",
+        eligibilityLabel: ""
+      };
+    }
+
+    const userAge = Number(userProfile?.age);
+    if (!Number.isFinite(userAge) || userAge <= 0) {
+      return {
+        isEligible: false,
+        eligibilityReason: "Add your age to your profile to check eligibility and book this drive.",
+        eligibilityLabel: "Profile age required"
+      };
+    }
+
+    const minAge = Number(drive.minAge ?? 0);
+    const maxAge = Number(drive.maxAge ?? 200);
+    const eligible = userAge >= minAge && userAge <= maxAge;
+
+    return {
+      isEligible: eligible,
+      eligibilityReason: eligible ? "" : "You are not eligible for this drive",
+      eligibilityLabel: eligible ? "Eligible" : "Not eligible"
+    };
+  }, [userProfile?.age]);
+
+  const sortedDrives = useMemo(() => {
+    const enrichedDrives = drives.map((drive) => ({
+      ...drive,
+      ...getDriveEligibility(drive)
+    }));
+
+    if (!isAuthenticated()) {
+      return enrichedDrives;
+    }
+
+    return [...enrichedDrives].sort((left, right) => {
+      const leftRank = left.isEligible === true ? 0 : left.isEligible === false ? 1 : 2;
+      const rightRank = right.isEligible === true ? 0 : right.isEligible === false ? 1 : 2;
+      return leftRank - rightRank;
+    });
+  }, [drives, getDriveEligibility]);
 
   useEffect(() => {
     const nextFilters = parseFilters(searchParams);
@@ -202,9 +236,6 @@ export default function DrivesPage() {
     if (debouncedFilters.date) {
       nextParams.set("date", debouncedFilters.date);
     }
-    if (debouncedFilters.age) {
-      nextParams.set("age", debouncedFilters.age);
-    }
     if (debouncedFilters.vaccineType) {
       nextParams.set("vaccineType", debouncedFilters.vaccineType);
     }
@@ -231,11 +262,11 @@ export default function DrivesPage() {
 
   useEffect(() => {
     const bookId = searchParams.get("book");
-    if (!bookId || drives.length === 0) {
+    if (!bookId || sortedDrives.length === 0) {
       return;
     }
 
-    const drive = drives.find((item) => item.id === Number.parseInt(bookId, 10));
+    const drive = sortedDrives.find((item) => item.id === Number.parseInt(bookId, 10));
     if (!drive) {
       return;
     }
@@ -246,7 +277,7 @@ export default function DrivesPage() {
     }
 
     openBookingFlow(drive);
-  }, [searchParams, drives, navigate]);
+  }, [searchParams, sortedDrives, navigate]);
 
   const normalizeSlot = (slot, drive) => ({
     ...slot,
@@ -263,6 +294,11 @@ export default function DrivesPage() {
   const openBookingFlow = async (drive) => {
     if (!isAuthenticated()) {
       navigate(`/login?redirect=${encodeURIComponent(`/drives?book=${drive.id}`)}`);
+      return;
+    }
+
+    if (drive.isEligible === false) {
+      setEligibilityNotice(drive.eligibilityReason || "You are not eligible for this drive.");
       return;
     }
 
@@ -379,7 +415,6 @@ export default function DrivesPage() {
     const entries = [
       filters.city ? { key: "city", label: `City: ${filters.city}` } : null,
       filters.date ? { key: "date", label: `Date: ${filters.date}` } : null,
-      filters.age ? { key: "age", label: `Age: ${filters.age}` } : null,
       filters.vaccineType ? { key: "vaccineType", label: `Vaccine: ${filters.vaccineType}` } : null,
       filters.availability ? {
         key: "availability",
@@ -392,6 +427,18 @@ export default function DrivesPage() {
   }, [filters]);
 
   const renderBookButton = (drive) => {
+    if (drive.isEligible === false) {
+      return (
+        <button className="btn btn-secondary w-100" disabled title={drive.eligibilityReason}>
+          {drive.eligibilityLabel === "Profile age required" ? (
+            <><i className="bi bi-person-lines-fill me-2"></i>Update Profile</>
+          ) : (
+            <><i className="bi bi-slash-circle me-2"></i>Not Eligible</>
+          )}
+        </button>
+      );
+    }
+
     const realtimeStatus = getRealtimeStatus(drive.startDateTime, drive.endDateTime, now);
     if (!drive.hasSlots || drive.availableSlots <= 0) {
       return (
@@ -441,6 +488,13 @@ export default function DrivesPage() {
       </section>
 
       <div className="container pb-5">
+        {eligibilityNotice ? (
+          <div className="alert alert-warning d-flex justify-content-between align-items-start gap-3" role="alert">
+            <span>{eligibilityNotice}</span>
+            <button type="button" className="btn-close" aria-label="Close" onClick={() => setEligibilityNotice("")}></button>
+          </div>
+        ) : null}
+
         <div className="row g-3 mb-4">
           <div className="col-md-4">
             <div className="stats-card">
@@ -469,6 +523,11 @@ export default function DrivesPage() {
                 <span className="drive-filters__eyebrow">Live Search</span>
                 <h4 className="drive-filters__title">Refine drives instantly</h4>
                 <p className="drive-filters__copy mb-0">Filters apply automatically as you type or choose options.</p>
+                {isAuthenticated() && Number.isFinite(Number(userProfile?.age)) && Number(userProfile?.age) > 0 ? (
+                  <p className="small text-muted mt-2 mb-0">Showing drives prioritized for age {userProfile.age}.</p>
+                ) : isAuthenticated() ? (
+                  <p className="small text-muted mt-2 mb-0">Add your age to your profile to unlock automatic eligibility filtering.</p>
+                ) : null}
               </div>
               <button className="btn btn-outline-secondary" onClick={clearFilters} disabled={loading}>
                 <i className="bi bi-arrow-counterclockwise me-2"></i>Clear filters
@@ -500,20 +559,6 @@ export default function DrivesPage() {
                     onChange={(event) => setFilters((current) => ({ ...current, date: event.target.value }))}
                   />
                 </div>
-              </div>
-
-              <div className="drive-filter-field">
-                <label className="form-label">Age Group</label>
-                <select
-                  className="form-select"
-                  value={filters.age}
-                  onChange={(event) => setFilters((current) => ({ ...current, age: event.target.value }))}
-                >
-                  <option value="">All age groups</option>
-                  {AGE_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
               </div>
 
               <div className="drive-filter-field">
@@ -593,11 +638,11 @@ export default function DrivesPage() {
             <p>{error}</p>
             <button className="btn btn-primary" onClick={refreshCatalog}>Retry</button>
           </div>
-        ) : drives.length > 0 ? (
+        ) : sortedDrives.length > 0 ? (
           <>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <p className="text-muted mb-0">
-                Showing <strong>{drives.length}</strong> drive{drives.length !== 1 ? "s" : ""}
+                Showing <strong>{sortedDrives.length}</strong> drive{sortedDrives.length !== 1 ? "s" : ""}
               </p>
               <div className="btn-group">
                 <button
@@ -616,13 +661,15 @@ export default function DrivesPage() {
             </div>
 
             <div className={viewMode === "grid" ? "row g-4" : "d-flex flex-column gap-3"}>
-              {drives.map((drive, index) => (
+              {sortedDrives.map((drive, index) => (
                 <div key={drive.id} className={`${viewMode === "grid" ? "col-md-6 col-lg-4" : ""} fade-in stagger-${(index % 6) + 1}`}>
-                  <div className={`drive-card h-100 ${viewMode === "list" ? "flex-row" : ""}`}>
+                  <div className={`drive-card h-100 ${viewMode === "list" ? "flex-row" : ""} ${drive.isEligible === false ? "drive-card--ineligible" : ""}`}>
                     {viewMode === "grid" ? (
                       <div className="card-header d-flex justify-content-between align-items-center">
                         <h5 className="mb-0 fs-6">{drive.name}</h5>
-                        {!drive.hasSlots ? (
+                        {drive.isEligible === false ? (
+                          <span className="badge bg-secondary-subtle text-secondary-emphasis">{drive.eligibilityLabel}</span>
+                        ) : !drive.hasSlots ? (
                           <span className="badge bg-warning">No Slots</span>
                         ) : isDriveBookable(drive, now) ? (
                           <span className="badge bg-white text-primary">{drive.availableSlots} left</span>
@@ -641,7 +688,9 @@ export default function DrivesPage() {
                         {viewMode === "list" ? (
                           <div className="d-flex justify-content-between align-items-start mb-2">
                             <h5 className="fw-bold mb-0">{drive.name}</h5>
-                            {!drive.hasSlots ? (
+                            {drive.isEligible === false ? (
+                              <span className="badge bg-secondary-subtle text-secondary-emphasis">{drive.eligibilityLabel}</span>
+                            ) : !drive.hasSlots ? (
                               <span className="badge bg-warning">No Slots</span>
                             ) : isDriveBookable(drive, now) ? (
                               <span className="badge bg-success">{drive.availableSlots} slots left</span>
@@ -713,6 +762,12 @@ export default function DrivesPage() {
                             ></div>
                           </div>
                         </div>
+                        {drive.isEligible === false ? (
+                          <div className="drive-eligibility-note">
+                            <i className="bi bi-info-circle"></i>
+                            <span>{drive.eligibilityReason}</span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <div className="card-footer border-top-0 pt-0">

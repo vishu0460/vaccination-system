@@ -37,11 +37,12 @@ export default function RegisterPage() {
   const [successMessage, setSuccessMessage] = useState("");
 
   const passwordStrength = useMemo(() => getPasswordStrength(form.password), [form.password]);
+  const phoneValidationValue = form.phoneNumber ? `+91${form.phoneNumber}` : "";
   const validationErrors = useMemo(() => {
     const nextErrors = {
       fullName: validateFullName(form.fullName),
       email: validateEmail(form.email),
-      phoneNumber: validatePhone(form.phoneNumber),
+      phoneNumber: validatePhone(phoneValidationValue),
       age: validateAge(form.age),
       password: validatePassword(form.password),
       confirmPassword: validateConfirmPassword(form.password, form.confirmPassword)
@@ -52,7 +53,7 @@ export default function RegisterPage() {
     }
 
     return nextErrors;
-  }, [form]);
+  }, [form, phoneValidationValue]);
 
   const hasValidationIssues = Object.values(validationErrors).some(Boolean);
 
@@ -99,7 +100,7 @@ export default function RegisterPage() {
       const response = await authAPI.register({
         fullName: form.fullName.trim(),
         email: form.email.trim(),
-        phoneNumber: form.phoneNumber.replace(/\s+/g, ""),
+        phoneNumber: `+91${form.phoneNumber.replace(/\s+/g, "")}`,
         password: form.password,
         age: Number.parseInt(form.age, 10)
       });
@@ -120,13 +121,16 @@ export default function RegisterPage() {
     }
   };
 
-  const strengthToneClass = passwordStrength.score >= 90
-    ? "is-excellent"
-    : passwordStrength.score >= 70
-      ? "is-strong"
-      : passwordStrength.score >= 50
-        ? "is-fair"
-        : "is-weak";
+  const passwordStrengthLabel = passwordStrength.score >= 80
+    ? "Strong"
+    : passwordStrength.score >= 50
+      ? "Medium"
+      : "Weak";
+  const strengthToneClass = passwordStrengthLabel === "Strong"
+    ? "is-strong"
+    : passwordStrengthLabel === "Medium"
+      ? "is-fair"
+      : "is-weak";
 
   return (
     <>
@@ -139,18 +143,9 @@ export default function RegisterPage() {
       </Helmet>
 
       <FormContainer
-        eyebrow="New Account"
-        title="Create a trusted account in minutes."
-        description="Set up your VaxZone profile with strong credentials, instant validation, and a polished onboarding flow built for real users."
-        helper={(
-          <>
-            <span className="auth-form-kicker">New workspace identity</span>
-            <h2 className="auth-form-title">Create your account</h2>
-            <p className="auth-form-subtitle">
-              Enter your details to unlock bookings, certificates, and notifications in one secure place.
-            </p>
-          </>
-        )}
+        eyebrow="Create account"
+        title="Create your account"
+        description="Set up your details to start booking and managing vaccinations."
         footer={(
           <p className="mb-0">
             Already have an account? <Link to="/login">Sign in</Link>
@@ -172,24 +167,13 @@ export default function RegisterPage() {
         ) : null}
 
         <form className="auth-form-grid" onSubmit={handleSubmit} noValidate>
-          <div className="auth-context-bar">
-            <div className="auth-context-pill">
-              <i className="bi bi-person-badge"></i>
-              <span>Professional onboarding</span>
-            </div>
-            <div className="auth-context-pill">
-              <i className="bi bi-patch-check"></i>
-              <span>Live validation</span>
-            </div>
-          </div>
-
           <InputField
             id="register-full-name"
             label="Full name"
             icon="bi bi-person"
             name="fullName"
             autoComplete="name"
-            placeholder="Aarav Sharma"
+            placeholder="Enter your full name"
             value={form.fullName}
             error={errors.fullName || (form.fullName ? validationErrors.fullName : "")}
             onChange={(event) => updateField("fullName", event.target.value)}
@@ -202,7 +186,7 @@ export default function RegisterPage() {
             name="email"
             type="email"
             autoComplete="email"
-            placeholder="name@company.com"
+            placeholder="Enter your email"
             value={form.email}
             error={errors.email || (form.email ? validationErrors.email : "")}
             onChange={(event) => updateField("email", event.target.value)}
@@ -211,15 +195,16 @@ export default function RegisterPage() {
           <InputField
             id="register-phone"
             label="Phone number"
-            icon="bi bi-phone"
             name="phoneNumber"
             type="tel"
             autoComplete="tel"
-            placeholder="+91 9876543210"
+            inputMode="numeric"
+            prefix="+91"
+            placeholder="Enter phone number"
             value={form.phoneNumber}
             error={errors.phoneNumber || (form.phoneNumber ? validationErrors.phoneNumber : "")}
-            hint="Include country code for the most reliable verification flow."
-            onChange={(event) => updateField("phoneNumber", event.target.value)}
+            hint="Include country code for reliable verification"
+            onChange={(event) => updateField("phoneNumber", event.target.value.replace(/\D/g, "").slice(0, 10))}
           />
 
           <InputField
@@ -231,10 +216,10 @@ export default function RegisterPage() {
             min="1"
             max="120"
             inputMode="numeric"
-            placeholder="25"
+            placeholder="Enter your age"
             value={form.age}
             error={errors.age || (form.age ? validationErrors.age : "")}
-            hint="Your age helps us filter eligible vaccination drives."
+            hint="Used to filter eligible vaccination drives"
             onChange={(event) => updateField("age", event.target.value)}
           />
 
@@ -254,17 +239,17 @@ export default function RegisterPage() {
           <div className="auth-strength">
             <div className="auth-strength__meta">
               <span>Password strength</span>
-              <strong>{passwordStrength.label}</strong>
+              <strong>{passwordStrengthLabel}</strong>
             </div>
             <div className={`auth-strength__bar ${strengthToneClass}`}>
               <span style={{ width: `${Math.max(passwordStrength.score, 8)}%` }}></span>
             </div>
             <div className="auth-strength__checks">
-              <span className={passwordStrength.checks.length ? "is-passed" : ""}>8+ chars</span>
-              <span className={passwordStrength.checks.uppercase ? "is-passed" : ""}>Uppercase</span>
-              <span className={passwordStrength.checks.lowercase ? "is-passed" : ""}>Lowercase</span>
+              <span className={passwordStrength.checks.length ? "is-passed" : ""}>8+ characters</span>
+              <span className={passwordStrength.checks.uppercase ? "is-passed" : ""}>Uppercase letter</span>
+              <span className={passwordStrength.checks.lowercase ? "is-passed" : ""}>Lowercase letter</span>
               <span className={passwordStrength.checks.number ? "is-passed" : ""}>Number</span>
-              <span className={passwordStrength.checks.special ? "is-passed" : ""}>Special</span>
+              <span className={passwordStrength.checks.special ? "is-passed" : ""}>Special character</span>
             </div>
           </div>
 
@@ -294,8 +279,7 @@ export default function RegisterPage() {
           {errors.acceptedTerms ? <p className="auth-field-error">{errors.acceptedTerms}</p> : null}
 
           <Button type="submit" loading={loading} loadingLabel="Creating account..." disabled={loading || hasValidationIssues}>
-            <i className="bi bi-person-plus"></i>
-            <span>Create account</span>
+            <span>Create Account</span>
           </Button>
         </form>
       </FormContainer>

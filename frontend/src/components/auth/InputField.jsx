@@ -4,6 +4,7 @@ export default function InputField({
   id,
   label,
   icon,
+  prefix,
   hint,
   error,
   className = "",
@@ -19,9 +20,10 @@ export default function InputField({
             <i className={icon}></i>
           </span>
         ) : null}
+        {prefix ? <span className="auth-input-prefix">{prefix}</span> : null}
         <input
           id={id}
-          className={`auth-input ${icon ? "has-icon" : ""} ${inputClassName}`.trim()}
+          className={`auth-input ${icon ? "has-icon" : ""} ${prefix ? "has-prefix" : ""} ${inputClassName}`.trim()}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
           {...props}
