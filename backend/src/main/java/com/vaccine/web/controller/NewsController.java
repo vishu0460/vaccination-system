@@ -26,7 +26,7 @@ public class NewsController {
         this.newsService = newsService;
     }
 
-    @GetMapping("/admin/news")
+    @GetMapping({"/admin/news", "/api/admin/news"})
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Page<NewsResponse>>> getAllNewsForAdmin(
             @RequestParam(defaultValue = "0") int page,
@@ -39,20 +39,20 @@ public class NewsController {
         return ResponseEntity.ok(ApiResponse.success(newsPage));
     }
 
-    @GetMapping("/public/news")
+    @GetMapping({"/public/news", "/api/public/news"})
     public ResponseEntity<ApiResponse<java.util.List<NewsResponse>>> getActiveNews() {
         log.info("Fetching public news feed");
         return ResponseEntity.ok(ApiResponse.success(newsService.getPublicNews()));
     }
 
-    @GetMapping("/public/news/{id}")
+    @GetMapping({"/public/news/{id}", "/api/public/news/{id}"})
     public ResponseEntity<ApiResponse<NewsResponse>> getNews(@PathVariable Long id) {
         log.info("Fetching news ID={}", id);
         NewsResponse news = newsService.getNewsById(id);
         return ResponseEntity.ok(ApiResponse.success(news));
     }
 
-    @PostMapping({"/admin/news", "/news"})
+    @PostMapping({"/admin/news", "/news", "/api/admin/news", "/api/news"})
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<NewsResponse>> createNews(@Valid @RequestBody NewsRequest request,
                                                     Authentication authentication) {
@@ -64,7 +64,7 @@ public class NewsController {
         return ResponseEntity.status(201).body(ApiResponse.success(news, "News created successfully"));
     }
 
-    @PutMapping({"/admin/news/{id}", "/news/{id}"})
+    @PutMapping({"/admin/news/{id}", "/news/{id}", "/api/admin/news/{id}", "/api/news/{id}"})
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<NewsResponse>> updateNews(@PathVariable Long id, @Valid @RequestBody NewsRequest request, Authentication authentication) {
         log.info("Updating news ID={}, title={}", id, request.title());
@@ -72,7 +72,7 @@ public class NewsController {
         return ResponseEntity.ok(ApiResponse.success(news, "News updated successfully"));
     }
 
-    @DeleteMapping({"/admin/news/{id}", "/news/{id}"})
+    @DeleteMapping({"/admin/news/{id}", "/news/{id}", "/api/admin/news/{id}", "/api/news/{id}"})
     @PreAuthorize("hasRole('ADMIN') or hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteNews(@PathVariable Long id, Authentication authentication) {
         log.info("Deleting news ID={}", id);

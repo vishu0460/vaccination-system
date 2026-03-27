@@ -14,7 +14,7 @@ import {
 } from "../utils/authValidation";
 
 const RESEND_SECONDS = 30;
-const OTP_EXPIRY_SECONDS = 600;
+const OTP_EXPIRY_SECONDS = 300;
 
 export default function ForgotPasswordPage() {
   const [step, setStep] = useState(1);

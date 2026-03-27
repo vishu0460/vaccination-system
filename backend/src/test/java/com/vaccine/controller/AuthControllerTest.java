@@ -68,7 +68,7 @@ class AuthControllerTest {
         );
 
         when(authService.register(any(), any()))
-                .thenReturn(new RegisterResponse("Registration successful. You can log in now.", 200, false, false, "test@example.com", null));
+                .thenReturn(new RegisterResponse("Registration successful. You can log in now.", 200, false, false, "test@example.com", null, true, null, null, 0));
 
         mockMvc.perform(post("/auth/register")
                         .with(csrf())

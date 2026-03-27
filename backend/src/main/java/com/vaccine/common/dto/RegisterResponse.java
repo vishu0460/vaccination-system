@@ -6,5 +6,9 @@ public record RegisterResponse(
     boolean requiresVerification,
     boolean emailDeliveryFailed,
     String verificationEmail,
-    String otpPreview
+    String otpPreview,
+    boolean otpSent,
+    String fallbackOtp,
+    String devOtp,
+    long otpExpiresInSeconds
 ) {}

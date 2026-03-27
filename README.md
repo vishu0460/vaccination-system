@@ -141,6 +141,31 @@ Copy `.env.example` to `.env` and set the values you need.
 - Example: `DB_PASSWORD=your-runtime-password ./scripts/mysql-backup.sh`
 - The script creates compressed dumps in `./backups/mysql` and prunes backups older than `BACKUP_RETENTION_DAYS` (default `14`).
 
+### H2 to MySQL Migration
+
+- Use `migrate-db.ps1` on Windows or `migrate-db.sh` on Unix-like systems.
+- The migration tool exports from the H2 URL stored in the repo-local `.env`, then imports into MySQL using only the current shell's `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`.
+- Generated files are written under `backups/db-migration/` and are ignored by Git.
+- Safety checks:
+  - the tool refuses to run unless the source `.env` still points at H2
+  - the tool refuses to overwrite a non-empty MySQL target unless `ALLOW_TARGET_RESET=true`
+  - MySQL credentials are never written to source-controlled config
+
+Example:
+
+```powershell
+$env:DB_URL="jdbc:mysql://localhost:3306/vaccination_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
+$env:DB_USERNAME="your_mysql_user"
+$env:DB_PASSWORD="your_mysql_password"
+./migrate-db.ps1
+```
+
+Optional backend start after a successful import:
+
+```powershell
+./migrate-db.ps1 -StartBackend
+```
+
 ## Deployment
 
 ### Production Checklist

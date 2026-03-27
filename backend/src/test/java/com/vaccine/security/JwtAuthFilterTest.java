@@ -1,5 +1,6 @@
 package com.vaccine.security;
 
+import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,13 +23,16 @@ class JwtAuthFilterTest {
     private CustomUserDetailsService customUserDetailsService;
 
     @Mock
+    private UserRepository userRepository;
+
+    @Mock
     private HttpServletRequest request;
 
     private TestJwtAuthFilter filter;
 
     @BeforeEach
     void setUp() {
-        filter = new TestJwtAuthFilter(jwtService, customUserDetailsService);
+        filter = new TestJwtAuthFilter(jwtService, customUserDetailsService, userRepository);
     }
 
     @Test
@@ -64,8 +68,8 @@ class JwtAuthFilterTest {
     }
 
     private static class TestJwtAuthFilter extends JwtAuthFilter {
-        TestJwtAuthFilter(JwtService jwtService, CustomUserDetailsService customUserDetailsService) {
-            super(jwtService, customUserDetailsService);
+        TestJwtAuthFilter(JwtService jwtService, CustomUserDetailsService customUserDetailsService, UserRepository userRepository) {
+            super(jwtService, customUserDetailsService, userRepository);
         }
 
         boolean exposedShouldNotFilter(HttpServletRequest request) {

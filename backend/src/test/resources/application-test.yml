@@ -21,10 +21,6 @@ spring:
     init:
       mode: never
 
-server:
-  servlet:
-    context-path: /api
-
 security:
   jwt:
     issuer: test-issuer
@@ -50,3 +46,4 @@ app:
     base-url: http://localhost:5173
   dev:
     auto-verify-email: true
+    include-otp-in-messages: true

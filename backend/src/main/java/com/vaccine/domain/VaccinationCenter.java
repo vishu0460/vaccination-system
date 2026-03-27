@@ -47,16 +47,38 @@ public class VaccinationCenter {
     @Column(name = "working_hours")
     private String workingHours;
 
+    @Column(name = "daily_capacity")
     private Integer dailyCapacity;
 
     @Column(name = "admin_id")
     private Long adminId;
+
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
     @Column(name = "deleted_by", length = 120)
     private String deletedBy;
+
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
+        if (dailyCapacity == null) {
+            dailyCapacity = 100;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 
     public boolean isDeleted() {
         return deletedAt != null;

@@ -31,23 +31,29 @@ public class Slot {
     @Builder.Default
     private List<Booking> bookings = new ArrayList<>();
 
-    @Column(nullable = false)
+    @Column(name = "date_time", nullable = false)
     private LocalDateTime dateTime;
 
     @Column(nullable = false)
     private Integer capacity;
 
-    @Column(nullable = false)
+    @Column(name = "booked_count", nullable = false)
     private Integer bookedCount;
 
-    @Column(nullable = false)
+    @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
 
-    @Column(nullable = false)
+    @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
     @Column(name = "admin_id")
     private Long adminId;
+
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
@@ -57,7 +63,17 @@ public class Slot {
 
     @PrePersist
     protected void onCreate() {
-        bookedCount = 0;
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
+        if (bookedCount == null) {
+            bookedCount = 0;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 
     public boolean isDeleted() {

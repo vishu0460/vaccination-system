@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: vaccination-backend
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   config:
@@ -20,6 +22,9 @@ spring:
           auth: true
           starttls:
             enable: true
+          connectiontimeout: ${MAIL_CONNECTION_TIMEOUT_MS:5000}
+          timeout: ${MAIL_TIMEOUT_MS:5000}
+          writetimeout: ${MAIL_WRITE_TIMEOUT_MS:5000}
 
 server:
   port: 8080
@@ -39,6 +44,7 @@ app:
     base-url: ${APP_BASE_URL:http://localhost:5174}
   dev:
     auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:false}
+    include-otp-in-messages: ${DEV_INCLUDE_OTP_IN_MESSAGES:false}
   seed:
     enabled: ${APP_SEED_ENABLED:false}
   notifications:
@@ -65,9 +71,7 @@ logging:
     com.vaccine.security: INFO
     org.springframework.web: WARN
   file:
-    name: ${LOG_FILE_PATH:../Logs/application.log}
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    name: ${LOG_FILE_PATH:../logs/app.log}
 
 security:
   jwt:
@@ -85,7 +89,7 @@ security:
     max-attempts: 5
     lock-minutes: 15
   otp:
-    expiry-minutes: ${OTP_EXPIRY_MINUTES:10}
+    expiry-minutes: ${OTP_EXPIRY_MINUTES:5}
     max-attempts: ${OTP_MAX_ATTEMPTS:5}
     block-minutes: ${OTP_BLOCK_MINUTES:15}
     max-requests-per-minute: ${OTP_MAX_REQUESTS_PER_MINUTE:3}

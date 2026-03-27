@@ -12,7 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping({"/auth"})
+@RequestMapping({"/auth", "/api/auth"})
 public class AuthController {
 
     private static final Logger log = LoggerFactory.getLogger(AuthController.class);
@@ -49,7 +49,12 @@ public class AuthController {
     }
 
     @PostMapping("/resend-verification")
-    public ResponseEntity<ApiMessage> resendVerification(@Valid @RequestBody ResendVerificationRequest req) {
+    public ResponseEntity<OtpDeliveryResponse> resendVerification(@Valid @RequestBody ResendVerificationRequest req) {
+        return ResponseEntity.ok(authService.resendEmailVerification(req));
+    }
+
+    @PostMapping("/resend-otp")
+    public ResponseEntity<OtpDeliveryResponse> resendOtp(@Valid @RequestBody ResendVerificationRequest req) {
         return ResponseEntity.ok(authService.resendEmailVerification(req));
     }
 
@@ -72,7 +77,7 @@ public class AuthController {
 
     // Phone verification endpoints
     @PostMapping("/phone/send-otp")
-    public ResponseEntity<ApiMessage> sendPhoneOTP(@RequestParam String email) {
+    public ResponseEntity<OtpDeliveryResponse> sendPhoneOTP(@RequestParam String email) {
         return ResponseEntity.ok(authService.sendPhoneVerificationOTP(email));
     }
 

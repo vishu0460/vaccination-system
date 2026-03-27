@@ -1,4 +1,6 @@
 spring:
+  application:
+    name: vaccination-backend
   lifecycle:
     timeout-per-shutdown-phase: 20s
   datasource:
@@ -57,7 +59,6 @@ server:
   shutdown: graceful
   forward-headers-strategy: framework
   servlet:
-    context-path: /api
     encoding:
       charset: UTF-8
       enabled: true
@@ -91,6 +92,7 @@ app:
     base-url: ${APP_BASE_URL:https://yourdomain.com}
   dev:
     auto-verify-email: false
+    include-otp-in-messages: false
   
   # SMS Configuration (Twilio) - Production
   sms:
@@ -115,9 +117,5 @@ logging:
   level:
     root: INFO
     com.vaccine: INFO
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"
   file:
-    name: ${LOG_FILE_PATH:../Logs/application.log}
-    max-size: 10MB
-    max-history: 30
+    name: ${LOG_FILE_PATH:../logs/app.log}

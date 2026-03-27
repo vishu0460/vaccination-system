@@ -23,6 +23,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import com.vaccine.security.JwtAuthFilter;
 import com.vaccine.security.CustomUserDetailsService;
 import com.vaccine.config.RateLimitFilter;
+import com.vaccine.logging.RequestTracingFilter;
 import com.vaccine.security.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -42,8 +43,10 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtFilter, RateLimitFilter rateLimitFilter,
+                                           RequestTracingFilter requestTracingFilter,
                                            RestAuthenticationEntryPoint restAuthenticationEntryPoint) throws Exception {
         http
+            .addFilterBefore(requestTracingFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
             .csrf(csrf -> csrf.disable())
@@ -82,7 +85,7 @@ public class SecurityConfig {
         if (origins.contains("*")) {
             configuration.setAllowedOriginPatterns(List.of("*"));
         } else {
-            configuration.setAllowedOrigins(origins);
+            configuration.setAllowedOriginPatterns(origins);
         }
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));

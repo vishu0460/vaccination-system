@@ -72,27 +72,53 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (path == null || path.isBlank()) {
             path = request.getRequestURI();
         }
-        
-        String[] publicPaths = {
-            "/health", "/api/health", "/api/health/",
-            "/v1/health",
-            "/auth/", "/api/auth/",
-            "/public/", "/v1/public/", "/api/public/",
-            "/contact/", "/api/contact/", "/news/", "/api/news/", "/reviews/", "/api/reviews/", 
-            "/api/feedback/",
-            "/certificates/verify/", "/reviews/center/",
-            "/v3/api-docs/", "/swagger-ui/", "/h2-console/",
+
+        String[] exactPublicPaths = {
+            "/",
             "/error",
-            "/", "/robots.txt", "/sitemap.xml",
-            "/actuator/"
+            "/robots.txt",
+            "/sitemap.xml",
+            "/health",
+            "/v1/health",
+            "/api/health",
+            "/api/v1/health"
         };
-        
-        for (String publicPath : publicPaths) {
-            if (path.equals(publicPath) || path.startsWith(publicPath)) {
+
+        for (String exactPublicPath : exactPublicPaths) {
+            if (path.equals(exactPublicPath)) {
                 return true;
             }
         }
-        
+
+        String[] publicPathPrefixes = {
+            "/actuator/",
+            "/auth/",
+            "/api/auth/",
+            "/public/",
+            "/v1/public/",
+            "/api/public/",
+            "/api/v1/public/",
+            "/contact/",
+            "/api/contact/",
+            "/news/",
+            "/api/news/",
+            "/reviews/",
+            "/api/reviews/",
+            "/api/feedback/",
+            "/certificates/verify/",
+            "/reviews/center/",
+            "/api/reviews/center/",
+            "/v3/api-docs/",
+            "/swagger-ui/",
+            "/h2-console/"
+        };
+
+        for (String publicPathPrefix : publicPathPrefixes) {
+            if (path.startsWith(publicPathPrefix)) {
+                return true;
+            }
+        }
+
         return false;
     }
 }

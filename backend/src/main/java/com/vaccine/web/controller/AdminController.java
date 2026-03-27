@@ -16,6 +16,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -232,8 +234,12 @@ public class AdminController {
         return ResponseEntity.ok(adminService.getAuditLogs(PageRequest.of(page, size)));
     }
 
-    @GetMapping("/bookings/export")
-    public ResponseEntity<Map<String, Object>> exportBookings() {
-        return ResponseEntity.ok(adminService.exportBookingsToCsv());
+    @GetMapping(value = "/bookings/export", produces = "text/csv")
+    public ResponseEntity<byte[]> exportBookings() {
+        String csv = adminService.exportBookingsToCsv();
+        return ResponseEntity.ok()
+            .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"bookings.csv\"")
+            .contentType(MediaType.parseMediaType("text/csv"))
+            .body(csv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }

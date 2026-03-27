@@ -57,6 +57,10 @@ class IntegrationTest {
         // Test public summary
         ResponseEntity<String> summary = restTemplate.getForEntity(apiUrl("/public/summary"), String.class);
         assertEquals(HttpStatus.OK, summary.getStatusCode());
+
+        // Test public news
+        ResponseEntity<String> news = restTemplate.getForEntity(apiUrl("/public/news"), String.class);
+        assertEquals(HttpStatus.OK, news.getStatusCode());
     }
 
     @Test

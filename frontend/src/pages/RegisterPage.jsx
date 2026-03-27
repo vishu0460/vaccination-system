@@ -27,6 +27,8 @@ const initialForm = {
   acceptedTerms: false
 };
 
+const OTP_CONTEXT_STORAGE_KEY = "verify-email-context";
+
 export default function RegisterPage() {
   const navigate = useNavigate();
   const [form, setForm] = useState(initialForm);
@@ -36,6 +38,7 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [serverMessage, setServerMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [registrationContext, setRegistrationContext] = useState(null);
 
   const passwordStrength = useMemo(() => getPasswordStrength(form.password), [form.password]);
   const phoneValidationValue = form.phoneNumber ? `+91${form.phoneNumber}` : "";
@@ -72,13 +75,14 @@ export default function RegisterPage() {
       navigate(`/verify-email?email=${encodeURIComponent(form.email.trim())}`, {
         replace: true,
         state: {
-          registrationMessage: successMessage
+          registrationMessage: successMessage,
+          registrationContext
         }
       });
     }, 1800);
 
     return () => window.clearTimeout(timer);
-  }, [form.email, navigate, successMessage]);
+  }, [form.email, navigate, registrationContext, successMessage]);
 
   const updateField = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -107,9 +111,18 @@ export default function RegisterPage() {
       });
 
       const registerPayload = response.data || {};
+      const nextRegistrationContext = {
+        email: form.email.trim(),
+        emailDeliveryFailed: Boolean(registerPayload.emailDeliveryFailed || registerPayload.otpSent === false),
+        fallbackOtp: registerPayload.devOtp || registerPayload.fallbackOtp || registerPayload.otpPreview || "",
+        devOtp: registerPayload.devOtp || "",
+        otpExpiresInSeconds: Number(registerPayload.otpExpiresInSeconds || 300)
+      };
+      window.localStorage.setItem(OTP_CONTEXT_STORAGE_KEY, JSON.stringify(nextRegistrationContext));
       setSuccessMessage(
         unwrapApiMessage(registerPayload, "Registration successful. Please verify the 7-digit OTP sent to your email.")
       );
+      setRegistrationContext(nextRegistrationContext);
       setErrors({});
     } catch (error) {
       const backendFieldErrors = getFieldErrors(error);

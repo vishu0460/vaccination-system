@@ -18,7 +18,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping({"/v1/notifications", "/notifications"})
+@RequestMapping({"/v1/notifications", "/notifications", "/api/v1/notifications", "/api/notifications"})
 @PreAuthorize("isAuthenticated()")
 public class NotificationController {
     private final SlotNotificationService slotNotificationService;

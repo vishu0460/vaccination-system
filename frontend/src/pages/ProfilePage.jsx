@@ -86,7 +86,7 @@ export default function ProfilePage() {
       const response = await userAPI.requestPasswordChangeOtp();
       setMessage({ type: 'success', text: unwrapApiMessage(response, 'OTP sent to your email for verification.') });
       setPasswordOtpCooldown(30);
-      setPasswordOtpExpiry(600);
+      setPasswordOtpExpiry(300);
     } catch (err) {
       setMessage({ type: 'danger', text: getErrorMessage(err, 'Failed to send OTP') });
     }

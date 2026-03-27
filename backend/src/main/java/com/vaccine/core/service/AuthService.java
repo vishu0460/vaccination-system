@@ -11,6 +11,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -39,6 +41,7 @@ public class AuthService {
     private final NotificationService notificationService;
     private final AuditService auditService;
     private final PhoneVerificationService phoneVerificationService;
+    private final Environment environment;
 
     @Value("${security.brute-force.max-attempts}")
     private int maxAttempts;
@@ -64,7 +67,8 @@ public class AuthService {
             OtpService otpService,
             NotificationService notificationService,
             AuditService auditService,
-            PhoneVerificationService phoneVerificationService
+            PhoneVerificationService phoneVerificationService,
+            Environment environment
     ) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
@@ -78,6 +82,7 @@ public class AuthService {
         this.notificationService = notificationService;
         this.auditService = auditService;
         this.phoneVerificationService = phoneVerificationService;
+        this.environment = environment;
     }
 
     @Transactional
@@ -132,7 +137,11 @@ public class AuthService {
                 false,
                 false,
                 user.getEmail(),
-                null
+                null,
+                true,
+                null,
+                null,
+                0
             );
         }
 
@@ -268,22 +277,38 @@ public class AuthService {
     }
 
     @Transactional
-    public ApiMessage resendEmailVerification(ResendVerificationRequest req) {
+    public OtpDeliveryResponse resendEmailVerification(ResendVerificationRequest req) {
         User user = userRepository.findByEmail(req.email().toLowerCase()).orElse(null);
 
         if (user == null) {
-            return new ApiMessage("If the account exists, a verification email has been sent.");
+            return new OtpDeliveryResponse(
+                true,
+                "If the account exists, a verification email has been sent.",
+                req.email().trim().toLowerCase(),
+                true,
+                null,
+                null,
+                req.email().trim().toLowerCase(),
+                "EMAIL",
+                0
+            );
         }
 
         if (user.getEmailVerified()) {
-            return new ApiMessage("Email already verified");
+            return new OtpDeliveryResponse(true, "Email already verified", user.getEmail(), true, null, null, user.getEmail(), "EMAIL", 0);
         }
 
         OtpService.OtpDispatchResult dispatchResult = otpService.sendOtp(user, OtpPurpose.EMAIL_VERIFICATION);
-        return new ApiMessage(buildVerificationMessage(dispatchResult, "OTP sent to your email for verification."));
+        return buildOtpDeliveryResponse(
+            user,
+            "EMAIL",
+            dispatchResult,
+            "OTP sent to your email for verification.",
+            "OTP service unavailable. Use temporary OTP."
+        );
     }
 
-    public ApiMessage sendPhoneVerificationOTP(String email) {
+    public OtpDeliveryResponse sendPhoneVerificationOTP(String email) {
         User user = userRepository.findByEmail(email.toLowerCase())
                 .orElseThrow(() -> new AppException("User not found"));
 
@@ -291,13 +316,18 @@ public class AuthService {
             throw new AppException("No phone number on file. Please add a phone number first.");
         }
 
-        boolean sent = phoneVerificationService.sendOTP(user);
-
-        if (!sent) {
-            throw new AppException("Failed to send OTP. Please try again later.");
-        }
-
-        return new ApiMessage("OTP sent to your phone");
+        PhoneVerificationService.PhoneOtpDispatchResult dispatchResult = phoneVerificationService.sendOtp(user);
+        return new OtpDeliveryResponse(
+            true,
+            dispatchResult.delivered() ? "OTP sent to your phone" : buildOtpFailureMessage("OTP service unavailable. Use temporary OTP.", dispatchResult.otp()),
+            user.getEmail(),
+            dispatchResult.delivered(),
+            shouldExposeOtpPreview(dispatchResult.delivered(), dispatchResult.otp()) ? dispatchResult.otp() : null,
+            resolveDevOtp(dispatchResult.delivered(), dispatchResult.otp()),
+            user.getPhoneNumber(),
+            "SMS",
+            300
+        );
     }
 
     public ApiMessage verifyPhone(VerifyPhoneRequest req) {
@@ -423,7 +453,11 @@ public class AuthService {
             true,
             otpDispatchResult != null && !otpDispatchResult.delivered(),
             user.getEmail(),
-            shouldExposeOtpPreview(otpDispatchResult) ? otpDispatchResult.otp() : null
+            shouldExposeOtpPreview(otpDispatchResult) ? otpDispatchResult.otp() : null,
+            otpDispatchResult != null && otpDispatchResult.delivered(),
+            shouldExposeOtpPreview(otpDispatchResult) ? otpDispatchResult.otp() : null,
+            resolveDevOtp(otpDispatchResult),
+            otpService.secondsUntilExpiry(user)
         );
     }
 
@@ -432,16 +466,64 @@ public class AuthService {
             return deliveredMessage;
         }
 
-        if (shouldExposeOtpPreview(otpDispatchResult)) {
-            return "Registration successful. Email delivery is unavailable in local mode. Use OTP "
-                + otpDispatchResult.otp()
-                + " to verify your account.";
-        }
+        return buildOtpFailureMessage(
+            "Registration successful, but we could not send the verification OTP right now. Please use resend OTP to try again.",
+            otpDispatchResult.otp()
+        );
+    }
 
-        return "Registration successful, but we could not send the verification OTP right now. Please use resend OTP to try again.";
+    private OtpDeliveryResponse buildOtpDeliveryResponse(
+        User user,
+        String channel,
+        OtpService.OtpDispatchResult dispatchResult,
+        String deliveredMessage,
+        String fallbackMessage
+    ) {
+        return new OtpDeliveryResponse(
+            true,
+            dispatchResult != null && dispatchResult.delivered()
+                ? deliveredMessage
+                : buildOtpFailureMessage(fallbackMessage, dispatchResult != null ? dispatchResult.otp() : null),
+            user.getEmail(),
+            dispatchResult != null && dispatchResult.delivered(),
+            shouldExposeOtpPreview(dispatchResult) ? dispatchResult.otp() : null,
+            resolveDevOtp(dispatchResult),
+            user.getEmail(),
+            channel,
+            dispatchResult != null ? otpService.secondsUntilExpiry(user) : 0
+        );
+    }
+
+    private String buildOtpFailureMessage(String fallbackMessage, String otp) {
+        if (shouldExposeOtpPreview(false, otp)) {
+            return fallbackMessage + " Temporary OTP: " + otp;
+        }
+        return fallbackMessage;
     }
 
     private boolean shouldExposeOtpPreview(OtpService.OtpDispatchResult otpDispatchResult) {
-        return otpDispatchResult != null && !otpDispatchResult.delivered() && includeOtpInMessages;
+        return otpDispatchResult != null && !otpDispatchResult.delivered() && isDevelopmentMode() && includeOtpInMessages;
+    }
+
+    private boolean shouldExposeOtpPreview(boolean delivered, String otp) {
+        return !delivered && otp != null && !otp.isBlank() && isDevelopmentMode() && includeOtpInMessages;
+    }
+
+    private String resolveDevOtp(OtpService.OtpDispatchResult otpDispatchResult) {
+        if (otpDispatchResult == null) {
+            return null;
+        }
+        return resolveDevOtp(otpDispatchResult.delivered(), otpDispatchResult.otp());
+    }
+
+    private String resolveDevOtp(boolean delivered, String otp) {
+        if (!isDevelopmentMode() || delivered || otp == null || otp.isBlank()) {
+            return null;
+        }
+        return otp;
+    }
+
+    private boolean isDevelopmentMode() {
+        return environment.acceptsProfiles(Profiles.of("local", "dev"));
     }
 }

@@ -32,10 +32,14 @@ release.properties
 dependency-reduced-pom.xml
 
 # Logs
-**/*.log
-logs/
-/Logs/*
+/logs/
+/Logs/
 *.log
+*.out.log
+*.err.log
+backups/db-migration/
+backup.sql
+validation-report.txt
 
 # OS generated
 .DS_Store
@@ -72,11 +76,6 @@ frontend/test-results/
 frontend/*.log
 frontend/build*.log
 frontend/npm_install.log
-
-# Logs
-**/*.log
-logs/
-
 
 # Optional local folders with ACL issues / non-project data
 9.6/

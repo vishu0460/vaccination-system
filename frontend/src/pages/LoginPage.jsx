@@ -15,6 +15,8 @@ const initialForm = {
   rememberMe: true
 };
 
+const OTP_CONTEXT_STORAGE_KEY = "verify-email-context";
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -28,6 +30,7 @@ export default function LoginPage() {
   const [show2FA, setShow2FA] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [twoFactorMessage, setTwoFactorMessage] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
 
   const formIsValid = useMemo(() => {
     const nextErrors = {};
@@ -78,6 +81,7 @@ export default function LoginPage() {
 
       if (message.toLowerCase().includes("verify")) {
         setResendEmail(form.email.trim());
+        setOtpSent(false);
       }
     } finally {
       setLoading(false);
@@ -116,12 +120,73 @@ export default function LoginPage() {
       return;
     }
 
+    setLoading(true);
     try {
       const response = await authAPI.resendVerification(resendEmail.trim());
-      setServerMessage(response.data?.message || "Verification OTP sent.");
+      const payload = response.data || {};
+      const normalizedEmail = payload.email || resendEmail.trim();
+      const otpContext = {
+        email: normalizedEmail,
+        otpSent: Boolean(payload.otpSent),
+        emailDeliveryFailed: payload.otpSent === false,
+        fallbackOtp: payload.devOtp || payload.fallbackOtp || "",
+        devOtp: payload.devOtp || "",
+        otpExpiresInSeconds: Number(payload.otpExpiresInSeconds || 300)
+      };
+
+      window.localStorage.setItem(OTP_CONTEXT_STORAGE_KEY, JSON.stringify(otpContext));
+      setOtpSent(true);
+      setResendEmail(normalizedEmail);
+      setServerMessage(payload.message || "Verification OTP sent.");
+      navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`, {
+        state: {
+          registrationMessage: payload.message || "Verification OTP sent.",
+          registrationContext: otpContext,
+          forceOtpInput: true
+        }
+      });
     } catch (error) {
       setServerMessage(getErrorMessage(error, "Unable to resend verification email."));
+      setOtpSent(true);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleOpenVerificationPage = () => {
+    const normalizedEmail = resendEmail.trim() || form.email.trim();
+    if (validateEmail(normalizedEmail)) {
+      setServerMessage("Enter a valid registered email to continue to OTP verification.");
+      return;
+    }
+
+    const existingContext = (() => {
+      try {
+        return JSON.parse(window.localStorage.getItem(OTP_CONTEXT_STORAGE_KEY) || "{}");
+      } catch (error) {
+        return {};
+      }
+    })();
+
+    const otpContext = {
+      ...existingContext,
+      email: normalizedEmail,
+      otpSent: existingContext.otpSent ?? false,
+      fallbackOtp: existingContext.devOtp || existingContext.fallbackOtp || "",
+      devOtp: existingContext.devOtp || "",
+      otpExpiresInSeconds: Number(existingContext.otpExpiresInSeconds || 300)
+    };
+
+    window.localStorage.setItem(OTP_CONTEXT_STORAGE_KEY, JSON.stringify(otpContext));
+    navigate(`/verify-email?email=${encodeURIComponent(normalizedEmail)}`, {
+      state: {
+        registrationMessage: otpContext.otpSent
+          ? "Enter OTP sent to your email."
+          : "Open the verification page and resend OTP if needed.",
+        registrationContext: otpContext,
+        forceOtpInput: true
+      }
+    });
   };
 
   return (
@@ -205,10 +270,14 @@ export default function LoginPage() {
                     value={resendEmail}
                     onChange={(event) => setResendEmail(event.target.value)}
                   />
-                  <button type="button" className="auth-secondary-button" onClick={handleResendVerification}>
+                  <button type="button" className="auth-secondary-button" onClick={handleResendVerification} disabled={loading}>
                     Resend
                   </button>
                 </div>
+                {otpSent ? <p className="mb-0">Enter OTP sent to your email.</p> : null}
+                <button type="button" className="auth-secondary-button" onClick={handleOpenVerificationPage}>
+                  Open verification page
+                </button>
               </div>
             ) : null}
           </form>

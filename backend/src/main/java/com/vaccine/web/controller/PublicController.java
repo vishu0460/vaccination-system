@@ -23,7 +23,7 @@ import java.util.Optional;
 @RestController
 @Validated
 @RequiredArgsConstructor
-@RequestMapping({"/v1/public", "/public"})
+@RequestMapping({"/v1/public", "/public", "/api/v1/public", "/api/public"})
 public class PublicController {
     
     private final PublicService publicService;

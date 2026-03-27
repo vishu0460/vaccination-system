@@ -80,6 +80,11 @@ export default defineConfig(async () => {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq) => {
+              proxyReq.removeHeader('origin');
+            });
+          }
         }
       }
     },

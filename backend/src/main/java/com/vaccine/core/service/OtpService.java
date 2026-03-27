@@ -24,7 +24,7 @@ public class OtpService {
     private final EmailService emailService;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    @Value("${security.otp.expiry-minutes:10}")
+    @Value("${security.otp.expiry-minutes:5}")
     private int otpExpiryMinutes;
 
     @Value("${security.otp.max-attempts:5}")
@@ -35,6 +35,9 @@ public class OtpService {
 
     @Value("${security.otp.max-requests-per-minute:3}")
     private int maxOtpRequestsPerMinute;
+
+    @Value("${app.dev.include-otp-in-messages:false}")
+    private boolean includeOtpInMessages;
 
     public OtpService(UserRepository userRepository, PasswordEncoder passwordEncoder, EmailService emailService) {
         this.userRepository = userRepository;
@@ -64,7 +67,11 @@ public class OtpService {
             );
             return new OtpDispatchResult(otp, true);
         } catch (AppException exception) {
-            log.warn("OTP email delivery failed for userId={} purpose={}: {}", user.getId(), purpose, exception.getMessage());
+            if (includeOtpInMessages) {
+                log.warn("OTP email delivery failed for userId={} purpose={}. Dev fallback OTP={}", user.getId(), purpose, otp);
+            } else {
+                log.warn("OTP email delivery failed for userId={} purpose={}: {}", user.getId(), purpose, exception.getMessage());
+            }
             return new OtpDispatchResult(otp, false);
         }
     }
@@ -154,7 +161,7 @@ public class OtpService {
     private String buildProfessionalEmailBody(User user, String otp, OtpPurpose purpose) {
         return "Dear " + resolveDisplayName(user) + ",\n\n"
             + "Your One-Time Password (OTP) for " + describePurpose(purpose) + " is: " + otp + "\n\n"
-            + "This OTP is valid for 10 minutes and is required to complete your request securely.\n\n"
+            + "This OTP is valid for " + otpExpiryMinutes + " minutes and is required to complete your request securely.\n\n"
             + "If you did not request this, please ignore this email or contact support immediately.\n\n"
             + "Do NOT share this OTP with anyone for security reasons.\n\n"
             + "Regards,\n"

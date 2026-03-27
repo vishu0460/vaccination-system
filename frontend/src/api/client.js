@@ -275,12 +275,12 @@ export const authAPI = {
   login: (data) => apiClient.post("/auth/login", data),
   register: (data) => apiClient.post("/auth/register", data),
   refresh: (refreshToken) => apiClient.post("/auth/refresh", { refreshToken }),
-  sendOtp: (data) => apiClient.post("/auth/resend-verification", { email: data.email }),
+  sendOtp: (data) => apiClient.post("/auth/resend-otp", { email: data.email }),
   verifyOtp: (data) => apiClient.post("/auth/verify-otp", data),
   forgotPassword: (email) => apiClient.post("/auth/forgot-password", { email }),
   resetPassword: (data) => apiClient.post("/auth/reset-password", data),
   verifyEmail: (token) => apiClient.get(`/auth/verify-email?token=${encodeURIComponent(token)}`),
-  resendVerification: (email) => apiClient.post("/auth/resend-verification", { email }),
+  resendVerification: (email) => apiClient.post("/auth/resend-otp", { email }),
   verifyTwoFactor: (data) => apiClient.post("/auth/2fa/verify", data)
 };
 
@@ -374,6 +374,7 @@ export const adminAPI = {
   deleteBooking: (bookingId) => apiClient.delete(`/admin/booking/${bookingId}`),
   exportBookings: () => apiClient.get("/admin/bookings/export", { responseType: "blob" }),
   getAuditLogs: () => apiClient.get("/admin/audit-logs"),
+  getSystemLogs: (params = {}) => apiClient.get("/admin/logs", { params }),
   getAllFeedback: (page = 0, size = 10) => apiClient.get("/admin/feedback", { params: { page, size } }),
   respondToFeedback: (id, replyMessage) => apiClient.put(`/admin/feedback/${id}/reply`, { replyMessage }),
   getAllContacts: () => apiClient.get("/admin/contacts"),

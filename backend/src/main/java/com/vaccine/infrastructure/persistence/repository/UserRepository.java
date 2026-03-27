@@ -15,6 +15,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
     Optional<User> findByVerificationToken(String verificationToken);
     Optional<User> findByPhoneNumber(String phoneNumber);
+    @Query("SELECT u.id FROM User u WHERE lower(u.email) = lower(:email)")
+    Optional<Long> findIdByEmail(@Param("email") String email);
     boolean existsByEmail(String email);
     @Query(value = "SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END FROM users WHERE lower(email) = lower(:email)", nativeQuery = true)
     boolean existsAnyByEmail(@Param("email") String email);

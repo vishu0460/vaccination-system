@@ -21,7 +21,7 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping({"/v1/profile", "/profile"})
+@RequestMapping({"/v1/profile", "/profile", "/api/v1/profile", "/api/profile"})
 @PreAuthorize("isAuthenticated()")
 @RequiredArgsConstructor
 public class ProfileController {

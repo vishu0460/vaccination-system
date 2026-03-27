@@ -49,7 +49,7 @@ if ($stillListening) {
 }
 
 if ($Profile -in @("local-fixed", "prod")) {
-    Write-Host "Checking MySQL availability at $DbHost:$DbPort for profile $Profile..."
+    Write-Host "Checking MySQL availability at ${DbHost}:${DbPort} for profile $Profile..."
     $dbReady = $false
     try {
         $dbReady = Test-NetConnection -ComputerName $DbHost -Port $DbPort -WarningAction SilentlyContinue | Select-Object -ExpandProperty TcpTestSucceeded
@@ -80,7 +80,7 @@ if ($Profile -in @("local-fixed", "prod")) {
     }
 
     if (-not $dbReady) {
-        throw "MySQL is not reachable at $DbHost:$DbPort. Start MySQL locally or run 'docker compose up -d mysql' from the project root, then retry."
+        throw "MySQL is not reachable at ${DbHost}:${DbPort}. Start MySQL locally or run 'docker compose up -d mysql' from the project root, then retry."
     }
 }
 

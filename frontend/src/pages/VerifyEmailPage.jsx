@@ -8,7 +8,29 @@ import Button from "../components/auth/Button";
 import { validateEmail, validateOtp } from "../utils/authValidation";
 
 const RESEND_SECONDS = 30;
-const OTP_EXPIRY_SECONDS = 600;
+const OTP_EXPIRY_SECONDS = 300;
+const OTP_CONTEXT_STORAGE_KEY = "verify-email-context";
+
+const extractOtpFromMessage = (value) => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const match = value.match(/\b(\d{7})\b/);
+  return match ? match[1] : "";
+};
+
+const readStoredOtpContext = () => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    return JSON.parse(window.localStorage.getItem(OTP_CONTEXT_STORAGE_KEY) || "{}");
+  } catch (error) {
+    return {};
+  }
+};
 
 export default function VerifyEmailPage() {
   const location = useLocation();
@@ -16,15 +38,26 @@ export default function VerifyEmailPage() {
   const token = searchParams.get("token") || "";
   const initialEmail = searchParams.get("email") || "";
   const registrationMessage = location.state?.registrationMessage || "";
+  const storedOtpContext = readStoredOtpContext();
+  const registrationContext = {
+    ...storedOtpContext,
+    ...(location.state?.registrationContext || {})
+  };
+  const initialResolvedEmail = initialEmail || registrationContext.email || "";
+  const derivedFallbackOtp = registrationContext.devOtp || registrationContext.fallbackOtp || extractOtpFromMessage(registrationMessage);
 
-  const [email, setEmail] = useState(initialEmail);
-  const [otp, setOtp] = useState("");
+  const [email, setEmail] = useState(initialResolvedEmail);
+  const [otp, setOtp] = useState(derivedFallbackOtp || "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [fallbackOtp, setFallbackOtp] = useState(derivedFallbackOtp || "");
   const [loading, setLoading] = useState(Boolean(token));
   const [verified, setVerified] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
-  const [expiryCountdown, setExpiryCountdown] = useState(initialEmail ? OTP_EXPIRY_SECONDS : 0);
+  const [expiryCountdown, setExpiryCountdown] = useState(
+    initialResolvedEmail ? Number(registrationContext.otpExpiresInSeconds || OTP_EXPIRY_SECONDS) : 0
+  );
+  const [otpSent, setOtpSent] = useState(Boolean(initialResolvedEmail));
 
   const emailError = useMemo(() => (email ? validateEmail(email) : ""), [email]);
   const otpError = useMemo(() => (otp ? validateOtp(otp) : ""), [otp]);
@@ -49,6 +82,22 @@ export default function VerifyEmailPage() {
     verifyToken();
     return undefined;
   }, [token]);
+
+  useEffect(() => {
+    if (!email) {
+      return;
+    }
+
+    const nextContext = {
+      ...registrationContext,
+      email,
+      fallbackOtp,
+      devOtp: fallbackOtp,
+      otpSent,
+      otpExpiresInSeconds: expiryCountdown
+    };
+    window.localStorage.setItem(OTP_CONTEXT_STORAGE_KEY, JSON.stringify(nextContext));
+  }, [email, expiryCountdown, fallbackOtp, otpSent]);
 
   useEffect(() => {
     if (resendCooldown <= 0) {
@@ -84,6 +133,7 @@ export default function VerifyEmailPage() {
         purpose: "EMAIL_VERIFICATION"
       });
       setVerified(true);
+      window.localStorage.removeItem(OTP_CONTEXT_STORAGE_KEY);
       setMessage(unwrapApiMessage(response, "Email verified successfully."));
     } catch (err) {
       setError(getErrorMessage(err, "Unable to verify OTP."));
@@ -104,9 +154,18 @@ export default function VerifyEmailPage() {
 
     try {
       const response = await authAPI.resendVerification(email.trim());
-      setMessage(unwrapApiMessage(response, "OTP sent to your email for verification."));
+      const payload = response.data || {};
+      const nextFallbackOtp = payload.devOtp || payload.fallbackOtp || "";
+      const nextEmail = payload.email || email.trim();
+      setFallbackOtp(nextFallbackOtp);
+      setOtpSent(true);
+      setEmail(nextEmail);
+      if (nextFallbackOtp) {
+        setOtp(nextFallbackOtp);
+      }
+      setMessage(unwrapApiMessage(payload, "OTP sent to your email for verification."));
       setResendCooldown(RESEND_SECONDS);
-      setExpiryCountdown(OTP_EXPIRY_SECONDS);
+      setExpiryCountdown(Number(payload.otpExpiresInSeconds || OTP_EXPIRY_SECONDS));
     } catch (err) {
       setError(getErrorMessage(err, "Unable to resend OTP."));
     } finally {
@@ -147,7 +206,17 @@ export default function VerifyEmailPage() {
         {registrationMessage && !message && !error ? (
           <div className="auth-alert is-success">
             <i className="bi bi-envelope-check"></i>
-            <span>{registrationMessage}</span>
+            <span>
+              {registrationMessage}
+              {fallbackOtp && !registrationMessage.includes(fallbackOtp) ? ` Temporary OTP: ${fallbackOtp}` : ""}
+            </span>
+          </div>
+        ) : null}
+
+        {fallbackOtp && !verified ? (
+          <div className="auth-alert is-success">
+            <i className="bi bi-shield-check"></i>
+            <span>OTP service unavailable. Use temporary OTP: {fallbackOtp}</span>
           </div>
         ) : null}
 
@@ -203,6 +272,9 @@ export default function VerifyEmailPage() {
               hint={expiryCountdown > 0 ? `OTP expires in ${countdownLabel}` : "Request a fresh OTP if your previous code expired."}
               autoFocus
             />
+
+            {otpSent ? <p className="mb-0">Enter OTP sent to your email.</p> : null}
+            {fallbackOtp ? <p className="mb-0"><strong>Temporary OTP:</strong> {fallbackOtp}</p> : null}
 
             <Button type="submit" loading={loading} loadingLabel="Verifying OTP...">
               <i className="bi bi-patch-check"></i>

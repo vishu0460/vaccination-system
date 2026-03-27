@@ -5,6 +5,7 @@ import com.vaccine.domain.*;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
 import com.vaccine.util.AgeCalculator;
+import com.vaccine.util.CsvExportUtil;
 import com.vaccine.util.SlotStatusResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.TemporalAdjusters;
+import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -750,18 +752,17 @@ public class AdminService {
         return Map.of("content", logs, "totalElements", auditLogRepository.count());
     }
 
-    public Map<String, Object> exportBookingsToCsv() {
-        List<Booking> bookings = bookingRepository.findAll();
-        StringBuilder csv = new StringBuilder();
-        csv.append("ID,User,Status,City,Booked At\n");
-        for (Booking b : bookings) {
-            csv.append(b.getId()).append(",")
-               .append(b.getUser().getEmail()).append(",")
-               .append(b.getStatus()).append(",")
-               .append(b.getUser().getUserCity()).append(",")
-               .append(b.getBookedAt()).append("\n");
+    public String exportBookingsToCsv() {
+        User currentUser = getCurrentUserOrNull();
+        List<Booking> bookings = isRestrictedAdmin(currentUser)
+            ? bookingRepository.findByAdminId(currentUser.getId())
+            : bookingRepository.findAll();
+
+        try {
+            return CsvExportUtil.exportBookings(bookings);
+        } catch (IOException exception) {
+            throw new AppException("Failed to export bookings");
         }
-        return Map.of("csv", csv.toString());
     }
 
     @Transactional

@@ -5,8 +5,11 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import com.vaccine.infrastructure.persistence.repository.UserRepository;
+import com.vaccine.logging.LogContextKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -26,11 +29,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final CustomUserDetailsService customUserDetailsService;
+    private final UserRepository userRepository;
 
     public JwtAuthFilter(JwtService jwtService,
-                         CustomUserDetailsService customUserDetailsService) {
+                         CustomUserDetailsService customUserDetailsService,
+                         UserRepository userRepository) {
         this.jwtService = jwtService;
         this.customUserDetailsService = customUserDetailsService;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -125,6 +131,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                         customUserDetailsService.loadUserByUsername(email);
 
                 if (jwtService.isTokenValid(token, userDetails)) {
+                    userRepository.findIdByEmail(email)
+                        .ifPresent(userId -> MDC.put(LogContextKeys.USER_ID, String.valueOf(userId)));
+                    MDC.put(LogContextKeys.USER_EMAIL, email);
 
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(

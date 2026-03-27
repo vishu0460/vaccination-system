@@ -9,7 +9,7 @@ import useCurrentTime from '../hooks/useCurrentTime';
 import { getRole } from '../utils/auth';
 import { getCountdownLabel, getRealtimeStatus } from '../utils/realtimeStatus';
 import { broadcastDataUpdated, debugDataSync, subscribeToDataUpdates } from '../utils/dataSync';
-import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
+import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone, FaClipboardList } from 'react-icons/fa';
 import { calculateAgeFromDob } from '../utils/authValidation';
 import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, normalizeListSearch, shouldShowViewMore } from '../utils/listSearch';
 
@@ -304,7 +304,8 @@ const DEFAULT_LIST_SEARCH = {
   slots: '',
   news: '',
   feedback: '',
-  contacts: ''
+  contacts: '',
+  logs: ''
 };
 
 const DEFAULT_VISIBLE_COUNTS = {
@@ -315,7 +316,8 @@ const DEFAULT_VISIBLE_COUNTS = {
   slots: DEFAULT_VISIBLE_COUNT,
   news: DEFAULT_VISIBLE_COUNT,
   feedback: DEFAULT_VISIBLE_COUNT,
-  contacts: DEFAULT_VISIBLE_COUNT
+  contacts: DEFAULT_VISIBLE_COUNT,
+  logs: DEFAULT_VISIBLE_COUNT
 };
 
 const DEFAULT_DASHBOARD_FILTERS = {
@@ -325,7 +327,8 @@ const DEFAULT_DASHBOARD_FILTERS = {
   slots: { availability: '', dateFrom: '', dateTo: '' },
   news: { category: '' },
   feedback: { status: '', type: '' },
-  contacts: { status: '', type: '' }
+  contacts: { status: '', type: '' },
+  logs: { level: '' }
 };
 
 const matchesExactDate = (value, selectedDate) => {
@@ -382,6 +385,7 @@ export default function AdminDashboardPage() {
   const [drives, setDrives] = useState([]);
   const [slots, setSlots] = useState([]);
   const [news, setNews] = useState([]);
+  const [systemLogs, setSystemLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -460,6 +464,7 @@ export default function AdminDashboardPage() {
     if (activeTab === 'news') tasks.push(loadNews({ silent }));
     if (activeTab === 'feedback') tasks.push(loadFeedbacks({ silent }));
     if (activeTab === 'contacts') tasks.push(loadContacts({ silent }));
+    if (activeTab === 'logs') tasks.push(loadSystemLogs({ silent }));
     if (selectedDrive?.id && showManageSlotsModal) tasks.push(loadDriveSlots(selectedDrive.id, true));
 
     if (tasks.length === 0) {
@@ -757,6 +762,27 @@ export default function AdminDashboardPage() {
       setNews(ensureArray(payload));
     } catch (err) {
       setNews([]);
+    } finally {
+      if (!options.silent) {
+        setLoading(false);
+      }
+    }
+  };
+
+  const loadSystemLogs = async (options = {}) => {
+    try {
+      if (!options.silent) {
+        setLoading(true);
+      }
+      const response = await adminAPI.getSystemLogs({
+        limit: 200,
+        level: dashboardFilters.logs.level || undefined,
+        search: listSearch.logs || undefined
+      });
+      setSystemLogs(ensureArray(unwrapApiData(response)));
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load system logs'));
+      setSystemLogs([]);
     } finally {
       if (!options.silent) {
         setLoading(false);
@@ -1460,7 +1486,8 @@ const searchTrendChartData = useMemo(() => ({
     { id: 'drives', label: 'Drives', icon: <FaSyringe /> },
     { id: 'news', label: 'News', icon: <FaNewspaper /> },
     { id: 'feedback', label: 'Feedback', icon: <FaComment /> },
-    { id: 'contacts', label: 'Contacts', icon: <FaPhone /> }
+    { id: 'contacts', label: 'Contacts', icon: <FaPhone /> },
+    { id: 'logs', label: 'System Logs', icon: <FaClipboardList /> }
     ];
 
     if (isSuperAdmin) {
@@ -1512,6 +1539,18 @@ const searchTrendChartData = useMemo(() => ({
       }
     }
   };
+
+  useEffect(() => {
+    if (activeTab !== 'logs') {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      loadSystemLogs({ silent: true }).catch(() => {});
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeTab, dashboardFilters.logs.level, listSearch.logs]);
 
   const handleRespondToFeedback = async (id) => {
     if (!responseText.trim()) {
@@ -2874,6 +2913,111 @@ const searchTrendChartData = useMemo(() => ({
     </Card>
   );
 
+  const renderLogs = () => {
+    const displayedLogs = getDisplayedItems(systemLogs, visibleCounts.logs);
+
+    const levelBadge = (level) => {
+      const normalized = String(level || 'INFO').toUpperCase();
+      const variant = normalized === 'ERROR'
+        ? 'danger'
+        : normalized === 'WARN'
+          ? 'warning'
+          : normalized === 'DEBUG'
+            ? 'secondary'
+            : 'info';
+      return <Badge bg={variant}>{normalized}</Badge>;
+    };
+
+    return (
+      <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
+        <Card.Header style={{background: 'linear-gradient(135deg, #ecfeff 0%, #f8fafc 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+          <Row className="g-3 align-items-end">
+            <Col lg={3}>
+              <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaClipboardList className="me-2" />System Logs</h5>
+            </Col>
+            <Col lg={5}>
+              <SearchInput
+                value={listSearch.logs}
+                onChange={(value) => setTabSearchValue('logs', value)}
+                placeholder="Search message, path, user, stack trace"
+                icon="search"
+                onClear={() => setTabSearchValue('logs', '')}
+              />
+            </Col>
+            <Col md={4} lg={2}>
+              <Form.Select value={dashboardFilters.logs.level} onChange={(event) => updateDashboardFilter('logs', 'level', event.target.value)} style={{borderRadius: '0.5rem'}}>
+                <option value="">All levels</option>
+                <option value="ERROR">ERROR</option>
+                <option value="WARN">WARN</option>
+                <option value="INFO">INFO</option>
+                <option value="DEBUG">DEBUG</option>
+              </Form.Select>
+            </Col>
+            <Col md={4} lg={2} className="d-grid">
+              <Button variant="outline-secondary" onClick={() => loadSystemLogs({ silent: false })} style={{borderRadius: '0.5rem'}}>
+                Refresh Logs
+              </Button>
+            </Col>
+          </Row>
+        </Card.Header>
+        <Card.Body className="p-0">
+          <div className="table-responsive">
+            <Table hover className="mb-0">
+              <thead style={{background: '#f8fafc'}}>
+                <tr>
+                  <th>Time</th>
+                  <th>Level</th>
+                  <th>Message</th>
+                  <th>Request</th>
+                  <th>User</th>
+                  <th>Logger</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="text-center py-5">
+                      <FaClipboardList size={48} className="text-muted mb-3 d-block" />
+                      <p className="text-muted mb-0">No logs found for the selected filters.</p>
+                    </td>
+                  </tr>
+                ) : displayedLogs.map((entry, index) => (
+                  <tr key={`${entry.timestamp || 'log'}-${index}`}>
+                    <td className="ps-4">
+                      <div className="fw-medium">{formatDateTime(entry.timestamp)}</div>
+                      <small className="text-muted">{entry.service || 'vaccination-backend'}</small>
+                    </td>
+                    <td>{levelBadge(entry.level)}</td>
+                    <td style={{minWidth: '320px'}}>
+                      <div className="fw-medium">{entry.message || entry.raw || 'N/A'}</div>
+                      {entry.stackTrace ? (
+                        <pre className="mt-2 mb-0 p-2 bg-light border rounded small text-wrap" style={{whiteSpace: 'pre-wrap', maxHeight: '9rem', overflow: 'auto'}}>
+                          {entry.stackTrace}
+                        </pre>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div>{entry.httpMethod || 'N/A'} {entry.requestPath || ''}</div>
+                      <small className="text-muted">requestId: {entry.requestId || 'N/A'}</small>
+                    </td>
+                    <td>
+                      <div>{entry.userEmail || 'Anonymous'}</div>
+                      <small className="text-muted">userId: {entry.userId || 'N/A'}</small>
+                    </td>
+                    <td className="pe-4">
+                      <small className="text-muted">{entry.logger || 'N/A'}</small>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderViewMoreButton('logs', systemLogs, listSearch.logs)}
+          </div>
+        </Card.Body>
+      </Card>
+    );
+  };
+
   if (loading && !stats.totalUsers && !stats.totalBookings && !stats.activeDrives && !stats.totalCenters) {
     return (
       <div className="dashboard-loading d-flex align-items-center justify-content-center">
@@ -2952,6 +3096,7 @@ const searchTrendChartData = useMemo(() => ({
         {activeTab === 'news' && renderNews()}
         {activeTab === 'feedback' && renderFeedback()}
         {activeTab === 'contacts' && renderContacts()}
+        {activeTab === 'logs' && renderLogs()}
         {activeTab === 'create-admin' && isSuperAdmin && renderCreateAdmin()}
       </Container>
 

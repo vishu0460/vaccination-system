@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -60,6 +61,8 @@ class AuthServiceTest {
     @Mock
     private PhoneVerificationService phoneVerificationService;
     @Mock
+    private Environment environment;
+    @Mock
     private HttpServletRequest httpServletRequest;
 
     private AuthService authService;
@@ -69,13 +72,14 @@ class AuthServiceTest {
         authService = new AuthService(
             userRepository, roleRepository, emailVerificationRepository,
             passwordResetRepository, phoneVerificationRepository, authenticationManager, passwordEncoder,
-            jwtService, otpService, notificationService, auditService, phoneVerificationService
+            jwtService, otpService, notificationService, auditService, phoneVerificationService, environment
         );
         
         // Set @Value fields via reflection
         ReflectionTestUtils.setField(authService, "maxAttempts", 5);
         ReflectionTestUtils.setField(authService, "lockMinutes", 15);
         ReflectionTestUtils.setField(authService, "includeOtpInMessages", false);
+        lenient().when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(false);
     }
 
 @Test
@@ -93,6 +97,7 @@ class AuthServiceTest {
         assertNotNull(result);
         assertEquals("Registration successful. You can log in now.", result.message());
         assertFalse(result.requiresVerification());
+        assertTrue(result.otpSent());
         verify(userRepository).save(any(User.class));
     }
 
@@ -108,12 +113,16 @@ class AuthServiceTest {
             .thenReturn(new OtpService.OtpDispatchResult("7654321", false));
         ReflectionTestUtils.setField(authService, "autoVerifyEmail", false);
         ReflectionTestUtils.setField(authService, "includeOtpInMessages", true);
+        when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(true);
 
         RegisterResponse result = authService.register(req, httpServletRequest);
 
         assertTrue(result.requiresVerification());
         assertTrue(result.emailDeliveryFailed());
         assertEquals("7654321", result.otpPreview());
+        assertFalse(result.otpSent());
+        assertEquals("7654321", result.fallbackOtp());
+        assertEquals("7654321", result.devOtp());
         assertTrue(result.message().contains("7654321"));
         verify(userRepository, atLeastOnce()).save(any(User.class));
     }

@@ -34,25 +34,25 @@ public class VaccinationDrive {
     @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false)
+    @Column(name = "vaccine_type", nullable = false)
     private String vaccineType;
 
-    @Column(nullable = false)
+    @Column(name = "drive_date", nullable = false)
     private LocalDate driveDate;
 
-    @Column(nullable = false)
+    @Column(name = "min_age", nullable = false)
     private Integer minAge;
 
-    @Column(nullable = false)
+    @Column(name = "max_age", nullable = false)
     private Integer maxAge;
 
-    @Column(nullable = false)
+    @Column(name = "start_time", nullable = false)
     private LocalTime startTime;
 
-    @Column(nullable = false)
+    @Column(name = "end_time", nullable = false)
     private LocalTime endTime;
 
-    @Column(nullable = false)
+    @Column(name = "total_slots", nullable = false)
     private Integer totalSlots;
 
     @Builder.Default
@@ -61,7 +61,7 @@ public class VaccinationDrive {
     private Status status = Status.UPCOMING;
 
     @Builder.Default
-    @Column(nullable = false)
+    @Column(name = "active", nullable = false)
     private Boolean active = true;
 
     @Column(name = "admin_id")
@@ -76,11 +76,38 @@ public class VaccinationDrive {
 
     private String description;
 
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 
     @Column(name = "deleted_by", length = 120)
     private String deletedBy;
+
+    @PrePersist
+    protected void onCreate() {
+        LocalDateTime now = LocalDateTime.now();
+        createdAt = now;
+        updatedAt = now;
+        if (active == null) {
+            active = true;
+        }
+        if (status == null) {
+            status = Status.UPCOMING;
+        }
+        if (secondDoseRequired == null) {
+            secondDoseRequired = false;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
 
     public boolean isDeleted() {
         return deletedAt != null;

@@ -33,6 +33,12 @@ public class Booking {
     @Column(name = "booked_at")
     private LocalDateTime bookedAt;
 
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
     @Column(name = "assigned_time")
     private LocalDateTime assignedTime;
 
@@ -67,13 +73,21 @@ public class Booking {
 
     @PrePersist
     protected void onCreate() {
-        bookedAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
+        bookedAt = bookedAt == null ? now : bookedAt;
+        createdAt = now;
+        updatedAt = now;
         if (doseNumber == null) {
             doseNumber = 1;
         }
         if (secondDoseRequired == null) {
             secondDoseRequired = false;
         }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
     }
 
     public boolean isDeleted() {
