@@ -3,9 +3,9 @@ server:
 
 spring:
   datasource:
-    url: jdbc:h2:mem:vaxdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
-    username: sa
-    password: 
+    url: ${DB_URL:jdbc:h2:mem:vaxdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: org.h2.Driver
   h2:
     console:
@@ -49,12 +49,13 @@ management:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4173,http://localhost:5173,http://localhost:5174,http://localhost:5175,http://localhost:3000,http://localhost,http://frontend:80,http://frontend}
-  admin:
-    email: ${DEFAULT_ADMIN_EMAIL:vaxzone.vaccine@gmail.com}
-    password: ${DEFAULT_ADMIN_PASSWORD:Vaccine@#6030}
   dev:
-    auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:true}
+    auto-verify-email: ${DEV_AUTO_VERIFY_EMAIL:false}
   mail:
     from: ${MAIL_FROM:noreply@vaccination.local}
   seed:
-    enabled: ${APP_SEED_ENABLED:true}
+    enabled: ${APP_SEED_ENABLED:false}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET}

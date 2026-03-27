@@ -5,11 +5,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class SchedulerService {
     private final INotificationService notificationService;
+    private final UserService userService;
 
     @Scheduled(fixedDelayString = "${app.notifications.dispatch-fixed-delay-ms:60000}", initialDelayString = "${app.notifications.dispatch-initial-delay-ms:15000}")
     public void dispatchNotifications() {
@@ -21,5 +24,13 @@ public class SchedulerService {
     public void reconcileNotifications() {
         log.debug("Running notification reconcile cycle");
         notificationService.reconcileScheduledNotifications();
+    }
+
+    @Scheduled(cron = "${app.notifications.birthday-cron:0 0 0 * * *}")
+    public void sendBirthdayNotifications() {
+        LocalDate today = LocalDate.now();
+        log.debug("Running birthday notification cycle for {}", today);
+        userService.getUsersWithBirthday(today)
+            .forEach(user -> notificationService.queueBirthdayNotification(user, today));
     }
 }

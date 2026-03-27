@@ -6,7 +6,7 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD must be set}
       MYSQL_DATABASE: ${DB_NAME:-vaccination_db}
-      MYSQL_USER: ${DB_USER:?DB_USER must be set}
+      MYSQL_USER: ${DB_USERNAME:?DB_USERNAME must be set}
       MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     expose:
       - "3306"
@@ -50,10 +50,8 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
       SERVER_PORT: 8080
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_NAME: ${DB_NAME:-vaccination_db}
-      DB_USER: ${DB_USER:?DB_USER must be set}
+      DB_URL: ${DB_URL:?DB_URL must be set}
+      DB_USERNAME: ${DB_USERNAME:?DB_USERNAME must be set}
       DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
       JWT_ISSUER: ${JWT_ISSUER:-vaccination-system}
@@ -62,8 +60,6 @@ services:
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS must be set}
       APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL must be set}
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL must be set}
-      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:?DEFAULT_ADMIN_EMAIL must be set}
-      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:?DEFAULT_ADMIN_PASSWORD must be set}
       MAIL_HOST: ${MAIL_HOST:?MAIL_HOST must be set}
       MAIL_PORT: ${MAIL_PORT:-587}
       MAIL_USERNAME: ${MAIL_USERNAME:-}

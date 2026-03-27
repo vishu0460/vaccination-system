@@ -101,6 +101,7 @@ public class UserController {
         Map<String, Object> profile = Map.of(
             "fullName", user.getFullName(),
             "email", user.getEmail(),
+            "dob", user.getDob() != null ? user.getDob().toString() : "",
             "age", user.getAge(),
             "emailVerified", user.getEmailVerified()
         );

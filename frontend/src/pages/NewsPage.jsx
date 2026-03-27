@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { newsAPI, unwrapApiData } from '../api/client';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import SearchInput from '../components/SearchInput';
+import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, shouldShowViewMore } from '../utils/listSearch';
 
 export default function NewsPage() {
   const [news, setNews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedNews, setSelectedNews] = useState(null);
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_COUNT);
 
   const formatNewsDate = (item) => {
     const value = item?.publishedAt || item?.updatedAt || item?.createdAt;
@@ -44,6 +49,16 @@ export default function NewsPage() {
     }
   };
 
+  const filteredNews = useMemo(() => news.filter((item) =>
+    matchesSmartSearch(item, search)
+      && (!category || item.category === category)
+  ), [news, search, category]);
+
+  const displayedNews = useMemo(
+    () => getDisplayedItems(filteredNews, search, visibleCount),
+    [filteredNews, search, visibleCount]
+  );
+
   if (loading) {
     return (
       <div className="container py-5">
@@ -72,8 +87,47 @@ export default function NewsPage() {
   return (
     <div className="container py-5">
       <h2 className="mb-4">Latest News & Announcements</h2>
+      <div className="row g-3 mb-4">
+        <div className="col-lg-8">
+          <SearchInput
+            value={search}
+            onChange={(value) => {
+              setSearch(value);
+              setVisibleCount(DEFAULT_VISIBLE_COUNT);
+            }}
+            placeholder="Search news by title, content, or category"
+            icon="search"
+            onClear={() => {
+              setSearch('');
+              setVisibleCount(DEFAULT_VISIBLE_COUNT);
+            }}
+          />
+        </div>
+        <div className="col-lg-4">
+          <select
+            className="form-select"
+            value={category}
+            onChange={(event) => {
+              setCategory(event.target.value);
+              setVisibleCount(DEFAULT_VISIBLE_COUNT);
+            }}
+          >
+            <option value="">All categories</option>
+            {[...new Set(news.map((item) => item.category).filter(Boolean))].sort().map((itemCategory) => (
+              <option key={itemCategory} value={itemCategory}>{itemCategory}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {filteredNews.length === 0 ? (
+        <EmptyState
+          title="No Results Found"
+          description="Try a different search or filter."
+        />
+      ) : (
+      <>
       <div className="row">
-        {news.map((item) => (
+        {displayedNews.map((item) => (
           <div key={item.id} className="col-md-4 mb-4">
             <div className="card h-100 shadow-sm news-card" onClick={() => setSelectedNews(item)}>
               {item.imageUrl && (
@@ -91,6 +145,15 @@ export default function NewsPage() {
           </div>
         ))}
       </div>
+      {shouldShowViewMore(filteredNews, search, visibleCount) ? (
+        <div className="text-center mt-2">
+          <button className="btn btn-outline-primary" onClick={() => setVisibleCount((current) => current + DEFAULT_VISIBLE_COUNT)}>
+            View More
+          </button>
+        </div>
+      ) : null}
+      </>
+      )}
 
       {selectedNews && (
         <div className="modal show d-block" tabIndex="-1" onClick={() => setSelectedNews(null)}>

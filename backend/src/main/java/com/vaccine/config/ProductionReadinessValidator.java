@@ -4,7 +4,6 @@ import jakarta.annotation.PostConstruct;
 import java.util.Arrays;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -12,55 +11,47 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ProductionReadinessValidator {
 
-    private static final List<String> FORBIDDEN_JWT_SECRETS = List.of(
-        "",
-        "change_this_to_strong_secret_key_min_32_chars",
-        "vaxzone-secret-key-for-jwt-token-generation-2024",
-        "your-super-secret-jwt-key-at-least-32-bytes-base64-encoded"
-    );
-
-    private static final List<String> FORBIDDEN_ADMIN_PASSWORDS = List.of(
-        "",
-        "Vaccine@#6030",
-        "ChangeThisImmediately!",
-        "Admin@123"
-    );
+    private static final List<String> SAFE_TO_SKIP_PROFILES = List.of("test");
 
     private final Environment environment;
 
-    @Value("${security.jwt.secret:}")
-    private String jwtSecret;
-
-    @Value("${app.admin.password:}")
-    private String adminPassword;
-
-    @Value("${app.seed.enabled:false}")
-    private boolean seedEnabled;
-
-    @Value("${app.cors.allowed-origins:}")
-    private String corsAllowedOrigins;
-
     @PostConstruct
     void validate() {
-        if (!Arrays.stream(environment.getActiveProfiles()).anyMatch("prod"::equalsIgnoreCase)) {
+        String[] activeProfiles = environment.getActiveProfiles();
+        if (Arrays.stream(activeProfiles).anyMatch(profile -> SAFE_TO_SKIP_PROFILES.contains(profile.toLowerCase()))) {
             return;
         }
 
-        if (FORBIDDEN_JWT_SECRETS.contains(jwtSecret) || jwtSecret.length() < 32) {
-            throw new IllegalStateException("Production startup blocked: configure a strong JWT_SECRET with at least 32 characters.");
+        boolean requiresExplicitDbUrl = Arrays.stream(activeProfiles).anyMatch(profile ->
+            "prod".equalsIgnoreCase(profile) || "local-fixed".equalsIgnoreCase(profile));
+        if (requiresExplicitDbUrl) {
+            requireProperty("DB_URL");
         }
 
-        if (FORBIDDEN_ADMIN_PASSWORDS.contains(adminPassword) || adminPassword.length() < 12) {
-            throw new IllegalStateException("Production startup blocked: configure a strong DEFAULT_ADMIN_PASSWORD with at least 12 characters.");
+        String datasourceUrl = environment.getProperty("spring.datasource.url", "");
+        if (!datasourceUrl.startsWith("jdbc:h2:")) {
+            requireProperty("DB_USERNAME");
+            requireProperty("DB_PASSWORD");
         }
 
-        if (seedEnabled) {
-            throw new IllegalStateException("Production startup blocked: APP_SEED_ENABLED must be false.");
+        String jwtSecret = requireProperty("JWT_SECRET");
+        if (jwtSecret.length() < 32) {
+            throw new IllegalStateException("Startup blocked: JWT_SECRET must be at least 32 characters.");
         }
 
-        String normalizedOrigins = corsAllowedOrigins == null ? "" : corsAllowedOrigins.toLowerCase();
-        if (normalizedOrigins.contains("localhost") || normalizedOrigins.contains("127.0.0.1")) {
-            throw new IllegalStateException("Production startup blocked: CORS_ALLOWED_ORIGINS must not include localhost entries.");
+        boolean devProfileActive = Arrays.stream(activeProfiles)
+            .anyMatch(profile -> "dev".equalsIgnoreCase(profile));
+        String seedEnabled = environment.getProperty("APP_SEED_ENABLED");
+        if (!devProfileActive && "true".equalsIgnoreCase(seedEnabled)) {
+            throw new IllegalStateException("Startup blocked: APP_SEED_ENABLED may only be true for the dev profile.");
         }
+    }
+
+    private String requireProperty(String key) {
+        String value = environment.getProperty(key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("Startup blocked: required configuration value " + key + " is not set.");
+        }
+        return value;
     }
 }

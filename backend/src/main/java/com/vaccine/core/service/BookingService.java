@@ -76,10 +76,11 @@ public class BookingService {
         if (SlotStatusResolver.resolve(slot) == SlotStatus.EXPIRED) {
             throw new AppException("Cannot book an expired slot");
         }
-        if (user.getAge() == null) {
-            throw new AppException("Please complete your profile age before booking");
+        Integer userAge = user.getAge();
+        if (userAge == null) {
+            throw new AppException("Please complete your profile date of birth before booking");
         }
-        if (user.getAge() < drive.getMinAge() || user.getAge() > drive.getMaxAge()) {
+        if (userAge < drive.getMinAge() || userAge > drive.getMaxAge()) {
             throw new AppException("Age not eligible for this drive");
         }
 
@@ -215,6 +216,10 @@ public class BookingService {
     public List<Slot> recommendSlots(String email, String city, int limit) {
         // Simple recommendation logic
         User user = userRepository.findByEmail(email).orElseThrow();
+        Integer userAge = user.getAge();
+        if (userAge == null) {
+            return List.of();
+        }
         return slotRepository.findAll().stream()
             .filter(slot -> {
                 int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
@@ -223,7 +228,7 @@ public class BookingService {
             })
             .filter(slot -> SlotStatusResolver.resolve(slot) != SlotStatus.EXPIRED)
             .filter(slot -> slot.getDrive() != null && BOOKABLE_DRIVE_STATUSES.contains(slot.getDrive().getStatus()))
-            .filter(s -> user.getAge() >= s.getDrive().getMinAge() && user.getAge() <= s.getDrive().getMaxAge())
+            .filter(s -> userAge >= s.getDrive().getMinAge() && userAge <= s.getDrive().getMaxAge())
             .limit(limit)
             .collect(Collectors.toList());
     }

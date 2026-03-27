@@ -8,6 +8,7 @@ import com.vaccine.domain.NotificationDeliveryStatus;
 import com.vaccine.domain.NotificationReadStatus;
 import com.vaccine.domain.NotificationType;
 import com.vaccine.domain.User;
+import java.time.LocalDate;
 import com.vaccine.infrastructure.persistence.repository.BookingRepository;
 import com.vaccine.infrastructure.persistence.repository.NotificationRepository;
 import com.vaccine.common.exception.AppException;
@@ -137,6 +138,24 @@ public class NotificationService implements INotificationService {
             NotificationType.SECOND_DOSE_REMINDER_24H,
             booking.getNextDoseDueDate().minusHours(24),
             "24h"
+        );
+    }
+
+    @Override
+    @Transactional
+    public void queueBirthdayNotification(User user, LocalDate birthdayDate) {
+        if (user == null || user.getId() == null || birthdayDate == null) {
+            return;
+        }
+
+        queueNotification(
+            user,
+            NotificationType.BIRTHDAY,
+            "Happy Birthday!",
+            "Happy Birthday, " + (user.getFullName() == null ? "from VaxZone" : user.getFullName()) + "! Wishing you a healthy year ahead.",
+            LocalDateTime.now(),
+            user.getId(),
+            buildDedupeKey(NotificationType.BIRTHDAY, user.getId(), birthdayDate.toString())
         );
     }
 

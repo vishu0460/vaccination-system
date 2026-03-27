@@ -6,6 +6,7 @@ import com.vaccine.domain.User;
 import com.vaccine.domain.OtpPurpose;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
+import com.vaccine.util.AgeCalculator;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,14 +35,21 @@ public class ProfileService {
         if (request.fullName() != null && !request.fullName().isBlank()) {
             user.setFullName(request.fullName());
         }
-        if (request.age() != null) {
+        if (request.dob() != null) {
+            user.setDob(request.dob());
+            user.setAge(AgeCalculator.calculateAge(request.dob()));
+        } else if (request.age() != null) {
             if (request.age() < 1 || request.age() > 120) {
                 throw new AppException("Age must be between 1 and 120");
             }
             user.setAge(request.age());
+            user.setDob(null);
         }
         if (request.phone() != null && !request.phone().isBlank()) {
             user.setPhoneNumber(request.phone());
+        }
+        if (request.phoneNumber() != null && !request.phoneNumber().isBlank()) {
+            user.setPhoneNumber(request.phoneNumber());
         }
         if (request.address() != null) {
             user.setAddress(request.address());

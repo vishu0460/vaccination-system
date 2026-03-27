@@ -7,9 +7,10 @@ import InputField from "../components/auth/InputField";
 import PasswordField from "../components/auth/PasswordField";
 import Button from "../components/auth/Button";
 import {
-  validateAge,
+  calculateAgeFromDob,
   getPasswordStrength,
   validateConfirmPassword,
+  validateDob,
   validateEmail,
   validateFullName,
   validatePassword,
@@ -20,7 +21,7 @@ const initialForm = {
   fullName: "",
   email: "",
   phoneNumber: "",
-  age: "",
+  dob: "",
   password: "",
   confirmPassword: "",
   acceptedTerms: false
@@ -43,7 +44,7 @@ export default function RegisterPage() {
       fullName: validateFullName(form.fullName),
       email: validateEmail(form.email),
       phoneNumber: validatePhone(phoneValidationValue),
-      age: validateAge(form.age),
+      dob: validateDob(form.dob),
       password: validatePassword(form.password),
       confirmPassword: validateConfirmPassword(form.password, form.confirmPassword)
     };
@@ -102,7 +103,7 @@ export default function RegisterPage() {
         email: form.email.trim(),
         phoneNumber: `+91${form.phoneNumber.replace(/\s+/g, "")}`,
         password: form.password,
-        age: Number.parseInt(form.age, 10)
+        dob: form.dob
       });
 
       const registerPayload = response.data || {};
@@ -131,6 +132,7 @@ export default function RegisterPage() {
     : passwordStrengthLabel === "Medium"
       ? "is-fair"
       : "is-weak";
+  const derivedAge = calculateAgeFromDob(form.dob);
 
   return (
     <>
@@ -208,19 +210,15 @@ export default function RegisterPage() {
           />
 
           <InputField
-            id="register-age"
-            label="Age"
-            icon="bi bi-123"
-            name="age"
-            type="number"
-            min="1"
-            max="120"
-            inputMode="numeric"
-            placeholder="Enter your age"
-            value={form.age}
-            error={errors.age || (form.age ? validationErrors.age : "")}
-            hint="Used to filter eligible vaccination drives"
-            onChange={(event) => updateField("age", event.target.value)}
+            id="register-dob"
+            label="Date of birth"
+            icon="bi bi-calendar-event"
+            name="dob"
+            type="date"
+            value={form.dob}
+            error={errors.dob || (form.dob ? validationErrors.dob : "")}
+            hint={derivedAge !== null ? `Your current age will be ${derivedAge}` : "Used to calculate your eligibility automatically"}
+            onChange={(event) => updateField("dob", event.target.value)}
           />
 
           <PasswordField

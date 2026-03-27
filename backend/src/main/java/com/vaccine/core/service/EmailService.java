@@ -13,7 +13,7 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
 
-    @Value("${app.mail.from:vaxzone.vaccine@gmail.com}")
+    @Value("${app.mail.from:noreply@example.invalid}")
     private String mailFrom;
 
     public EmailService(JavaMailSender mailSender) {

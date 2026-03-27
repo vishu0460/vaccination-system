@@ -5,6 +5,7 @@ import com.vaccine.common.exception.AppException;
 import com.vaccine.domain.*;
 import com.vaccine.infrastructure.persistence.repository.*;
 import com.vaccine.security.JwtService;
+import com.vaccine.util.AgeCalculator;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
@@ -84,7 +85,8 @@ public class AuthService {
         String normalizedEmail = normalizeEmail(req.email());
         String normalizedName = normalizeFullName(req.fullName());
         String normalizedPhone = normalizePhone(req.phoneNumber());
-        int normalizedAge = req.age() == null ? 18 : req.age();
+        Integer calculatedAge = AgeCalculator.calculateAge(req.dob());
+        int normalizedAge = calculatedAge != null ? calculatedAge : (req.age() == null ? 18 : req.age());
 
         if (userRepository.existsAnyByEmail(normalizedEmail)) {
             throw new AppException("Email already registered");
@@ -100,6 +102,7 @@ public class AuthService {
                 .fullName(normalizedName)
                 .password(passwordEncoder.encode(req.password()))
                 .phoneNumber(normalizedPhone)
+                .dob(req.dob())
                 .age(normalizedAge)
                 .role(RoleName.USER.name())
                 .enabled(true)

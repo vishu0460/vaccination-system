@@ -60,23 +60,40 @@ class IntegrationTest {
     }
 
     @Test
-    void authFlow_WithTestAdmin_ShouldLogin() {
-        String requestBody = """
+    void authFlow_AfterRegistration_ShouldLogin() {
+        String uniqueEmail = "test" + System.currentTimeMillis() + "@test.com";
+        String registerBody = String.format("""
             {
-                "email": "admin@test.com",
-                "password": "Test@123"
+                "fullName": "Test User",
+                "email": "%s",
+                "password": "Test@123456",
+                "dob": "2000-01-01",
+                "phoneNumber": "+919876543210"
             }
-            """;
+            """, uniqueEmail);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> request = new HttpEntity<>(requestBody, headers);
+        HttpEntity<String> registerRequest = new HttpEntity<>(registerBody, headers);
 
-        ResponseEntity<String> response = restTemplate.postForEntity(apiUrl("/auth/login"), request, String.class);
+        ResponseEntity<String> registerResponse = restTemplate.postForEntity(apiUrl("/auth/register"), registerRequest, String.class);
 
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-        assertNotNull(response.getBody());
-        assertTrue(response.getBody().contains("accessToken"));
+        assertEquals(HttpStatus.OK, registerResponse.getStatusCode());
+        assertNotNull(registerResponse.getBody());
+
+        String loginBody = String.format("""
+            {
+                "email": "%s",
+                "password": "Test@123456"
+            }
+            """, uniqueEmail);
+        HttpEntity<String> loginRequest = new HttpEntity<>(loginBody, headers);
+
+        ResponseEntity<String> loginResponse = restTemplate.postForEntity(apiUrl("/auth/login"), loginRequest, String.class);
+
+        assertEquals(HttpStatus.OK, loginResponse.getStatusCode());
+        assertNotNull(loginResponse.getBody());
+        assertTrue(loginResponse.getBody().contains("accessToken"));
     }
 
     @Test
@@ -87,7 +104,7 @@ class IntegrationTest {
                 "fullName": "Test User",
                 "email": "%s",
                 "password": "Test@123456",
-                "age": 25,
+                "dob": "2000-01-01",
                 "phoneNumber": "+919876543210"
             }
             """, uniqueEmail);

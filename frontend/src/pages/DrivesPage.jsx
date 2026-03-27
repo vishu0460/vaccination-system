@@ -4,12 +4,14 @@ import { Button, Modal } from "react-bootstrap";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage, publicAPI, unwrapApiData, userAPI } from "../api/client";
 import CityAutocomplete from "../components/CityAutocomplete";
+import SearchInput from "../components/SearchInput";
 import useDebounce from "../hooks/useDebounce";
 import useCurrentTime from "../hooks/useCurrentTime";
 import { getCountdownLabel, getRealtimeStatus, getStatusBadgeClass, isAtCapacity, isDriveBookable, isSlotBookable } from "../utils/realtimeStatus";
 import { isAuthenticated } from "../utils/auth";
 import { broadcastDataUpdated } from "../utils/dataSync";
 import { usePublicCatalog } from "../context/PublicCatalogContext";
+import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, shouldShowViewMore } from "../utils/listSearch";
 
 const EMPTY_FILTERS = {
   city: "",
@@ -79,6 +81,7 @@ export default function DrivesPage() {
   const [drives, setDrives] = useState([]);
   const [userProfile, setUserProfile] = useState(null);
   const [filters, setFilters] = useState(parseFilters(searchParams));
+  const [search, setSearch] = useState("");
   const { drives: allDrives, summary, loading, error: catalogError, refreshCatalog } = usePublicCatalog();
   const [viewMode, setViewMode] = useState("grid");
   const [error, setError] = useState("");
@@ -89,6 +92,7 @@ export default function DrivesPage() {
   const [bookingSubmittingId, setBookingSubmittingId] = useState(null);
   const [waitlistSubmittingId, setWaitlistSubmittingId] = useState(null);
   const [bookingMessage, setBookingMessage] = useState("");
+  const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_COUNT);
   const now = useCurrentTime(1000);
   const debouncedFilters = useDebounce(filters, 300);
 
@@ -166,8 +170,8 @@ export default function DrivesPage() {
     if (!Number.isFinite(userAge) || userAge <= 0) {
       return {
         isEligible: false,
-        eligibilityReason: "Add your age to your profile to check eligibility and book this drive.",
-        eligibilityLabel: "Profile age required"
+        eligibilityReason: "Add your date of birth to your profile to check eligibility and book this drive.",
+        eligibilityLabel: "Profile DOB required"
       };
     }
 
@@ -198,6 +202,12 @@ export default function DrivesPage() {
       return leftRank - rightRank;
     });
   }, [drives, getDriveEligibility]);
+
+  const filteredDrives = useMemo(() => sortedDrives.filter((drive) => matchesSmartSearch(drive, search)), [sortedDrives, search]);
+  const displayedDrives = useMemo(
+    () => getDisplayedItems(filteredDrives, search, visibleCount),
+    [filteredDrives, search, visibleCount]
+  );
 
   useEffect(() => {
     const nextFilters = parseFilters(searchParams);
@@ -409,6 +419,8 @@ export default function DrivesPage() {
 
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS);
+    setSearch("");
+    setVisibleCount(DEFAULT_VISIBLE_COUNT);
   };
 
   const activeFilters = useMemo(() => {
@@ -430,7 +442,7 @@ export default function DrivesPage() {
     if (drive.isEligible === false) {
       return (
         <button className="btn btn-secondary w-100" disabled title={drive.eligibilityReason}>
-          {drive.eligibilityLabel === "Profile age required" ? (
+          {drive.eligibilityLabel === "Profile DOB required" ? (
             <><i className="bi bi-person-lines-fill me-2"></i>Update Profile</>
           ) : (
             <><i className="bi bi-slash-circle me-2"></i>Not Eligible</>
@@ -526,7 +538,7 @@ export default function DrivesPage() {
                 {isAuthenticated() && Number.isFinite(Number(userProfile?.age)) && Number(userProfile?.age) > 0 ? (
                   <p className="small text-muted mt-2 mb-0">Showing drives prioritized for age {userProfile.age}.</p>
                 ) : isAuthenticated() ? (
-                  <p className="small text-muted mt-2 mb-0">Add your age to your profile to unlock automatic eligibility filtering.</p>
+                  <p className="small text-muted mt-2 mb-0">Add your date of birth to your profile to unlock automatic eligibility filtering.</p>
                 ) : null}
               </div>
               <button className="btn btn-outline-secondary" onClick={clearFilters} disabled={loading}>
@@ -535,6 +547,23 @@ export default function DrivesPage() {
             </div>
 
             <div className="drive-filters__grid">
+              <div className="drive-filter-field drive-filter-field--city">
+                <label className="form-label">Smart Search</label>
+                <SearchInput
+                  value={search}
+                  onChange={(value) => {
+                    setSearch(value);
+                    setVisibleCount(DEFAULT_VISIBLE_COUNT);
+                  }}
+                  placeholder="Search drives by title, center, city, vaccine"
+                  icon="search"
+                  onClear={() => {
+                    setSearch("");
+                    setVisibleCount(DEFAULT_VISIBLE_COUNT);
+                  }}
+                />
+              </div>
+
               <div className="drive-filter-field drive-filter-field--city">
                 <label className="form-label">City</label>
                 <CityAutocomplete
@@ -638,11 +667,11 @@ export default function DrivesPage() {
             <p>{error}</p>
             <button className="btn btn-primary" onClick={refreshCatalog}>Retry</button>
           </div>
-        ) : sortedDrives.length > 0 ? (
+        ) : filteredDrives.length > 0 ? (
           <>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <p className="text-muted mb-0">
-                Showing <strong>{sortedDrives.length}</strong> drive{sortedDrives.length !== 1 ? "s" : ""}
+                Showing <strong>{filteredDrives.length}</strong> drive{filteredDrives.length !== 1 ? "s" : ""}
               </p>
               <div className="btn-group">
                 <button
@@ -661,7 +690,7 @@ export default function DrivesPage() {
             </div>
 
             <div className={viewMode === "grid" ? "row g-4" : "d-flex flex-column gap-3"}>
-              {sortedDrives.map((drive, index) => (
+              {displayedDrives.map((drive, index) => (
                 <div key={drive.id} className={`${viewMode === "grid" ? "col-md-6 col-lg-4" : ""} fade-in stagger-${(index % 6) + 1}`}>
                   <div className={`drive-card h-100 ${viewMode === "list" ? "flex-row" : ""} ${drive.isEligible === false ? "drive-card--ineligible" : ""}`}>
                     {viewMode === "grid" ? (
@@ -777,6 +806,13 @@ export default function DrivesPage() {
                 </div>
               ))}
             </div>
+            {shouldShowViewMore(filteredDrives, search, visibleCount) ? (
+              <div className="text-center mt-4">
+                <button className="btn btn-outline-primary" onClick={() => setVisibleCount((current) => current + DEFAULT_VISIBLE_COUNT)}>
+                  View More
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="empty-state">

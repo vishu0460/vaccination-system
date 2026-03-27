@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { getErrorMessage, unwrapApiData, unwrapApiMessage, userAPI } from '../api/client';
 import Skeleton from '../components/Skeleton';
-import { validateOtp } from '../utils/authValidation';
+import { calculateAgeFromDob, validateDob, validateOtp } from '../utils/authValidation';
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [editing, setEditing] = useState(false);
-  const [formData, setFormData] = useState({ fullName: '', age: '' });
+  const [formData, setFormData] = useState({ fullName: '', dob: '' });
   const [passwordData, setPasswordData] = useState({ currentPassword: '', newPassword: '', otp: '' });
   const [message, setMessage] = useState({ type: '', text: '' });
   const [passwordOtpCooldown, setPasswordOtpCooldown] = useState(0);
@@ -39,7 +39,7 @@ export default function ProfilePage() {
       const response = await userAPI.getProfile();
       const profileData = unwrapApiData(response) || {};
       setProfile(profileData);
-      setFormData({ fullName: profileData.fullName || '', age: profileData.age || '' });
+      setFormData({ fullName: profileData.fullName || '', dob: profileData.dob || '' });
     } catch (err) {
       setError('Failed to load profile');
     } finally {
@@ -49,8 +49,13 @@ export default function ProfilePage() {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+    const dobError = validateDob(formData.dob);
+    if (dobError) {
+      setMessage({ type: 'danger', text: dobError });
+      return;
+    }
     try {
-      await userAPI.updateProfile({ fullName: formData.fullName, age: Number(formData.age) });
+      await userAPI.updateProfile({ fullName: formData.fullName, dob: formData.dob });
       setMessage({ type: 'success', text: 'Profile updated successfully' });
       setEditing(false);
       fetchProfile();
@@ -95,6 +100,8 @@ export default function ProfilePage() {
     );
   }
 
+  const derivedAge = calculateAgeFromDob(editing ? formData.dob : profile?.dob);
+
   return (
     <div className="container py-5">
       <div className="row">
@@ -127,14 +134,15 @@ export default function ProfilePage() {
                       />
                     </div>
                     <div className="mb-3">
-                      <label className="form-label">Age</label>
+                      <label className="form-label">Date of Birth</label>
                       <input
-                        type="number"
+                        type="date"
                         className="form-control"
-                        value={formData.age}
-                        onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                        value={formData.dob}
+                        onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
                         required
                       />
+                      <small className="text-muted">Current age: {derivedAge ?? profile?.age ?? '-'}</small>
                     </div>
                     <div className="mb-3">
                       <label className="form-label">Email</label>
@@ -149,7 +157,8 @@ export default function ProfilePage() {
                   <div>
                     <p><strong>Name:</strong> {profile?.fullName}</p>
                     <p><strong>Email:</strong> {profile?.email}</p>
-                    <p><strong>Age:</strong> {profile?.age}</p>
+                    <p><strong>Date of Birth:</strong> {profile?.dob || '-'}</p>
+                    <p><strong>Age:</strong> {profile?.age ?? '-'}</p>
                     <p><strong>Email Verified:</strong> {profile?.emailVerified ? 'Yes' : 'No'}</p>
                     <button className="btn btn-primary" onClick={() => setEditing(true)}>Edit Profile</button>
                   </div>

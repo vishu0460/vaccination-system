@@ -58,6 +58,56 @@ export const validateAge = (value) => {
   return "";
 };
 
+export const calculateAgeFromDob = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  const dob = new Date(value);
+  if (Number.isNaN(dob.getTime())) {
+    return null;
+  }
+
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasBirthdayPassed =
+    today.getMonth() > dob.getMonth()
+    || (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+
+  if (!hasBirthdayPassed) {
+    age -= 1;
+  }
+
+  return Math.max(age, 0);
+};
+
+export const validateDob = (value) => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    return "Date of birth is required";
+  }
+
+  const dob = new Date(normalized);
+  if (Number.isNaN(dob.getTime())) {
+    return "Enter a valid date of birth";
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dob.setHours(0, 0, 0, 0);
+
+  if (dob >= today) {
+    return "Date of birth must be in the past";
+  }
+
+  const age = calculateAgeFromDob(normalized);
+  if (age === null || age > 120) {
+    return "Enter a valid date of birth";
+  }
+
+  return "";
+};
+
 export const getPasswordChecks = (password) => ({
   length: password.length >= PASSWORD_RULES.minLength,
   uppercase: PASSWORD_RULES.uppercase.test(password),

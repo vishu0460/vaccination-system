@@ -1,0 +1,136 @@
+VaxZone Vaccination System - Workflows and Processes
+
+==================================================
+This document outlines the key workflows and processes for the VaxZone vaccination management platform.
+It covers user journeys, admin operations, development lifecycle, deployment, and operational procedures.
+
+1. CITIZEN (END-USER) WORKFLOWS
+================================
+1.1 Registration and Onboarding
+- Navigate to HomePage -> RegisterPage
+- Fill form (name, email, phone, password) -> POST /api/auth/register
+- Receive email verification link/OTP -> VerifyEmailPage
+- Account activated; redirect to LoginPage
+
+1.2 Authentication Flow
+- LoginPage -> POST /api/auth/login -> JWT access/refresh tokens stored in localStorage
+- Auto-refresh on 401 via Axios interceptor
+- ProtectedRoute checks token validity
+
+1.3 Center/Drive Discovery
+- HomePage/CentersPage/DrivesPage
+- SmartSearch + filters (city, date, vaccine type)
+- GET /api/public/centers, /drives?lat,lng,radius,page
+- NearbyCentersSection shows geolocated results
+- PublicCatalogContext manages state
+
+1.4 Slot Booking
+- CenterDetailPage -> select drive/slot
+- POST /api/user/bookings -> check availability, create booking
+- Real-time updates via WebSocket (notificationSocket.js)
+- Confirmation + QR certificate generation
+
+1.5 Booking Management
+- UserBookingsPage -> list, cancel, reschedule
+- GET/POST/PUT /api/user/bookings/{id}
+- Waitlist promotion if slot frees up
+
+1.6 Certificate Handling
+- CertificatePage -> download PDF/QR
+- VerifyCertificatePage -> public verification POST /api/public/certificates/verify/{id}
+
+1.7 Feedback/Contact
+- FeedbackPage/ContactPage -> POST /api/public/feedback, /contacts
+- NewsPage for announcements
+
+2. ADMIN WORKFLOWS
+=================
+2.1 Dashboard Access
+- Login as ADMIN/SUPER_ADMIN -> AdminDashboardPage
+- Charts: bookings, slots, analytics via /api/admin/stats
+
+2.2 Content Management
+- Manage centers, drives, slots, news
+- POST/PUT/DELETE /api/admin/centers, /drives, /slots, /news
+
+2.3 User/Booking Oversight
+- View bookings, contacts, feedback, search logs
+- Export CSV via /api/admin/export
+
+2.4 System Monitoring
+- Health: /api/v1/health
+- Swagger: /swagger-ui.html
+- Logs in backend/target/ or Docker logs
+
+3. DEVELOPMENT WORKFLOW
+======================
+3.1 Local Setup
+Backend:
+- cd backend
+- mvn spring-boot:run (local H2) or ./run-local.ps1 (MySQL)
+Frontend:
+- cd frontend
+- npm install && npm run dev
+
+3.2 Testing
+Backend: mvn test
+Frontend: npm test, npm run test:coverage
+E2E: npx playwright test
+
+3.3 Code Changes
+- Backend: Update entities/services/controllers -> mvn compile
+- Frontend: Update components/pages/hooks -> npm run dev
+- DB Changes: Add Flyway migration V25__*.sql
+
+3.4 Build
+Backend: mvn clean package -> target/app.jar
+Frontend: npm run build -> dist/
+
+4. DEPLOYMENT PROCESSES
+======================
+4.1 Docker Local
+docker compose up -d --build
+
+4.2 Production (Render/Vercel)
+Backend (Render):
+- Build: cd backend && mvn clean package
+- Start: java -jar target/app.jar
+- Env: DB_URL, JWT_SECRET, etc.
+Frontend (Vercel):
+- Build: npm run build
+- Output: dist
+- Env: VITE_API_BASE_URL=https://backend.render.com/api
+
+4.3 Database Ops
+- Backup: DB_PASSWORD=pass ./scripts/mysql-backup.sh
+- Migrations: Auto via Flyway on startup
+- Seed: SPRING_PROFILES_ACTIVE=local (dev only)
+
+5. OPERATIONAL PROCESSES
+=======================
+5.1 Monitoring
+- Actuator: /actuator/health, /metrics
+- Logs: docker logs, backend/run.err
+- Analytics: Admin dashboard charts
+
+5.2 Incident Response
+- Check TODO.md for known issues (security, races)
+- Restart services: docker compose restart
+- Rotate secrets: Update env, restart
+- Scale: Multi-instance + Redis cache (future)
+
+5.3 Maintenance
+- Prune old backups: scripts/mysql-backup.sh handles retention
+- Update deps: mvn versions:use-latest-releases (backend), npm update
+- Security audit: Review TODO.md critical issues
+
+6. SECURITY PROCESSES
+====================
+- Rotate JWT_SECRET monthly
+- Monitor rate limits, audit logs (/api/admin/audit-logs)
+- 2FA/OTP: Verify real implementation (fix hardcoded 123456)
+- Backup secrets management: Never commit .env
+
+Last Updated: [Insert Date]
+Refer to README.md for details, TODO.md for fixes.
+

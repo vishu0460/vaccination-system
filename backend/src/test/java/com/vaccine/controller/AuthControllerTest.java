@@ -63,6 +63,7 @@ class AuthControllerTest {
                 "Test User",
                 "+1234567890",
                 "Password123!",
+                null,
                 25
         );
 

@@ -80,7 +80,7 @@ class AuthServiceTest {
 
 @Test
     void register_WithNewEmail_ShouldCreateUser() {
-        RegisterRequest req = new RegisterRequest("test@example.com", "Test User", "+1234567890", "Password123!", 25);
+        RegisterRequest req = new RegisterRequest("test@example.com", "Test User", "+1234567890", "Password123!", null, 25);
         
         when(userRepository.existsAnyByEmail("test@example.com")).thenReturn(false);
         when(roleRepository.findByName(RoleName.USER)).thenReturn(Optional.of(Role.builder().name(RoleName.USER).build()));
@@ -98,7 +98,7 @@ class AuthServiceTest {
 
     @Test
     void register_WhenOtpEmailFails_ShouldStillCreateUserAndReturnVerificationResponse() {
-        RegisterRequest req = new RegisterRequest("otp@example.com", "Test User", "+1234567890", "Password123!", 25);
+        RegisterRequest req = new RegisterRequest("otp@example.com", "Test User", "+1234567890", "Password123!", null, 25);
 
         when(userRepository.existsAnyByEmail("otp@example.com")).thenReturn(false);
         when(roleRepository.findByName(RoleName.USER)).thenReturn(Optional.of(Role.builder().name(RoleName.USER).build()));
@@ -120,7 +120,7 @@ class AuthServiceTest {
 
     @Test
     void register_WithExistingEmail_ShouldThrowException() {
-        RegisterRequest req = new RegisterRequest("existing@example.com", "Test User", "+1234567890", "Password123!", 25);
+        RegisterRequest req = new RegisterRequest("existing@example.com", "Test User", "+1234567890", "Password123!", null, 25);
         
         when(userRepository.existsAnyByEmail("existing@example.com")).thenReturn(true);
 

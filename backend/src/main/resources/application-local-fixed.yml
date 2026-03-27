@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/vaccination_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
-    username: appuser
-    password: apppass456
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       maximum-pool-size: 10
@@ -41,17 +41,14 @@ server:
 
 app:
   cors:
-    allowed-origins: http://localhost:5174,http://localhost:5173,http://localhost:3000
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5174,http://localhost:5173,http://localhost:3000}
   mail:
-    from: vaxzone.vaccine@gmail.com
-    base-url: http://localhost:5174
-  admin:
-    email: vaxzone.vaccine@gmail.com
-    password: Vaccine@#6030
+    from: ${MAIL_FROM:noreply@example.invalid}
+    base-url: ${APP_BASE_URL:http://localhost:5174}
   dev:
     auto-verify-email: false
   seed:
-    enabled: true
+    enabled: ${APP_SEED_ENABLED:false}
 
 logging:
   level:
@@ -63,7 +60,7 @@ logging:
 
 security:
   jwt:
-    secret: myJwtSecretKeyIsVeryLongAndSecureEnoughForHS256Minimum256Bits64BytesVaxAppDevKey2024SuperSecureRandomLikeKeyThatIsLongEnough!!
+    secret: ${JWT_SECRET}
     issuer: vaccination-system
     access-token-minutes: 15
     refresh-token-days: 7

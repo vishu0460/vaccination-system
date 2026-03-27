@@ -2,6 +2,7 @@ import React from "react";
 import AppRoutes from "./routes/AppRoutes";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
+import ScrollToTop from "./components/ScrollToTop";
 import { ThemeProvider } from "./context/ThemeContext";
 import { PublicCatalogProvider } from "./context/PublicCatalogContext";
 
@@ -10,6 +11,7 @@ export default function App() {
     <ThemeProvider>
       <PublicCatalogProvider>
         <div className="app-shell d-flex flex-column min-vh-100">
+          <ScrollToTop />
           <Navbar />
           <main className="app-main flex-grow-1">
             <AppRoutes />

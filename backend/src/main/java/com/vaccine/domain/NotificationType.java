@@ -12,5 +12,6 @@ public enum NotificationType {
     WAITLIST_PROMOTED,
     FEEDBACK_REPLY,
     CONTACT_REPLY,
+    BIRTHDAY,
     SYSTEM
 }

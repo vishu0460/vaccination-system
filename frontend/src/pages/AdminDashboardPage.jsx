@@ -10,7 +10,8 @@ import { getRole } from '../utils/auth';
 import { getCountdownLabel, getRealtimeStatus } from '../utils/realtimeStatus';
 import { broadcastDataUpdated, debugDataSync, subscribeToDataUpdates } from '../utils/dataSync';
 import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone } from 'react-icons/fa';
-import useDebounce from '../hooks/useDebounce';
+import { calculateAgeFromDob } from '../utils/authValidation';
+import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, normalizeListSearch, shouldShowViewMore } from '../utils/listSearch';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -69,6 +70,11 @@ const ensureArray = (payload) => {
   }
 
   return [];
+};
+
+const normalizeCenterItems = (payload) => {
+  const items = ensureArray(payload);
+  return [...items].sort((left, right) => Number(right?.id || 0) - Number(left?.id || 0));
 };
 
 const ensureStats = (payload) => {
@@ -290,6 +296,78 @@ const communicationBadge = (status) => {
   return <Badge bg={normalized === 'REPLIED' ? 'success' : 'warning'}>{normalized}</Badge>;
 };
 
+const DEFAULT_LIST_SEARCH = {
+  users: '',
+  bookings: '',
+  centers: '',
+  drives: '',
+  slots: '',
+  news: '',
+  feedback: '',
+  contacts: ''
+};
+
+const DEFAULT_VISIBLE_COUNTS = {
+  users: DEFAULT_VISIBLE_COUNT,
+  bookings: DEFAULT_VISIBLE_COUNT,
+  centers: DEFAULT_VISIBLE_COUNT,
+  drives: DEFAULT_VISIBLE_COUNT,
+  slots: DEFAULT_VISIBLE_COUNT,
+  news: DEFAULT_VISIBLE_COUNT,
+  feedback: DEFAULT_VISIBLE_COUNT,
+  contacts: DEFAULT_VISIBLE_COUNT
+};
+
+const DEFAULT_DASHBOARD_FILTERS = {
+  bookings: { status: '', date: '' },
+  centers: { city: '' },
+  drives: { city: '', date: '', vaccineType: '' },
+  slots: { availability: '', dateFrom: '', dateTo: '' },
+  news: { category: '' },
+  feedback: { status: '', type: '' },
+  contacts: { status: '', type: '' }
+};
+
+const matchesExactDate = (value, selectedDate) => {
+  if (!selectedDate) {
+    return true;
+  }
+
+  if (!value) {
+    return false;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value).startsWith(selectedDate);
+  }
+
+  return parsed.toISOString().slice(0, 10) === selectedDate;
+};
+
+const matchesDateRange = (value, startDate, endDate) => {
+  if (!startDate && !endDate) {
+    return true;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  const itemDate = parsed.toISOString().slice(0, 10);
+
+  if (startDate && itemDate < startDate) {
+    return false;
+  }
+
+  if (endDate && itemDate > endDate) {
+    return false;
+  }
+
+  return true;
+};
+
 export default function AdminDashboardPage() {
   const currentRole = getRole();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN';
@@ -308,10 +386,9 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   
-  const [currentPage, setCurrentPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
-  const debouncedSearchTerm = useDebounce(searchTerm, 250);
+  const [listSearch, setListSearch] = useState(DEFAULT_LIST_SEARCH);
+  const [visibleCounts, setVisibleCounts] = useState(DEFAULT_VISIBLE_COUNTS);
+  const [dashboardFilters, setDashboardFilters] = useState(DEFAULT_DASHBOARD_FILTERS);
   
   // Modal states
   const [showNewsModal, setShowNewsModal] = useState(false);
@@ -349,7 +426,7 @@ export default function AdminDashboardPage() {
   const [editSlotStartDate, setEditSlotStartDate] = useState('');
   const [editSlotEndDate, setEditSlotEndDate] = useState('');
   const [slotActionLoading, setSlotActionLoading] = useState(false);
-  const [editUserForm, setEditUserForm] = useState({ email: '', fullName: '', age: 0, phoneNumber: '', enabled: true });
+  const [editUserForm, setEditUserForm] = useState({ email: '', fullName: '', dob: '', age: 0, phoneNumber: '', enabled: true });
   const [slotFilters, setSlotFilters] = useState({ status: 'ALL', centerId: '', driveId: '', date: '' });
   
   // Feedback and Contact states
@@ -470,6 +547,38 @@ export default function AdminDashboardPage() {
     }));
   };
 
+  const setTabSearchValue = useCallback((tab, value) => {
+    setListSearch((current) => ({ ...current, [tab]: value }));
+    setVisibleCounts((current) => ({ ...current, [tab]: DEFAULT_VISIBLE_COUNT }));
+  }, []);
+
+  const updateDashboardFilter = useCallback((tab, key, value) => {
+    setDashboardFilters((current) => ({
+      ...current,
+      [tab]: {
+        ...current[tab],
+        [key]: value
+      }
+    }));
+    setVisibleCounts((current) => ({ ...current, [tab]: DEFAULT_VISIBLE_COUNT }));
+  }, []);
+
+  const resetDashboardFilters = useCallback((tab) => {
+    setDashboardFilters((current) => ({
+      ...current,
+      [tab]: DEFAULT_DASHBOARD_FILTERS[tab]
+    }));
+    setListSearch((current) => ({ ...current, [tab]: '' }));
+    setVisibleCounts((current) => ({ ...current, [tab]: DEFAULT_VISIBLE_COUNT }));
+  }, []);
+
+  const showMoreForTab = useCallback((tab) => {
+    setVisibleCounts((current) => ({
+      ...current,
+      [tab]: (current[tab] || DEFAULT_VISIBLE_COUNT) + DEFAULT_VISIBLE_COUNT
+    }));
+  }, []);
+
   const loadDashboardData = async (options = {}) => {
     try {
       if (!options.silent) {
@@ -507,11 +616,14 @@ export default function AdminDashboardPage() {
       if (!options.silent) {
         setLoading(true);
       }
-      const response = await adminAPI.getAllUsers();
-      const payload = unwrapApiData(response) || {};
+      const [usersResponse, bookingsResponse] = await Promise.all([
+        adminAPI.getAllUsers(),
+        adminAPI.getAllBookings()
+      ]);
+      const payload = unwrapApiData(usersResponse) || {};
       const items = ensureArray(payload);
       setUsers(items);
-      setTotalPages(Math.ceil((payload.totalElements || items.length) / 10));
+      setBookings(ensureArray(unwrapApiData(bookingsResponse)));
     } catch (err) {
       setError('Failed to load users');
       setUsers([]);
@@ -545,7 +657,7 @@ export default function AdminDashboardPage() {
         setLoading(true);
       }
       const response = await adminAPI.getAllCenters();
-      const centerItems = ensureArray(unwrapApiData(response));
+      const centerItems = normalizeCenterItems(unwrapApiData(response));
       debugDataSync('admin centers response', centerItems);
       setCenters(centerItems);
     } catch (err) {
@@ -612,7 +724,7 @@ export default function AdminDashboardPage() {
       if (centers.length === 0) {
         metadataRequests.push(
           adminAPI.getAllCenters()
-            .then((response) => setCenters(ensureArray(unwrapApiData(response))))
+            .then((response) => setCenters(normalizeCenterItems(unwrapApiData(response))))
             .catch(() => {})
         );
       }
@@ -708,12 +820,16 @@ export default function AdminDashboardPage() {
   const handleCreateCenter = async (e) => {
     e.preventDefault();
     try {
-      await adminAPI.createCenter(centerForm);
+      const response = await adminAPI.createCenter(centerForm);
+      const createdCenter = unwrapApiData(response);
+      if (createdCenter?.id) {
+        setCenters((current) => normalizeCenterItems([createdCenter, ...current]));
+      }
       setShowCenterModal(false);
       setCenterForm({ name: '', address: '', city: '', state: '', pincode: '', phone: '', email: '', workingHours: '', dailyCapacity: 100 });
       setSuccess('Center created successfully!');
       notifyDataUpdated();
-      await refreshActiveTabData();
+      await loadCenters({ silent: true });
     } catch (err) {
       setError('Failed to create center');
     }
@@ -1048,6 +1164,7 @@ export default function AdminDashboardPage() {
     setEditUserForm({
       email: user.email || '',
       fullName: user.fullName || '',
+      dob: user.dob || '',
       age: user.age || 0,
       phoneNumber: user.phoneNumber || '',
       enabled: user.enabled !== false
@@ -1058,7 +1175,10 @@ export default function AdminDashboardPage() {
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     try {
-      await superAdminAPI.updateUser(editingUser.id, editUserForm);
+      await superAdminAPI.updateUser(editingUser.id, {
+        ...editUserForm,
+        age: editUserForm.dob ? calculateAgeFromDob(editUserForm.dob) : editUserForm.age
+      });
       setShowEditUserModal(false);
       setEditingUser(null);
       setSuccess('User updated successfully!');
@@ -1145,16 +1265,109 @@ export default function AdminDashboardPage() {
     return <Badge bg={colors[status] || 'secondary'}>{status}</Badge>;
   };
 
-  const normalizedSearchTerm = debouncedSearchTerm.toLowerCase();
-  const filteredUsers = useMemo(() => users.filter(user =>
-    user.fullName?.toLowerCase().includes(normalizedSearchTerm) ||
-    user.email?.toLowerCase().includes(normalizedSearchTerm)
-  ), [users, normalizedSearchTerm]);
+  const bookedUserIds = useMemo(() => new Set(
+    bookings
+      .map((booking) => Number(booking.userId || booking.user?.id))
+      .filter((value) => Number.isFinite(value))
+  ), [bookings]);
 
-  const filteredBookings = useMemo(() => bookings.filter(booking =>
-    booking.userName?.toLowerCase().includes(normalizedSearchTerm) ||
-    booking.status?.toLowerCase().includes(normalizedSearchTerm)
-  ), [bookings, normalizedSearchTerm]);
+  const filteredUsers = useMemo(() => users.filter((user) => {
+    const hasBooking = bookedUserIds.size === 0 || bookedUserIds.has(Number(user.id));
+    return hasBooking && matchesSmartSearch(user, listSearch.users);
+  }), [users, bookedUserIds, listSearch.users]);
+
+  const displayedUsers = useMemo(
+    () => getDisplayedItems(filteredUsers, listSearch.users, visibleCounts.users),
+    [filteredUsers, listSearch.users, visibleCounts.users]
+  );
+
+  const filteredBookings = useMemo(() => bookings.filter((booking) => {
+    const filters = dashboardFilters.bookings;
+    return matchesSmartSearch(booking, listSearch.bookings)
+      && (!filters.status || String(booking.status || '').toUpperCase() === filters.status)
+      && matchesExactDate(booking.bookedAt || booking.assignedTime || booking.slotTime, filters.date);
+  }), [bookings, dashboardFilters.bookings, listSearch.bookings]);
+
+  const displayedBookings = useMemo(
+    () => getDisplayedItems(filteredBookings, listSearch.bookings, visibleCounts.bookings),
+    [filteredBookings, listSearch.bookings, visibleCounts.bookings]
+  );
+
+  const filteredCenters = useMemo(() => centers.filter((center) => {
+    const selectedCity = normalizeListSearch(dashboardFilters.centers.city);
+    const centerCity = normalizeListSearch(center.city);
+    return matchesSmartSearch(center, listSearch.centers)
+      && (!selectedCity || centerCity === selectedCity);
+  }), [centers, dashboardFilters.centers.city, listSearch.centers]);
+
+  const displayedCenters = useMemo(
+    () => getDisplayedItems(filteredCenters, listSearch.centers, visibleCounts.centers),
+    [filteredCenters, listSearch.centers, visibleCounts.centers]
+  );
+
+  const filteredDrives = useMemo(() => drives.filter((drive) => {
+    const filters = dashboardFilters.drives;
+    const driveCity = normalizeListSearch(drive.center?.city || drive.centerCity || '');
+    const selectedCity = normalizeListSearch(filters.city);
+    return matchesSmartSearch(drive, listSearch.drives)
+      && (!selectedCity || driveCity === selectedCity)
+      && matchesExactDate(drive.driveDate, filters.date)
+      && (!filters.vaccineType || String(drive.vaccineType || '').toUpperCase() === filters.vaccineType);
+  }), [drives, dashboardFilters.drives, listSearch.drives]);
+
+  const displayedDrives = useMemo(
+    () => getDisplayedItems(filteredDrives, listSearch.drives, visibleCounts.drives),
+    [filteredDrives, listSearch.drives, visibleCounts.drives]
+  );
+
+  const filteredSlots = useMemo(() => slots.filter((slot) => {
+    const filters = dashboardFilters.slots;
+    const availableCapacity = Number(slot.capacity || 0) - Number(slot.bookedCount || 0);
+    return matchesSmartSearch(slot, listSearch.slots)
+      && (!filters.availability
+        || (filters.availability === 'AVAILABLE' ? availableCapacity > 0 : availableCapacity <= 0))
+      && matchesDateRange(getSlotStartValue(slot), filters.dateFrom, filters.dateTo);
+  }), [slots, dashboardFilters.slots, listSearch.slots]);
+
+  const displayedSlots = useMemo(
+    () => getDisplayedItems(filteredSlots, listSearch.slots, visibleCounts.slots),
+    [filteredSlots, listSearch.slots, visibleCounts.slots]
+  );
+
+  const filteredNews = useMemo(() => news.filter((item) => {
+    const selectedCategory = dashboardFilters.news.category;
+    return matchesSmartSearch(item, listSearch.news)
+      && (!selectedCategory || String(item.category || '').toUpperCase() === selectedCategory);
+  }), [news, dashboardFilters.news.category, listSearch.news]);
+
+  const displayedNews = useMemo(
+    () => getDisplayedItems(filteredNews, listSearch.news, visibleCounts.news),
+    [filteredNews, listSearch.news, visibleCounts.news]
+  );
+
+  const filteredFeedbacks = useMemo(() => feedbacks.filter((item) => {
+    const filters = dashboardFilters.feedback;
+    return matchesSmartSearch(item, listSearch.feedback)
+      && (!filters.status || String(item.status || '').toUpperCase() === filters.status)
+      && (!filters.type || String(item.type || '').toUpperCase() === filters.type);
+  }), [feedbacks, dashboardFilters.feedback, listSearch.feedback]);
+
+  const displayedFeedbacks = useMemo(
+    () => getDisplayedItems(filteredFeedbacks, listSearch.feedback, visibleCounts.feedback),
+    [filteredFeedbacks, listSearch.feedback, visibleCounts.feedback]
+  );
+
+  const filteredContacts = useMemo(() => contacts.filter((item) => {
+    const filters = dashboardFilters.contacts;
+    return matchesSmartSearch(item, listSearch.contacts)
+      && (!filters.status || String(item.status || '').toUpperCase() === filters.status)
+      && (!filters.type || String(item.type || '').toUpperCase() === filters.type);
+  }), [contacts, dashboardFilters.contacts, listSearch.contacts]);
+
+  const displayedContacts = useMemo(
+    () => getDisplayedItems(filteredContacts, listSearch.contacts, visibleCounts.contacts),
+    [filteredContacts, listSearch.contacts, visibleCounts.contacts]
+  );
 
   const getSlotStatusBadge = (status) => {
     const styles = {
@@ -1271,7 +1484,7 @@ const searchTrendChartData = useMemo(() => ({
       if (!options.silent) {
         setLoading(true);
       }
-      const response = await adminAPI.getAllFeedback(0, 10);
+      const response = await adminAPI.getAllFeedback(0, 500);
       setFeedbacks(ensureArray(unwrapApiData(response)));
     } catch (err) {
       setError('Failed to load feedback');
@@ -1360,18 +1573,58 @@ const searchTrendChartData = useMemo(() => ({
     setShowContactModal(true);
   };
 
+  const renderViewMoreButton = (tab, items, searchValue) => (
+    shouldShowViewMore(items, searchValue, visibleCounts[tab]) ? (
+      <div className="text-center mt-4">
+        <Button variant="outline-primary" onClick={() => showMoreForTab(tab)} style={{ borderRadius: '0.5rem' }}>
+          View More
+        </Button>
+      </div>
+    ) : null
+  );
+
   const renderFeedback = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
       <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
-        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaComment className="me-2" />User Feedback</h5>
+        <Row className="g-3 align-items-end">
+          <Col lg={4}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaComment className="me-2" />User Feedback</h5>
+          </Col>
+          <Col lg={4}>
+            <SearchInput
+              value={listSearch.feedback}
+              onChange={(value) => setTabSearchValue('feedback', value)}
+              placeholder="Search feedback by user, subject, message"
+              icon="search"
+              onClear={() => setTabSearchValue('feedback', '')}
+            />
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.feedback.type} onChange={(event) => updateDashboardFilter('feedback', 'type', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All types</option>
+              {[...new Set(feedbacks.map((item) => item.type).filter(Boolean))].sort().map((type) => (
+                <option key={type} value={String(type).toUpperCase()}>{type}</option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.feedback.status} onChange={(event) => updateDashboardFilter('feedback', 'status', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All statuses</option>
+              {[...new Set(feedbacks.map((item) => item.status).filter(Boolean))].sort().map((status) => (
+                <option key={status} value={String(status).toUpperCase()}>{status}</option>
+              ))}
+            </Form.Select>
+          </Col>
+        </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        {feedbacks.length === 0 ? (
+        {filteredFeedbacks.length === 0 ? (
           <div className="text-center py-5">
             <FaComment size={48} className="text-muted mb-3" />
-            <p className="text-muted">No feedback yet.</p>
+            <p className="text-muted">No results found.</p>
           </div>
         ) : (
+          <>
           <Table responsive hover className="mb-0">
             <thead style={{background: '#f8fafc'}}>
               <tr>
@@ -1385,7 +1638,7 @@ const searchTrendChartData = useMemo(() => ({
               </tr>
             </thead>
             <tbody>
-              {feedbacks.map(feedback => (
+              {displayedFeedbacks.map(feedback => (
                 <tr key={feedback.id}>
                   <td className="ps-4">#{feedback.id}</td>
                   <td>
@@ -1409,6 +1662,8 @@ const searchTrendChartData = useMemo(() => ({
               ))}
             </tbody>
           </Table>
+          {renderViewMoreButton('feedback', filteredFeedbacks, listSearch.feedback)}
+          </>
         )}
       </Card.Body>
     </Card>
@@ -1417,15 +1672,45 @@ const searchTrendChartData = useMemo(() => ({
   const renderContacts = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
       <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
-        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaPhone className="me-2" />Contact Inquiries</h5>
+        <Row className="g-3 align-items-end">
+          <Col lg={4}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaPhone className="me-2" />Contact Inquiries</h5>
+          </Col>
+          <Col lg={4}>
+            <SearchInput
+              value={listSearch.contacts}
+              onChange={(value) => setTabSearchValue('contacts', value)}
+              placeholder="Search contacts by name, email, phone, message"
+              icon="search"
+              onClear={() => setTabSearchValue('contacts', '')}
+            />
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.contacts.type} onChange={(event) => updateDashboardFilter('contacts', 'type', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All types</option>
+              {[...new Set(contacts.map((item) => item.type).filter(Boolean))].sort().map((type) => (
+                <option key={type} value={String(type).toUpperCase()}>{type}</option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.contacts.status} onChange={(event) => updateDashboardFilter('contacts', 'status', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All statuses</option>
+              {[...new Set(contacts.map((item) => item.status).filter(Boolean))].sort().map((status) => (
+                <option key={status} value={String(status).toUpperCase()}>{status}</option>
+              ))}
+            </Form.Select>
+          </Col>
+        </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        {contacts.length === 0 ? (
+        {filteredContacts.length === 0 ? (
           <div className="text-center py-5">
             <FaPhone size={48} className="text-muted mb-3" />
-            <p className="text-muted">No contact inquiries yet.</p>
+            <p className="text-muted">No results found.</p>
           </div>
         ) : (
+          <>
           <Table responsive hover className="mb-0">
             <thead style={{background: '#f8fafc'}}>
               <tr>
@@ -1440,7 +1725,7 @@ const searchTrendChartData = useMemo(() => ({
               </tr>
             </thead>
             <tbody>
-              {contacts.map(contact => (
+              {displayedContacts.map(contact => (
                 <tr key={contact.id}>
                   <td className="ps-4">#{contact.id}</td>
                   <td>
@@ -1464,6 +1749,8 @@ const searchTrendChartData = useMemo(() => ({
               ))}
             </tbody>
           </Table>
+          {renderViewMoreButton('contacts', filteredContacts, listSearch.contacts)}
+          </>
         )}
       </Card.Body>
     </Card>
@@ -1973,71 +2260,82 @@ const searchTrendChartData = useMemo(() => ({
         <Row className="align-items-center">
           <Col md={6}>
             <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaUsers className="me-2" />User Management</h5>
+            <small className="text-muted">Showing users who have booked at least one drive.</small>
           </Col>
           <Col md={6}>
               <SearchInput
-                value={searchTerm}
-                onChange={setSearchTerm}
-                placeholder="Search users by name or email"
+                value={listSearch.users}
+                onChange={(value) => setTabSearchValue('users', value)}
+                placeholder="Search users by name, email, phone, age"
                 icon="search"
-                onClear={() => setSearchTerm('')}
+                onClear={() => setTabSearchValue('users', '')}
               />
           </Col>
         </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        <Table responsive hover className="mb-0">
-          <thead style={{background: '#f8fafc'}}>
-            <tr>
-              <th className="ps-4">ID</th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Age</th>
-              <th>Status</th>
-              <th>Verified</th>
-              <th className="text-end pe-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.slice(currentPage * 10, (currentPage + 1) * 10).map(user => (
-              <tr key={user.id}>
-                <td className="ps-4">#{user.id}</td>
-                <td className="fw-medium">{user.fullName}</td>
-                <td>{user.email}</td>
-                <td>{user.age}</td>
-                <td><Badge bg={user.enabled ? 'success' : 'danger'} style={user.enabled ? {background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'} : {background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'}}>{user.enabled ? 'Active' : 'Disabled'}</Badge></td>
-                <td>
-                  {user.emailVerified ? 
-                    <Badge bg="success" style={{background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}><FaCheck className="me-1" />Yes</Badge> : 
-                    <Badge bg="warning" style={{background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'}}><FaTimes className="me-1" />No</Badge>
-                  }
-                </td>
-                <td className="text-end pe-4">
-                  <div className="d-flex justify-content-end gap-2">
-                    {isSuperAdmin && (
-                      <>
-                        <Button variant="outline-primary" size="sm" onClick={() => openEditUserModal(user)} style={{borderRadius: '0.375rem'}}>
-                          <FaEdit />
+        {filteredUsers.length === 0 ? (
+          <div className="text-center py-5">
+            <FaUsers size={48} className="text-muted mb-3" />
+            <p className="text-muted mb-0">No results found.</p>
+          </div>
+        ) : (
+          <>
+            <Table responsive hover className="mb-0">
+              <thead style={{background: '#f8fafc'}}>
+                <tr>
+                  <th className="ps-4">ID</th>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Age</th>
+                  <th>Status</th>
+                  <th>Verified</th>
+                  <th className="text-end pe-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedUsers.map(user => (
+                  <tr key={user.id}>
+                    <td className="ps-4">#{user.id}</td>
+                    <td className="fw-medium">{user.fullName}</td>
+                    <td>{user.email}</td>
+                    <td>{user.age}</td>
+                    <td><Badge bg={user.enabled ? 'success' : 'danger'} style={user.enabled ? {background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'} : {background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'}}>{user.enabled ? 'Active' : 'Disabled'}</Badge></td>
+                    <td>
+                      {user.emailVerified ? 
+                        <Badge bg="success" style={{background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}><FaCheck className="me-1" />Yes</Badge> : 
+                        <Badge bg="warning" style={{background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'}}><FaTimes className="me-1" />No</Badge>
+                      }
+                    </td>
+                    <td className="text-end pe-4">
+                      <div className="d-flex justify-content-end gap-2">
+                        {isSuperAdmin && (
+                          <>
+                            <Button variant="outline-primary" size="sm" onClick={() => openEditUserModal(user)} style={{borderRadius: '0.375rem'}}>
+                              <FaEdit />
+                            </Button>
+                            <Button variant="outline-danger" size="sm" onClick={() => handleDeleteUser(user.id)} style={{borderRadius: '0.375rem'}}>
+                              <FaTrash />
+                            </Button>
+                          </>
+                        )}
+                        <Button 
+                          variant={user.enabled ? 'outline-danger' : 'outline-success'} 
+                          size="sm"
+                          onClick={() => handleToggleUser(user.id, user.enabled)}
+                          style={{borderRadius: '0.375rem'}}
+                        >
+                          {user.enabled ? 'Disable' : 'Enable'}
                         </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteUser(user.id)} style={{borderRadius: '0.375rem'}}>
-                          <FaTrash />
-                        </Button>
-                      </>
-                    )}
-                    <Button 
-                      variant={user.enabled ? 'outline-danger' : 'outline-success'} 
-                      size="sm"
-                      onClick={() => handleToggleUser(user.id, user.enabled)}
-                      style={{borderRadius: '0.375rem'}}
-                    >
-                      {user.enabled ? 'Disable' : 'Enable'}
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderViewMoreButton('users', filteredUsers, listSearch.users)}
+          </>
+        )}
       </Card.Body>
     </Card>
   );
@@ -2045,193 +2343,285 @@ const searchTrendChartData = useMemo(() => ({
   const renderBookings = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
       <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
-        <Row className="align-items-center">
-          <Col md={6}>
+        <Row className="align-items-end g-3">
+          <Col lg={4}>
             <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCalendarCheck className="me-2" />Booking Management</h5>
           </Col>
-          <Col md={6}>
+          <Col lg={4}>
             <SearchInput
-              value={searchTerm}
-              onChange={setSearchTerm}
-              placeholder="Search bookings by user or status"
+              value={listSearch.bookings}
+              onChange={(value) => setTabSearchValue('bookings', value)}
+              placeholder="Search bookings by user, center, drive, status"
               icon="search"
-              onClear={() => setSearchTerm('')}
+              onClear={() => setTabSearchValue('bookings', '')}
             />
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.bookings.status} onChange={(event) => updateDashboardFilter('bookings', 'status', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="CONFIRMED">Confirmed</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="CANCELLED">Cancelled</option>
+            </Form.Select>
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Control type="date" value={dashboardFilters.bookings.date} onChange={(event) => updateDashboardFilter('bookings', 'date', event.target.value)} style={{borderRadius: '0.5rem'}} />
           </Col>
         </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        <Table responsive hover className="mb-0">
-          <thead style={{background: '#f8fafc'}}>
-            <tr>
-              <th className="ps-4">ID</th>
-              <th>User</th>
-              <th>Slot</th>
-              <th>Status</th>
-              <th>Booked At</th>
-              <th className="text-end pe-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredBookings.map(booking => (
-              <tr key={booking.id}>
-                <td className="ps-4">#{booking.id}</td>
-                <td className="fw-medium">{booking.userName || 'N/A'}</td>
-                <td>{booking.slotTime || 'N/A'}</td>
-                <td>{getStatusBadge(booking.status)}</td>
-                  <td>{formatDate(booking.bookedAt)}</td>
-                <td className="text-end pe-4">
-                  <Button variant="outline-primary" size="sm" className="me-2" onClick={() => openEditBooking(booking)} style={{borderRadius: '0.375rem'}}>
-                    <FaEdit />
-                  </Button>
-                  {booking.status === 'PENDING' && (
-                    <>
-                      <Button variant="outline-success" size="sm" className="me-1" onClick={() => handleUpdateBookingStatus(booking.id, 'confirmed')} style={{borderRadius: '0.375rem'}}>
-                        <FaCheck />
+        {filteredBookings.length === 0 ? (
+          <div className="text-center py-5">
+            <FaCalendarCheck size={48} className="text-muted mb-3" />
+            <p className="text-muted mb-0">No results found.</p>
+          </div>
+        ) : (
+          <>
+            <Table responsive hover className="mb-0">
+              <thead style={{background: '#f8fafc'}}>
+                <tr>
+                  <th className="ps-4">ID</th>
+                  <th>User</th>
+                  <th>Slot</th>
+                  <th>Status</th>
+                  <th>Booked At</th>
+                  <th className="text-end pe-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {displayedBookings.map(booking => (
+                  <tr key={booking.id}>
+                    <td className="ps-4">#{booking.id}</td>
+                    <td className="fw-medium">{booking.userName || 'N/A'}</td>
+                    <td>{booking.slotTime || 'N/A'}</td>
+                    <td>{getStatusBadge(booking.status)}</td>
+                    <td>{formatDate(booking.bookedAt)}</td>
+                    <td className="text-end pe-4">
+                      <Button variant="outline-primary" size="sm" className="me-2" onClick={() => openEditBooking(booking)} style={{borderRadius: '0.375rem'}}>
+                        <FaEdit />
                       </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => handleUpdateBookingStatus(booking.id, 'cancelled')} style={{borderRadius: '0.375rem'}}>
-                        <FaTimes />
+                      {booking.status === 'PENDING' && (
+                        <>
+                          <Button variant="outline-success" size="sm" className="me-1" onClick={() => handleUpdateBookingStatus(booking.id, 'confirmed')} style={{borderRadius: '0.375rem'}}>
+                            <FaCheck />
+                          </Button>
+                          <Button variant="outline-danger" size="sm" onClick={() => handleUpdateBookingStatus(booking.id, 'cancelled')} style={{borderRadius: '0.375rem'}}>
+                            <FaTimes />
+                          </Button>
+                        </>
+                      )}
+                      {booking.status === 'CONFIRMED' && (
+                        <>
+                          <Button variant="outline-success" size="sm" className="me-1" onClick={() => handleUpdateBookingStatus(booking.id, 'completed')} style={{borderRadius: '0.375rem'}}>
+                            <FaCertificate />
+                          </Button>
+                          <Button variant="outline-danger" size="sm" onClick={() => handleUpdateBookingStatus(booking.id, 'cancelled')} style={{borderRadius: '0.375rem'}}>
+                            <FaTimes />
+                          </Button>
+                        </>
+                      )}
+                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteBooking(booking.id)} style={{borderRadius: '0.375rem'}}>
+                        <FaTrash />
                       </Button>
-                    </>
-                  )}
-                  {booking.status === 'CONFIRMED' && (
-                    <>
-                      <Button variant="outline-success" size="sm" className="me-1" onClick={() => handleUpdateBookingStatus(booking.id, 'completed')} style={{borderRadius: '0.375rem'}}>
-                        <FaCertificate />
-                      </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => handleUpdateBookingStatus(booking.id, 'cancelled')} style={{borderRadius: '0.375rem'}}>
-                        <FaTimes />
-                      </Button>
-                    </>
-                  )}
-                  <Button variant="outline-danger" size="sm" onClick={() => handleDeleteBooking(booking.id)} style={{borderRadius: '0.375rem'}}>
-                    <FaTrash />
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </Table>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderViewMoreButton('bookings', filteredBookings, listSearch.bookings)}
+          </>
+        )}
       </Card.Body>
     </Card>
   );
 
   const renderCenters = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
-      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
-        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaHospital className="me-2" />Vaccination Centers</h5>
-        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowCenterModal(true)}>
-          <FaPlus className="me-2" />Add Center
-        </Button>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <Row className="g-3 align-items-end">
+          <Col lg={4}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaHospital className="me-2" />Vaccination Centers</h5>
+          </Col>
+          <Col lg={4}>
+            <SearchInput
+              value={listSearch.centers}
+              onChange={(value) => setTabSearchValue('centers', value)}
+              placeholder="Search centers by name, city, address, phone"
+              icon="search"
+              onClear={() => setTabSearchValue('centers', '')}
+            />
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.centers.city} onChange={(event) => updateDashboardFilter('centers', 'city', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All cities</option>
+              {[...new Set(centers.map((center) => center.city).filter(Boolean))].sort().map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col md={6} lg={2} className="d-grid">
+            <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowCenterModal(true)}>
+              <FaPlus className="me-2" />Add Center
+            </Button>
+          </Col>
+        </Row>
       </Card.Header>
       <Card.Body>
-        <Row className="g-4">
-          {centers.map(center => (
-            <Col key={center.id} md={6} lg={4}>
-              <Card className="h-100 border-0 shadow-sm" style={{borderRadius: '0.75rem', transition: 'transform 0.2s, box-shadow 0.2s'}}>
-                <Card.Body>
-                  <div className="d-flex justify-content-between align-items-start mb-3">
-                    <Card.Title className="h6 mb-0 fw-bold">{center.name}</Card.Title>
-                    <Badge style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>{center.dailyCapacity || 0} doses/day</Badge>
-                  </div>
-                  <div className="text-muted small">
-                    <div className="d-flex align-items-center gap-2 mb-2">
-                      <FaHospital style={{color: '#0ea5e9'}} />
-                      <span>{center.address}, {center.city}</span>
-                    </div>
-                    <div className="d-flex align-items-center gap-2 mb-2">
-                      <FaBell style={{color: '#0ea5e9'}} />
-                      <span>Phone: {center.phone || 'N/A'}</span>
-                    </div>
-                    {center.workingHours && (
-                      <div className="d-flex align-items-center gap-2">
-                        <FaCog style={{color: '#0ea5e9'}} />
-                        <span>Hours: {center.workingHours}</span>
+        {filteredCenters.length === 0 ? (
+          <div className="text-center py-5">
+            <FaHospital size={48} className="text-muted mb-3" />
+            <p className="text-muted mb-0">No results found.</p>
+          </div>
+        ) : (
+          <>
+            <Row className="g-4">
+              {displayedCenters.map(center => (
+                <Col key={center.id} md={6} lg={4}>
+                  <Card className="h-100 border-0 shadow-sm" style={{borderRadius: '0.75rem', transition: 'transform 0.2s, box-shadow 0.2s'}}>
+                    <Card.Body>
+                      <div className="d-flex justify-content-between align-items-start mb-3">
+                        <Card.Title className="h6 mb-0 fw-bold">{center.name}</Card.Title>
+                        <Badge style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>{center.dailyCapacity || 0} doses/day</Badge>
                       </div>
-                    )}
-                  </div>
-                  <div className="d-flex gap-2 mt-3">
-                    <Button variant="outline-primary" size="sm" onClick={() => openEditCenterModal(center)} style={{borderRadius: '0.375rem'}}>
-                      <FaEdit className="me-1" />Edit
-                    </Button>
-                    <Button variant="outline-danger" size="sm" onClick={() => handleDeleteCenter(center.id)} style={{borderRadius: '0.375rem'}}>
-                      <FaTrash className="me-1" />Delete
-                    </Button>
-                  </div>
-                </Card.Body>
-              </Card>
-            </Col>
-          ))}
-        </Row>
+                      <div className="text-muted small">
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <FaHospital style={{color: '#0ea5e9'}} />
+                          <span>{center.address}, {center.city}</span>
+                        </div>
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <FaBell style={{color: '#0ea5e9'}} />
+                          <span>Phone: {center.phone || 'N/A'}</span>
+                        </div>
+                        {center.workingHours && (
+                          <div className="d-flex align-items-center gap-2">
+                            <FaCog style={{color: '#0ea5e9'}} />
+                            <span>Hours: {center.workingHours}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="d-flex gap-2 mt-3">
+                        <Button variant="outline-primary" size="sm" onClick={() => openEditCenterModal(center)} style={{borderRadius: '0.375rem'}}>
+                          <FaEdit className="me-1" />Edit
+                        </Button>
+                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteCenter(center.id)} style={{borderRadius: '0.375rem'}}>
+                          <FaTrash className="me-1" />Delete
+                        </Button>
+                      </div>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+            {renderViewMoreButton('centers', filteredCenters, listSearch.centers)}
+          </>
+        )}
       </Card.Body>
     </Card>
   );
 
   const renderDrives = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
-      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
-        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaSyringe className="me-2" />Vaccination Drives</h5>
-        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={handleOpenDriveModal}>
-          <FaPlus className="me-2" />Add Drive
-        </Button>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <Row className="g-3 align-items-end">
+          <Col lg={3}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaSyringe className="me-2" />Vaccination Drives</h5>
+          </Col>
+          <Col lg={3}>
+            <SearchInput
+              value={listSearch.drives}
+              onChange={(value) => setTabSearchValue('drives', value)}
+              placeholder="Search drives by title, city, center, vaccine"
+              icon="search"
+              onClear={() => setTabSearchValue('drives', '')}
+            />
+          </Col>
+          <Col md={4} lg={2}>
+            <Form.Select value={dashboardFilters.drives.city} onChange={(event) => updateDashboardFilter('drives', 'city', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All cities</option>
+              {[...new Set(drives.map((drive) => drive.center?.city || drive.centerCity).filter(Boolean))].sort().map((city) => (
+                <option key={city} value={city}>{city}</option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col md={4} lg={2}>
+            <Form.Control type="date" value={dashboardFilters.drives.date} onChange={(event) => updateDashboardFilter('drives', 'date', event.target.value)} style={{borderRadius: '0.5rem'}} />
+          </Col>
+          <Col md={4} lg={2}>
+            <Form.Select value={dashboardFilters.drives.vaccineType} onChange={(event) => updateDashboardFilter('drives', 'vaccineType', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All vaccines</option>
+              {[...new Set(drives.map((drive) => drive.vaccineType).filter(Boolean))].sort().map((type) => (
+                <option key={type} value={String(type).toUpperCase()}>{type}</option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col xs={12} className="d-flex justify-content-end">
+            <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={handleOpenDriveModal}>
+              <FaPlus className="me-2" />Add Drive
+            </Button>
+          </Col>
+        </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        {drives.length === 0 ? (
+        {filteredDrives.length === 0 ? (
           <div className="text-center py-5">
             <FaSyringe size={48} className="text-muted mb-3" />
-            <p className="text-muted mb-0">No drives available yet.</p>
+            <p className="text-muted mb-0">No results found.</p>
           </div>
         ) : (
-          <Table responsive hover className="mb-0">
-            <thead style={{background: '#f8fafc'}}>
-              <tr>
-                <th className="ps-4">ID</th>
-                <th>Title</th>
-                <th>Center</th>
-                <th>Date</th>
-                <th>Age Range</th>
-                <th>Status</th>
-                <th className="text-end pe-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {drives.map(drive => (
-                <tr key={drive.id}>
-                  <td className="ps-4">#{drive.id}</td>
-                  <td className="fw-medium">{drive.title}</td>
-                  <td>{drive.center?.name || drive.centerName || 'N/A'}</td>
-                  <td>{drive.driveDate}</td>
-                  <td>{drive.minAge} - {drive.maxAge}</td>
-                  <td>
-                    <Form.Select
-                      size="sm"
-                      value={drive.status || 'UPCOMING'}
-                      onChange={(e) => handleDriveStatusChange(drive.id, e.target.value)}
-                      style={{borderRadius: '0.5rem', minWidth: '140px'}}
-                    >
-                      {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
-                    </Form.Select>
-                  </td>
-                  <td className="text-end pe-4">
-                    <div className="d-flex justify-content-end gap-2">
-                      <Button variant="outline-primary" size="sm" onClick={() => openEditDriveModal(drive)} style={{borderRadius: '0.375rem'}}>
-                        <FaEdit />
-                      </Button>
-                      <Button variant="outline-info" size="sm" onClick={() => openManageSlotsModal(drive)} style={{borderRadius: '0.375rem'}}>
-                        Slots
-                      </Button>
-                      <Button variant="outline-primary" size="sm" onClick={() => handleOpenSlotModal(drive)} style={{borderRadius: '0.375rem'}}>
-                        <FaPlus />
-                      </Button>
-                      <Button variant="outline-danger" size="sm" onClick={() => handleDeleteDrive(drive.id)} style={{borderRadius: '0.375rem'}}>
-                        <FaTrash />
-                      </Button>
-                    </div>
-                  </td>
+          <>
+            <Table responsive hover className="mb-0">
+              <thead style={{background: '#f8fafc'}}>
+                <tr>
+                  <th className="ps-4">ID</th>
+                  <th>Title</th>
+                  <th>Center</th>
+                  <th>Date</th>
+                  <th>Age Range</th>
+                  <th>Status</th>
+                  <th className="text-end pe-4">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {displayedDrives.map(drive => (
+                  <tr key={drive.id}>
+                    <td className="ps-4">#{drive.id}</td>
+                    <td className="fw-medium">{drive.title}</td>
+                    <td>{drive.center?.name || drive.centerName || 'N/A'}</td>
+                    <td>{drive.driveDate}</td>
+                    <td>{drive.minAge} - {drive.maxAge}</td>
+                    <td>
+                      <Form.Select
+                        size="sm"
+                        value={drive.status || 'UPCOMING'}
+                        onChange={(e) => handleDriveStatusChange(drive.id, e.target.value)}
+                        style={{borderRadius: '0.5rem', minWidth: '140px'}}
+                      >
+                        {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
+                      </Form.Select>
+                    </td>
+                    <td className="text-end pe-4">
+                      <div className="d-flex justify-content-end gap-2">
+                        <Button variant="outline-primary" size="sm" onClick={() => openEditDriveModal(drive)} style={{borderRadius: '0.375rem'}}>
+                          <FaEdit />
+                        </Button>
+                        <Button variant="outline-info" size="sm" onClick={() => openManageSlotsModal(drive)} style={{borderRadius: '0.375rem'}}>
+                          Slots
+                        </Button>
+                        <Button variant="outline-primary" size="sm" onClick={() => handleOpenSlotModal(drive)} style={{borderRadius: '0.375rem'}}>
+                          <FaPlus />
+                        </Button>
+                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteDrive(drive.id)} style={{borderRadius: '0.375rem'}}>
+                          <FaTrash />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderViewMoreButton('drives', filteredDrives, listSearch.drives)}
+          </>
         )}
       </Card.Body>
     </Card>
@@ -2250,6 +2640,15 @@ const searchTrendChartData = useMemo(() => ({
       </Card.Header>
       <Card.Body>
         <Row className="g-3 mb-4">
+          <Col md={6} lg={3}>
+            <SearchInput
+              value={listSearch.slots}
+              onChange={(value) => setTabSearchValue('slots', value)}
+              placeholder="Search slots by drive, center, status, time"
+              icon="search"
+              onClear={() => setTabSearchValue('slots', '')}
+            />
+          </Col>
           <Col md={3}>
             <Form.Group>
               <Form.Label>Status</Form.Label>
@@ -2291,69 +2690,94 @@ const searchTrendChartData = useMemo(() => ({
               <Form.Control type="date" value={slotFilters.date} onChange={(e) => setSlotFilters((current) => ({ ...current, date: e.target.value }))} style={{borderRadius: '0.5rem'}} />
             </Form.Group>
           </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>Availability</Form.Label>
+              <Form.Select value={dashboardFilters.slots.availability} onChange={(e) => updateDashboardFilter('slots', 'availability', e.target.value)} style={{borderRadius: '0.5rem'}}>
+                <option value="">All</option>
+                <option value="AVAILABLE">Available</option>
+                <option value="FULL">Full</option>
+              </Form.Select>
+            </Form.Group>
+          </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>From</Form.Label>
+              <Form.Control type="date" value={dashboardFilters.slots.dateFrom} onChange={(e) => updateDashboardFilter('slots', 'dateFrom', e.target.value)} style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+          </Col>
+          <Col md={3}>
+            <Form.Group>
+              <Form.Label>To</Form.Label>
+              <Form.Control type="date" value={dashboardFilters.slots.dateTo} onChange={(e) => updateDashboardFilter('slots', 'dateTo', e.target.value)} style={{borderRadius: '0.5rem'}} />
+            </Form.Group>
+          </Col>
         </Row>
 
         <div className="d-flex justify-content-between align-items-center mb-3">
-          <small className="text-muted">{slots.length} slot{slots.length === 1 ? '' : 's'} found</small>
+          <small className="text-muted">{filteredSlots.length} slot{filteredSlots.length === 1 ? '' : 's'} found</small>
           <Button variant="outline-secondary" size="sm" onClick={() => setSlotFilters({ status: 'ALL', centerId: '', driveId: '', date: '' })} style={{borderRadius: '0.5rem'}}>
             Reset Filters
           </Button>
         </div>
 
-        {slots.length === 0 ? (
+        {filteredSlots.length === 0 ? (
           <div className="text-center py-5">
             <FaCalendarCheck size={48} className="text-muted mb-3" />
-            <p className="text-muted mb-0">No slots matched the current filters.</p>
+            <p className="text-muted mb-0">No results found.</p>
           </div>
         ) : (
-          <Table responsive hover className="mb-0">
-            <thead style={{background: '#f8fafc'}}>
-              <tr>
-                <th className="ps-4">Slot Time</th>
-                <th>Center</th>
-                <th>Drive</th>
-                <th>Capacity</th>
-                <th>Status</th>
-                <th className="text-end pe-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {slots.map((slot) => (
-                <tr key={slot.id}>
-                  <td className="ps-4">
-                    <div className="fw-medium">{formatDateTime(getSlotStartValue(slot))}</div>
-                    <small className="text-muted">Ends {formatDateTime(getSlotEndValue(slot))}</small>
-                  </td>
-                  <td>{slot.centerName || 'N/A'}</td>
-                  <td>{slot.driveName || 'N/A'}</td>
-                  <td>{slot.bookedCount || 0} / {slot.capacity || 0}</td>
-                  <td>
-                    <div className="d-flex flex-column gap-1">
-                      {getSlotStatusBadge(getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now))}
-                      <small className="text-muted">
-                        {getCountdownLabel(
-                          getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now),
-                          getSlotStartValue(slot),
-                          getSlotEndValue(slot),
-                          now
-                        )}
-                      </small>
-                    </div>
-                  </td>
-                  <td className="text-end pe-4">
-                    <div className="d-flex justify-content-end gap-2">
-                      <Button type="button" variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
-                        <FaEdit />
-                      </Button>
-                      <Button type="button" variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
-                        <FaTrash />
-                      </Button>
-                    </div>
-                  </td>
+          <>
+            <Table responsive hover className="mb-0">
+              <thead style={{background: '#f8fafc'}}>
+                <tr>
+                  <th className="ps-4">Slot Time</th>
+                  <th>Center</th>
+                  <th>Drive</th>
+                  <th>Capacity</th>
+                  <th>Status</th>
+                  <th className="text-end pe-4">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </Table>
+              </thead>
+              <tbody>
+                {displayedSlots.map((slot) => (
+                  <tr key={slot.id}>
+                    <td className="ps-4">
+                      <div className="fw-medium">{formatDateTime(getSlotStartValue(slot))}</div>
+                      <small className="text-muted">Ends {formatDateTime(getSlotEndValue(slot))}</small>
+                    </td>
+                    <td>{slot.centerName || 'N/A'}</td>
+                    <td>{slot.driveName || 'N/A'}</td>
+                    <td>{slot.bookedCount || 0} / {slot.capacity || 0}</td>
+                    <td>
+                      <div className="d-flex flex-column gap-1">
+                        {getSlotStatusBadge(getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now))}
+                        <small className="text-muted">
+                          {getCountdownLabel(
+                            getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now),
+                            getSlotStartValue(slot),
+                            getSlotEndValue(slot),
+                            now
+                          )}
+                        </small>
+                      </div>
+                    </td>
+                    <td className="text-end pe-4">
+                      <div className="d-flex justify-content-end gap-2">
+                        <Button type="button" variant="outline-primary" size="sm" onClick={() => openEditSlotModal(slot)} style={{borderRadius: '0.375rem'}}>
+                          <FaEdit />
+                        </Button>
+                        <Button type="button" variant="outline-danger" size="sm" onClick={() => handleDeleteSlot(slot.id)} style={{borderRadius: '0.375rem'}}>
+                          <FaTrash />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+            {renderViewMoreButton('slots', filteredSlots, listSearch.slots)}
+          </>
         )}
       </Card.Body>
     </Card>
@@ -2361,11 +2785,34 @@ const searchTrendChartData = useMemo(() => ({
 
   const renderNews = () => (
     <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
-      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3 d-flex justify-content-between align-items-center">
-        <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaNewspaper className="me-2" />News Management</h5>
-        <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowNewsModal(true)}>
-          <FaPlus className="me-2" />Post News
-        </Button>
+      <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+        <Row className="g-3 align-items-end">
+          <Col lg={4}>
+            <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaNewspaper className="me-2" />News Management</h5>
+          </Col>
+          <Col lg={4}>
+            <SearchInput
+              value={listSearch.news}
+              onChange={(value) => setTabSearchValue('news', value)}
+              placeholder="Search news by title, content, category"
+              icon="search"
+              onClear={() => setTabSearchValue('news', '')}
+            />
+          </Col>
+          <Col md={6} lg={2}>
+            <Form.Select value={dashboardFilters.news.category} onChange={(event) => updateDashboardFilter('news', 'category', event.target.value)} style={{borderRadius: '0.5rem'}}>
+              <option value="">All categories</option>
+              {[...new Set(news.map((item) => item.category).filter(Boolean))].sort().map((category) => (
+                <option key={category} value={String(category).toUpperCase()}>{category}</option>
+              ))}
+            </Form.Select>
+          </Col>
+          <Col md={6} lg={2} className="d-grid">
+            <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}} onClick={() => setShowNewsModal(true)}>
+              <FaPlus className="me-2" />Post News
+            </Button>
+          </Col>
+        </Row>
       </Card.Header>
       <Card.Body className="p-0">
         <div className="table-responsive">
@@ -2380,17 +2827,14 @@ const searchTrendChartData = useMemo(() => ({
               </tr>
             </thead>
             <tbody>
-              {news.length === 0 ? (
+              {filteredNews.length === 0 ? (
                 <tr>
                   <td colSpan="5" className="text-center py-5">
                     <FaNewspaper size={48} className="text-muted mb-3 d-block" />
-                    <p className="text-muted mb-4">No news posts yet.</p>
-                    <Button style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none'}} onClick={() => setShowNewsModal(true)}>
-                      Post First News
-                    </Button>
+                    <p className="text-muted mb-4">No results found.</p>
                   </td>
                 </tr>
-              ) : news.map(item => (
+              ) : displayedNews.map(item => (
                 <tr key={item.id}>
                   <td className="fw-medium">{item.title}</td>
                   <td><Badge style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>{item.category || 'GENERAL'}</Badge></td>
@@ -2424,6 +2868,7 @@ const searchTrendChartData = useMemo(() => ({
             </tbody>
           </Table>
         </div>
+        {renderViewMoreButton('news', filteredNews, listSearch.news)}
       </Card.Body>
 
     </Card>
@@ -3036,8 +3481,9 @@ const searchTrendChartData = useMemo(() => ({
               <Form.Control type="email" value={editUserForm.email} onChange={e => setEditUserForm({...editUserForm, email: e.target.value})} required style={{borderRadius: '0.5rem'}} />
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>Age</Form.Label>
-              <Form.Control type="number" min="0" value={editUserForm.age} onChange={e => setEditUserForm({...editUserForm, age: Number(e.target.value)})} required style={{borderRadius: '0.5rem'}} />
+              <Form.Label>Date of Birth</Form.Label>
+              <Form.Control type="date" value={editUserForm.dob} onChange={e => setEditUserForm({...editUserForm, dob: e.target.value, age: calculateAgeFromDob(e.target.value) ?? editUserForm.age})} style={{borderRadius: '0.5rem'}} />
+              <Form.Text className="text-muted">Current age: {editUserForm.dob ? (calculateAgeFromDob(editUserForm.dob) ?? 0) : editUserForm.age}</Form.Text>
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Phone Number</Form.Label>

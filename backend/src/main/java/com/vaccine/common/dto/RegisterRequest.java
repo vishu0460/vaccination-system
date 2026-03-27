@@ -4,8 +4,11 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
+import java.time.LocalDate;
 
 public record RegisterRequest(
     @NotBlank(message = "Email is required")
@@ -30,6 +33,9 @@ public record RegisterRequest(
         message = "Password must include uppercase, lowercase, number, and special character"
     )
     String password,
+
+    @Past(message = "Date of birth must be in the past")
+    LocalDate dob,
 
     @Min(value = 1, message = "Age must be at least 1")
     Integer age

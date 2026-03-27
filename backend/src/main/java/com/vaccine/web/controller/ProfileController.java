@@ -35,6 +35,7 @@ public class ProfileController {
         response.put("id", user.getId());
         response.put("email", user.getEmail());
         response.put("fullName", user.getFullName());
+        response.put("dob", user.getDob() != null ? user.getDob().toString() : "");
         response.put("age", user.getAge());
         response.put("phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : "");
         response.put("address", user.getAddress() != null ? user.getAddress() : "");
@@ -56,6 +57,7 @@ public class ProfileController {
         return ResponseEntity.ok(ApiResponse.success(Map.of(
             "message", "Profile updated successfully",
             "fullName", user.getFullName(),
+            "dob", user.getDob() != null ? user.getDob().toString() : "",
             "age", user.getAge()
         )));
     }

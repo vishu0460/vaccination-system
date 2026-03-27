@@ -45,9 +45,6 @@ app:
   cors:
     allowed-origins:
       - http://localhost:5173
-  admin:
-    email: admin@test.com
-    password: Test@123
   mail:
     from: noreply@test.com
     base-url: http://localhost:5173

@@ -5,6 +5,7 @@ import com.vaccine.domain.Booking;
 import com.vaccine.domain.Notification;
 import com.vaccine.domain.NotificationType;
 import com.vaccine.domain.User;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -16,6 +17,8 @@ public interface INotificationService {
     void ensureBookingReminderNotifications(Booking booking);
 
     void ensureSecondDoseReminderNotifications(Booking booking);
+
+    void queueBirthdayNotification(User user, LocalDate birthdayDate);
 
     Notification queueNotification(User user, NotificationType type, String title, String message,
                                    LocalDateTime scheduledTime, Long referenceId, String dedupeKey);

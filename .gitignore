@@ -6,6 +6,8 @@ Thumbs.db
 
 # Local env
 .env
+frontend/.env
+backend/.env
 admin_login.json
 
 # Maven / General
@@ -53,8 +55,11 @@ backend/.mvn/
 backend/*.log
 backend/*.txt
 backend/src/main/resources/application-local*.yml
+backend/src/main/resources/application-*.secret.yml
 backend/src/main/resources/application-dev.yml
 backend/src/test/resources/application-test*.yml
+*.secrets
+*.secret
 
 
 # Frontend (React/Vite)

@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -23,6 +24,17 @@ public class UserService {
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
+    }
+
+    public List<User> getUsersWithBirthday(LocalDate today) {
+        if (today == null) {
+            return List.of();
+        }
+
+        return userRepository.findByDobIsNotNull().stream()
+            .filter(user -> user.getDob() != null)
+            .filter(user -> user.getDob().getMonth() == today.getMonth() && user.getDob().getDayOfMonth() == today.getDayOfMonth())
+            .toList();
     }
 
     public List<NotificationResponse> getNotificationsByEmail(String email) {

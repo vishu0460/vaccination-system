@@ -3,6 +3,17 @@ import { clearAuth, getAccessToken, getRefreshToken, setAuth } from "../utils/au
 
 const DEFAULT_DEV_BACKEND_PORTS = [8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089];
 
+const getConfiguredApiBaseEnv = () => {
+  const baseUrl = typeof import.meta.env.VITE_API_BASE_URL === "string"
+    ? import.meta.env.VITE_API_BASE_URL.trim()
+    : "";
+  const legacyUrl = typeof import.meta.env.VITE_API_URL === "string"
+    ? import.meta.env.VITE_API_URL.trim()
+    : "";
+
+  return baseUrl || legacyUrl;
+};
+
 const normalizeApiBaseUrl = (rawValue) => {
   const value = typeof rawValue === "string" ? rawValue.trim() : "";
 
@@ -35,9 +46,7 @@ const getDevBackendPorts = () => {
 };
 
 const shouldAutoDetectApiBaseUrl = () => {
-  const value = typeof import.meta.env.VITE_API_BASE_URL === "string"
-    ? import.meta.env.VITE_API_BASE_URL.trim()
-    : "";
+  const value = getConfiguredApiBaseEnv();
 
   return !value || value.toLowerCase() === "auto";
 };
@@ -57,7 +66,7 @@ const resolveApiOrigin = (origin, includePort = true) => {
 
 const buildCandidateApiBaseUrls = () => {
   if (typeof window === "undefined") {
-    return [normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL)];
+    return [normalizeApiBaseUrl(getConfiguredApiBaseEnv())];
   }
 
   const currentOrigin = window.location.origin;
@@ -76,7 +85,7 @@ const buildCandidateApiBaseUrls = () => {
 };
 
 const candidateApiBaseUrls = buildCandidateApiBaseUrls();
-let resolvedApiBaseUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+let resolvedApiBaseUrl = normalizeApiBaseUrl(getConfiguredApiBaseEnv());
 let apiBaseUrlPromise = null;
 
 const pingApiBaseUrl = async (baseUrl) => {
@@ -324,7 +333,7 @@ export const adminAPI = {
   getDashboardAnalytics: () => apiClient.get("/admin/dashboard/analytics"),
   getSearchAnalytics: () => apiClient.get("/admin/search-analytics"),
   getAllBookings: () => apiClient.get("/admin/bookings"),
-  getAllCenters: () => apiClient.get("/admin/centers"),
+  getAllCenters: (params = {}) => apiClient.get("/admin/centers", { params: { page: 0, size: 500, ...params } }),
   getAllDrives: () => apiClient.get("/admin/drives"),
   getAllUsers: () => apiClient.get("/admin/users"),
   getAllSlots: (params = {}) => apiClient.get("/admin/slots", { params }),

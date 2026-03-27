@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useSearchParams } from "react-router-dom";
 import { getErrorMessage, normalizeSearchValue, publicAPI, unwrapApiData } from "../api/client";
 import CityAutocomplete from "../components/CityAutocomplete";
+import SearchInput from "../components/SearchInput";
 import useDebounce from "../hooks/useDebounce";
 import { debugDataSync, subscribeToDataUpdates } from "../utils/dataSync";
+import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, shouldShowViewMore } from "../utils/listSearch";
 
 const parseCity = (searchParams) => searchParams.get("city") || "";
 
@@ -15,6 +17,8 @@ export default function CentersPage() {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_COUNT);
   const debouncedSelectedCity = useDebounce(selectedCity, 400);
 
   const load = useCallback(async (cityFilter) => {
@@ -89,6 +93,12 @@ export default function CentersPage() {
     applySearch(debouncedSelectedCity, { replace: true });
   }, [debouncedSelectedCity, city]);
 
+  const filteredCenters = useMemo(() => centers.filter((center) => matchesSmartSearch(center, search)), [centers, search]);
+  const displayedCenters = useMemo(
+    () => getDisplayedItems(filteredCenters, search, visibleCount),
+    [filteredCenters, search, visibleCount]
+  );
+
   return (
     <>
       <Helmet>
@@ -138,6 +148,21 @@ export default function CentersPage() {
                   <i className="bi bi-arrow-counterclockwise me-2"></i>Reset
                 </button>
               </div>
+              <div className="col-12">
+                <SearchInput
+                  value={search}
+                  onChange={(value) => {
+                    setSearch(value);
+                    setVisibleCount(DEFAULT_VISIBLE_COUNT);
+                  }}
+                  placeholder="Search centers by name, address, city, phone"
+                  icon="search"
+                  onClear={() => {
+                    setSearch("");
+                    setVisibleCount(DEFAULT_VISIBLE_COUNT);
+                  }}
+                />
+              </div>
             </div>
             {city ? (
               <div className="small text-muted mt-3">
@@ -161,11 +186,11 @@ export default function CentersPage() {
             <p>{error}</p>
             <button className="btn btn-primary" onClick={() => load(city)}>Retry</button>
           </div>
-        ) : centers.length > 0 ? (
+        ) : filteredCenters.length > 0 ? (
           <>
             <div className="d-flex justify-content-between align-items-center mb-4">
               <p className="text-muted mb-0">
-                Showing <strong>{centers.length}</strong> center{centers.length !== 1 ? "s" : ""}
+                Showing <strong>{filteredCenters.length}</strong> center{filteredCenters.length !== 1 ? "s" : ""}
                 {city ? <span> in <strong>{city}</strong></span> : null}
               </p>
               <Link to={city ? `/drives?city=${encodeURIComponent(city)}` : "/drives"} className="btn btn-outline-primary btn-sm">
@@ -173,7 +198,7 @@ export default function CentersPage() {
               </Link>
             </div>
             <div className="row g-4">
-              {centers.map((center, index) => (
+              {displayedCenters.map((center, index) => (
                 <div className="col-md-6 col-lg-4 fade-in" key={center.id} style={{ animationDelay: `${index * 0.1}s` }}>
                   <div className="center-card h-100">
                     <div className="card-header">
@@ -227,6 +252,13 @@ export default function CentersPage() {
                 </div>
               ))}
             </div>
+            {shouldShowViewMore(filteredCenters, search, visibleCount) ? (
+              <div className="text-center mt-4">
+                <button className="btn btn-outline-primary" onClick={() => setVisibleCount((current) => current + DEFAULT_VISIBLE_COUNT)}>
+                  View More
+                </button>
+              </div>
+            ) : null}
           </>
         ) : (
           <div className="empty-state">

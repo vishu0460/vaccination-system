@@ -557,7 +557,7 @@ export default function UserBookingsPage() {
                               <i className="bi bi-clock-history me-1"></i>Expired
                             </button>
                           )}
-                          {slot.demandLevel === "HIGH_DEMAND" && <div className="text-danger small mt-1">🔥 High Demand</div>}
+                          {slot.demandLevel === "HIGH_DEMAND" && <div className="text-danger small mt-1">High Demand</div>}
                           {slot.almostFull && slot.demandLevel !== "HIGH_DEMAND" && <div className="text-warning small mt-1">Almost Full</div>}
                         </td>
                       </tr>

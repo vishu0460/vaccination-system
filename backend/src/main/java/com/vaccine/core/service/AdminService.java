@@ -4,6 +4,7 @@ import com.vaccine.common.dto.*;
 import com.vaccine.domain.*;
 import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
+import com.vaccine.util.AgeCalculator;
 import com.vaccine.util.SlotStatusResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -684,8 +685,12 @@ public class AdminService {
         if (req.fullName() != null && !req.fullName().isBlank()) {
             user.setFullName(req.fullName().trim());
         }
-        if (req.age() != null) {
+        if (req.dob() != null) {
+            user.setDob(req.dob());
+            user.setAge(AgeCalculator.calculateAge(req.dob()));
+        } else if (req.age() != null) {
             user.setAge(req.age());
+            user.setDob(null);
         }
         if (req.phoneNumber() != null) {
             user.setPhoneNumber(req.phoneNumber().trim());

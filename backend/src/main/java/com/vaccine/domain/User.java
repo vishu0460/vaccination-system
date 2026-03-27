@@ -2,6 +2,7 @@ package com.vaccine.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +31,9 @@ public class User {
     @Column(nullable = false)
     @com.fasterxml.jackson.annotation.JsonIgnore
     private String password;
+
+    @Column(name = "dob")
+    private LocalDate dob;
 
     @Column(nullable = false)
     private Integer age;
@@ -203,12 +207,28 @@ public boolean hasRole(RoleName roleName) {
         return email;
     }
 
+    public LocalDate getDob() {
+        return dob;
+    }
+
     public Boolean getEnabled() {
         return enabled;
     }
 
     public Set<Role> getRoles() {
         return roles;
+    }
+
+    public Integer getAge() {
+        if (dob != null) {
+            LocalDate today = LocalDate.now();
+            int calculatedAge = today.getYear() - dob.getYear();
+            if (dob.withYear(today.getYear()).isAfter(today)) {
+                calculatedAge--;
+            }
+            return Math.max(calculatedAge, 0);
+        }
+        return age;
     }
 
     public boolean isSuperAdmin() {

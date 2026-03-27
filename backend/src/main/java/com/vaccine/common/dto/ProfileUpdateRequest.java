@@ -1,7 +1,10 @@
 package com.vaccine.common.dto;
 
+import java.time.LocalDate;
+
 public record ProfileUpdateRequest(
     String fullName,
+    LocalDate dob,
     Integer age,
     String phone,
     String phoneNumber,

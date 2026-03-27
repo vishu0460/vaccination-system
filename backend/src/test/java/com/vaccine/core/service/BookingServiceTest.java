@@ -16,7 +16,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.LocalDate;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,6 +44,9 @@ class BookingServiceTest {
     @Mock
     private AuditService auditService;
 
+    @Mock
+    private WaitlistService waitlistService;
+
     @InjectMocks
     private BookingService bookingService;
 
@@ -67,6 +70,9 @@ class BookingServiceTest {
             .maxAge(60)
             .status(Status.LIVE)
             .active(true)
+            .driveDate(LocalDate.now().plusDays(1))
+            .startTime(java.time.LocalTime.of(9, 0))
+            .endTime(java.time.LocalTime.of(17, 0))
             .center(testCenter)
             .build();
 
