@@ -490,7 +490,7 @@ export default function DrivesPage() {
           <div className="row align-items-center">
             <div className="col-lg-8">
               <h1 className="mb-2">Vaccination Drives</h1>
-              <p className="mb-0 opacity-75">Find and book your vaccination slot at a drive near you</p>
+              <p className="mb-0 opacity-75 drives-page__subtitle">Find and book your vaccination slot at a drive near you</p>
             </div>
             <div className="col-lg-4 text-center text-lg-end mt-3 mt-lg-0">
               <i className="bi bi-calendar-event display-1 page-header__icon"></i>
@@ -507,7 +507,7 @@ export default function DrivesPage() {
           </div>
         ) : null}
 
-        <div className="row g-3 mb-4">
+        <div className="row g-3 mb-4 drives-page__stats">
           <div className="col-md-4">
             <div className="stats-card">
               <div className="stat-number">{summary.activeDrives}</div>

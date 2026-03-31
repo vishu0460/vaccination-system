@@ -113,7 +113,7 @@ export default function CentersPage() {
           <div className="row align-items-center">
             <div className="col-lg-8">
               <h1 className="mb-2">Vaccination Centers</h1>
-              <p className="mb-0 opacity-75">
+              <p className="mb-0 opacity-75 centers-page__subtitle">
                 Find a vaccination center near you
               </p>
             </div>
@@ -125,7 +125,7 @@ export default function CentersPage() {
       </section>
 
       <div className="container pb-5">
-        <div className="card border-0 shadow-sm mb-4">
+        <div className="card border-0 shadow-sm mb-4 centers-page__search-card">
           <div className="card-body">
             <div className="row g-3 align-items-end">
               <div className="col-md-6">

@@ -5,6 +5,7 @@ import { contactAPI, getErrorMessage } from "../api/client";
 const INITIAL_FORM = {
   name: "",
   email: "",
+  subject: "",
   message: ""
 };
 
@@ -39,6 +40,31 @@ export default function ContactPage() {
     }
   ]), []);
 
+  const contactDetails = useMemo(() => ([
+    {
+      icon: "bi-envelope-paper",
+      label: "Email",
+      value: "vaxzone.vaccine@gmail.com",
+      href: "mailto:vaxzone.vaccine@gmail.com"
+    },
+    {
+      icon: "bi-telephone",
+      label: "Phone",
+      value: "+91 96313 76436",
+      href: "tel:+919631376436"
+    },
+    {
+      icon: "bi-geo-alt",
+      label: "Location",
+      value: "India"
+    }
+  ]), []);
+
+  const socialLinks = useMemo(() => ([
+    { icon: "bi-linkedin", label: "LinkedIn", href: "https://www.linkedin.com" },
+    { icon: "bi-github", label: "GitHub", href: "https://github.com" }
+  ]), []);
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setFormData((current) => ({ ...current, [name]: value }));
@@ -64,6 +90,12 @@ export default function ContactPage() {
       return;
     }
 
+    if (!formData.subject.trim()) {
+      setLoading(false);
+      setError("Subject is required");
+      return;
+    }
+
     if (!formData.message.trim()) {
       setLoading(false);
       setError("Message is required");
@@ -73,7 +105,7 @@ export default function ContactPage() {
     try {
       const response = await contactAPI.submitContact({
         ...formData,
-        subject: "General inquiry"
+        subject: formData.subject.trim() || "General inquiry"
       });
 
       if (response.status === 200 || response.status === 201) {
@@ -112,132 +144,185 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <div className="container py-5">
+      <div className="container py-5 contact-page">
         <div className="row justify-content-center g-4">
           <div className="col-xl-10">
-            <div className="row g-4">
+            <div className="row g-4 contact-page__layout">
               <div className="col-lg-5">
-                <div className="card border-0 shadow-sm h-100 p-4">
-                  <span className="badge bg-primary-subtle text-primary px-3 py-2 mb-3">Support Desk</span>
-                  <h3 className="fw-bold mb-2">We are here to help</h3>
-                  <p className="text-muted mb-4">Use this form to reach the admin support queue. Your inquiry is saved in the database and reflected across the dashboard automatically.</p>
+                <div className="card border-0 shadow-sm h-100 contact-page__info-panel">
+                  <div className="contact-page__panel-body">
+                    <span className="contact-page__eyebrow">Support Desk</span>
+                    <h2 className="contact-page__title">Get in Touch</h2>
+                    <p className="contact-page__copy">
+                      Reach the VaxZone support team for help with bookings, certificates, or general platform questions. We keep every inquiry secure, organized, and easy to track.
+                    </p>
 
-                  <div className="d-grid gap-3">
-                    {contactHighlights.map((item) => (
-                      <div key={item.title} className="d-flex align-items-start gap-3 border rounded-4 p-3 bg-light-subtle">
-                        <div className="icon-wrapper flex-shrink-0" style={{ width: "3rem", height: "3rem" }}>
-                          <i className={`bi ${item.icon}`}></i>
+                    <div className="contact-page__details">
+                      {contactDetails.map((item) => (
+                        <div key={item.label} className="contact-page__detail-item">
+                          <div className="contact-page__detail-icon" aria-hidden="true">
+                            <i className={`bi ${item.icon}`}></i>
+                          </div>
+                          <div>
+                            <div className="contact-page__detail-label">{item.label}</div>
+                            {item.href ? (
+                              <a href={item.href} className="contact-page__detail-value">
+                                {item.value}
+                              </a>
+                            ) : (
+                              <span className="contact-page__detail-value">{item.value}</span>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <h6 className="fw-bold mb-1">{item.title}</h6>
-                          <p className="text-muted small mb-0">{item.copy}</p>
+                      ))}
+                    </div>
+
+                    <div className="d-grid gap-3">
+                      {contactHighlights.map((item) => (
+                        <div key={item.title} className="contact-page__highlight">
+                          <div className="icon-wrapper flex-shrink-0" style={{ width: "3rem", height: "3rem" }}>
+                            <i className={`bi ${item.icon}`}></i>
+                          </div>
+                          <div>
+                            <h6 className="fw-bold mb-1">{item.title}</h6>
+                            <p className="text-muted small mb-0">{item.copy}</p>
+                          </div>
                         </div>
+                      ))}
+                    </div>
+
+                    <div className="contact-page__meta">
+                      <div>
+                        <div className="contact-page__detail-label">Hours</div>
+                        <p className="mb-0 small text-muted">Monday to Saturday, 9:00 AM to 6:00 PM</p>
                       </div>
-                    ))}
-                  </div>
-
-                  <div className="border rounded-4 p-3 mt-4 bg-white">
-                    <h6 className="fw-bold mb-2">Support Details</h6>
-                    <p className="text-muted small mb-1">Email: vaxzone.vaccine@gmail.com</p>
-                    <p className="text-muted small mb-1">Hours: Monday to Saturday, 9:00 AM to 6:00 PM</p>
-                    <p className="text-muted small mb-0">For emergencies, contact your local medical helpline directly.</p>
+                      <div className="contact-page__social">
+                        {socialLinks.map((item) => (
+                          <a
+                            key={item.label}
+                            href={item.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={item.label}
+                            className="contact-page__social-link"
+                          >
+                            <i className={`bi ${item.icon}`}></i>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div className="col-lg-7">
-                <div className="card border-0 shadow-sm h-100 p-4 p-lg-5">
-                  <div className="d-flex justify-content-between align-items-start mb-4">
-                    <div>
-                      <h3 className="fw-bold mb-1">Send a Message</h3>
-                      <p className="text-muted mb-0">A clear message helps us respond faster.</p>
+                <div className="card border-0 shadow-sm h-100 contact-page__form-panel">
+                  <div className="contact-page__panel-body">
+                    <div className="d-flex justify-content-between align-items-start mb-4 contact-page__form-header">
+                      <div>
+                        <h3 className="fw-bold mb-1">Send a Message</h3>
+                        <p className="text-muted mb-0">Fill out the form and our team will get back to you as soon as possible.</p>
+                      </div>
+                      <span className="badge rounded-pill text-bg-light contact-page__secure-badge">Secure Form</span>
                     </div>
-                    <span className="badge rounded-pill text-bg-light">Secure Form</span>
+
+                    {successMessage ? (
+                      <div className="alert alert-success border-0 contact-page__alert">
+                        <i className="bi bi-check-circle me-2"></i>{successMessage}
+                      </div>
+                    ) : null}
+
+                    {error ? (
+                      <div className="alert alert-danger border-0 contact-page__alert">
+                        <i className="bi bi-exclamation-circle me-2"></i>{error}
+                      </div>
+                    ) : null}
+
+                    {submitted ? (
+                      <div className="text-center py-4">
+                        <div className="text-success mb-3">
+                          <i className="bi bi-check-circle display-4"></i>
+                        </div>
+                        <h4 className="fw-bold">Message Sent</h4>
+                        <p className="text-muted">Your inquiry is stored and visible to the admin team now.</p>
+                        <button
+                          className="btn btn-primary px-4 contact-page__submit"
+                          onClick={() => {
+                            setSubmitted(false);
+                            setSuccessMessage("");
+                          }}
+                        >
+                          Send Another Message
+                        </button>
+                      </div>
+                    ) : (
+                      <form onSubmit={handleSubmit} noValidate>
+                        <div className="row g-4">
+                          <div className="col-md-6">
+                            <label htmlFor="name" className="form-label fw-semibold">Full Name</label>
+                            <input
+                              id="name"
+                              name="name"
+                              type="text"
+                              className="form-control form-control-lg contact-page__input"
+                              value={formData.name}
+                              onChange={handleChange}
+                              placeholder="Enter your full name"
+                              required
+                            />
+                          </div>
+                          <div className="col-md-6">
+                            <label htmlFor="email" className="form-label fw-semibold">Email</label>
+                            <input
+                              id="email"
+                              name="email"
+                              type="email"
+                              className="form-control form-control-lg contact-page__input"
+                              value={formData.email}
+                              onChange={handleChange}
+                              placeholder="Enter your email address"
+                              required
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label htmlFor="subject" className="form-label fw-semibold">Subject</label>
+                            <input
+                              id="subject"
+                              name="subject"
+                              type="text"
+                              className="form-control form-control-lg contact-page__input"
+                              value={formData.subject}
+                              onChange={handleChange}
+                              placeholder="What can we help you with?"
+                              required
+                            />
+                          </div>
+                          <div className="col-12">
+                            <label htmlFor="message" className="form-label fw-semibold">Message</label>
+                            <textarea
+                              id="message"
+                              name="message"
+                              className="form-control contact-page__input contact-page__textarea"
+                              rows="7"
+                              value={formData.message}
+                              onChange={handleChange}
+                              placeholder="Describe your question or issue"
+                              required
+                            ></textarea>
+                          </div>
+                          <div className="col-12 d-grid">
+                            <button type="submit" className="btn btn-primary btn-lg contact-page__submit" disabled={loading}>
+                              {loading ? (
+                                <><span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Sending message...</>
+                              ) : (
+                                <><i className="bi bi-send me-2"></i>Submit Inquiry</>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    )}
                   </div>
-
-                  {successMessage ? (
-                    <div className="alert alert-success border-0">
-                      <i className="bi bi-check-circle me-2"></i>{successMessage}
-                    </div>
-                  ) : null}
-
-                  {error ? (
-                    <div className="alert alert-danger border-0">
-                      <i className="bi bi-exclamation-circle me-2"></i>{error}
-                    </div>
-                  ) : null}
-
-                  {submitted ? (
-                    <div className="text-center py-4">
-                      <div className="text-success mb-3">
-                        <i className="bi bi-check-circle display-4"></i>
-                      </div>
-                      <h4 className="fw-bold">Message Sent</h4>
-                      <p className="text-muted">Your inquiry is stored and visible to the admin team now.</p>
-                      <button
-                        className="btn btn-primary px-4"
-                        onClick={() => {
-                          setSubmitted(false);
-                          setSuccessMessage("");
-                        }}
-                      >
-                        Send Another Message
-                      </button>
-                    </div>
-                  ) : (
-                    <form onSubmit={handleSubmit} noValidate>
-                      <div className="row g-3">
-                        <div className="col-md-6">
-                          <label htmlFor="name" className="form-label fw-semibold">Name</label>
-                          <input
-                            id="name"
-                            name="name"
-                            type="text"
-                            className="form-control form-control-lg"
-                            value={formData.name}
-                            onChange={handleChange}
-                            placeholder="Enter your full name"
-                            required
-                          />
-                        </div>
-                        <div className="col-md-6">
-                          <label htmlFor="email" className="form-label fw-semibold">Email</label>
-                          <input
-                            id="email"
-                            name="email"
-                            type="email"
-                            className="form-control form-control-lg"
-                            value={formData.email}
-                            onChange={handleChange}
-                            placeholder="Enter your email address"
-                            required
-                          />
-                        </div>
-                        <div className="col-12">
-                          <label htmlFor="message" className="form-label fw-semibold">Message</label>
-                          <textarea
-                            id="message"
-                            name="message"
-                            className="form-control"
-                            rows="7"
-                            value={formData.message}
-                            onChange={handleChange}
-                            placeholder="Describe your question or issue"
-                            required
-                          ></textarea>
-                        </div>
-                        <div className="col-12 d-grid">
-                          <button type="submit" className="btn btn-primary btn-lg" disabled={loading}>
-                            {loading ? (
-                              <><span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Sending message...</>
-                            ) : (
-                              <><i className="bi bi-send me-2"></i>Submit Inquiry</>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </form>
-                  )}
                 </div>
               </div>
             </div>
