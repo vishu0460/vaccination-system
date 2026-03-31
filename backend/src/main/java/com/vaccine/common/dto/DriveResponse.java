@@ -43,13 +43,17 @@ public record DriveResponse(
         private LocalDateTime endTime;
         private int capacity;
         private int bookedCount;
+        private int availableSlots;
+        private String status;
         
-        public SlotResponse(Long id, LocalDateTime startTime, LocalDateTime endTime, int capacity, int bookedCount) {
+        public SlotResponse(Long id, LocalDateTime startTime, LocalDateTime endTime, int capacity, int bookedCount, int availableSlots, String status) {
             this.id = id;
             this.startTime = startTime;
             this.endTime = endTime;
             this.capacity = capacity;
             this.bookedCount = bookedCount;
+            this.availableSlots = availableSlots;
+            this.status = status;
         }
         
         // getters
@@ -58,5 +62,7 @@ public record DriveResponse(
         public LocalDateTime getEndTime() { return endTime; }
         public int getCapacity() { return capacity; }
         public int getBookedCount() { return bookedCount; }
+        public int getAvailableSlots() { return availableSlots; }
+        public String getStatus() { return status; }
     }
 }

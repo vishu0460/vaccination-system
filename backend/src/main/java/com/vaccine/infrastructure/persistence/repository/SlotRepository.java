@@ -1,6 +1,8 @@
 package com.vaccine.infrastructure.persistence.repository;
 
 import com.vaccine.domain.Slot;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -10,6 +12,10 @@ import java.util.List;
 
 @Repository
 public interface SlotRepository extends JpaRepository<Slot, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Slot s WHERE s.id = :slotId")
+    java.util.Optional<Slot> findByIdForUpdate(Long slotId);
+
     @Query("SELECT s FROM Slot s WHERE s.drive.id = :driveId ORDER BY s.dateTime ASC")
     List<Slot> findByDrive_IdOrderByDateTimeAsc(Long driveId);
 

@@ -148,7 +148,7 @@ public class AdminController {
     public ResponseEntity<Map<String, Object>> getAllSlots(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) SlotStatus status,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) Long centerId,
             @RequestParam(required = false) Long driveId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
@@ -157,7 +157,7 @@ public class AdminController {
 
     @GetMapping("/slots/all")
     public ResponseEntity<List<AdminSlotResponse>> getAllSlotsList(
-            @RequestParam(required = false) SlotStatus status,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) Long centerId,
             @RequestParam(required = false) Long driveId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {

@@ -55,7 +55,7 @@ public class BookingService {
         if (req.userId() != null && !req.userId().equals(user.getId())) {
             throw new AppException("Booking request user does not match the logged-in user");
         }
-        Slot slot = slotRepository.findById(req.slotId()).orElseThrow(() -> new AppException("Slot not found"));
+        Slot slot = lockSlot(req.slotId());
         VaccinationDrive requestedDrive = req.driveId() == null
             ? null
             : driveRepository.findById(req.driveId()).orElseThrow(() -> new AppException("Drive not found"));
@@ -96,8 +96,7 @@ public class BookingService {
         }
 
         int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
-        int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
-        if (bookedCount >= capacity) {
+        if (slot.getAvailableSlots() <= 0) {
             throw new AppException("Slot is full. You can join the waitlist.");
         }
 
@@ -145,6 +144,7 @@ public class BookingService {
         booking.setCancelledAt(LocalDateTime.now());
         Slot slot = booking.getSlot();
         if (slot != null) {
+            slot = lockSlot(slot.getId());
             int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
             slot.setBookedCount(Math.max(0, bookedCount - 1));
             slotRepository.save(slot);
@@ -173,7 +173,7 @@ public class BookingService {
         if (!booking.getUser().getEmail().equalsIgnoreCase(email)) {
             throw new AppException("You can only reschedule your own booking");
         }
-        Slot newSlot = slotRepository.findById(req.slotId()).orElseThrow(() -> new AppException("Slot not found"));
+        Slot newSlot = lockSlot(req.slotId());
         if (req.userId() != null && !req.userId().equals(booking.getUser().getId())) {
             throw new AppException("Booking request user does not match the logged-in user");
         }
@@ -190,12 +190,12 @@ public class BookingService {
             throw new AppException("Cannot reschedule to an expired slot");
         }
         int newSlotBookedCount = newSlot.getBookedCount() == null ? 0 : newSlot.getBookedCount();
-        int newSlotCapacity = newSlot.getCapacity() == null ? 0 : newSlot.getCapacity();
-        if (newSlotBookedCount >= newSlotCapacity) {
+        if (newSlot.getAvailableSlots() <= 0) {
             throw new AppException("Selected slot is full");
         }
         Slot previousSlot = booking.getSlot();
         if (previousSlot != null && !previousSlot.getId().equals(newSlot.getId())) {
+            previousSlot = lockSlot(previousSlot.getId());
             int previousBookedCount = previousSlot.getBookedCount() == null ? 0 : previousSlot.getBookedCount();
             previousSlot.setBookedCount(Math.max(0, previousBookedCount - 1));
             slotRepository.save(previousSlot);
@@ -291,5 +291,9 @@ public class BookingService {
             return slot.getDrive().getAdminId();
         }
         return null;
+    }
+
+    private Slot lockSlot(Long slotId) {
+        return slotRepository.findByIdForUpdate(slotId).orElseThrow(() -> new AppException("Slot not found"));
     }
 }

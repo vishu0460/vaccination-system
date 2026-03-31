@@ -2,9 +2,9 @@ package com.vaccine.core.service;
 
 import com.vaccine.common.dto.ChangePasswordRequest;
 import com.vaccine.common.dto.ProfileUpdateRequest;
-import com.vaccine.domain.User;
-import com.vaccine.domain.OtpPurpose;
 import com.vaccine.common.exception.AppException;
+import com.vaccine.domain.OtpPurpose;
+import com.vaccine.domain.User;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import com.vaccine.util.AgeCalculator;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -13,14 +13,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ProfileService {
+    private static final String STRONG_PASSWORD_REGEX = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$";
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final OtpService otpService;
+    private final AuditService auditService;
 
-    public ProfileService(UserRepository userRepository, PasswordEncoder passwordEncoder, OtpService otpService) {
+    public ProfileService(UserRepository userRepository, PasswordEncoder passwordEncoder, OtpService otpService, AuditService auditService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.otpService = otpService;
+        this.auditService = auditService;
     }
 
     public User getProfile(String email) {
@@ -63,6 +67,9 @@ public class ProfileService {
         if (request.pincode() != null) {
             user.setUserPincode(request.pincode());
         }
+        if (request.profileImage() != null) {
+            user.setProfileImage(request.profileImage().isBlank() ? null : request.profileImage());
+        }
         
         return userRepository.save(user);
     }
@@ -87,14 +94,15 @@ public class ProfileService {
             throw new AppException("Current password is incorrect");
         }
 
-        if (newPassword.length() < 8) {
-            throw new AppException("New password must be at least 8 characters");
+        if (!newPassword.matches(STRONG_PASSWORD_REGEX)) {
+            throw new AppException("New password must include uppercase, lowercase, number, and special character");
         }
 
         otpService.verifyOtp(user, request.otp(), OtpPurpose.PASSWORD_CHANGE, false);
         
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+        auditService.logActionAs(user.getEmail(), "PASSWORD_CHANGE", "AUTH", user.getId(), "Password changed successfully", null);
     }
 
     @Transactional

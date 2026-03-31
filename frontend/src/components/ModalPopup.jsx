@@ -1,5 +1,6 @@
 import React from "react";
-import { Button, Modal } from "react-bootstrap";
+import ConfirmModal from "./ui/ConfirmModal";
+import Modal from "./ui/Modal";
 
 export default function ModalPopup({
   show,
@@ -11,21 +12,54 @@ export default function ModalPopup({
   onCancel,
   confirmVariant = "primary"
 }) {
+  const confirmButtonClass = confirmVariant === "danger"
+    ? "app-modal-btn app-modal-btn--danger"
+    : "app-modal-btn app-modal-btn--primary";
+
+  if (confirmVariant === "danger") {
+    return (
+      <ConfirmModal
+        isOpen={show}
+        title={title}
+        message={body}
+        onConfirm={onConfirm}
+        onCancel={onCancel || onConfirm}
+        type="delete"
+        confirmLabel={confirmLabel}
+        cancelLabel={cancelLabel || "Cancel"}
+      />
+    );
+  }
+
   return (
-    <Modal show={show} onHide={onCancel || onConfirm} centered className="app-modal">
+    <Modal show={show} onHide={onCancel || onConfirm} size="sm">
       <Modal.Header closeButton>
         <Modal.Title>{title}</Modal.Title>
       </Modal.Header>
-      <Modal.Body>{body}</Modal.Body>
+      <Modal.Body>
+        {confirmVariant === "danger" ? (
+          <div className="app-modal-confirm">
+            <div className="app-modal-confirm__icon">
+              <i className="bi bi-exclamation-triangle-fill" />
+            </div>
+            <div>
+              <div className="app-modal-confirm__title">Are you sure you want to delete this?</div>
+              <p className="app-modal-confirm__text">{body}</p>
+            </div>
+          </div>
+        ) : (
+          body
+        )}
+      </Modal.Body>
       <Modal.Footer>
         {cancelLabel ? (
-          <Button variant="outline-secondary" onClick={onCancel}>
+          <button type="button" className="app-modal-btn app-modal-btn--secondary" onClick={onCancel}>
             {cancelLabel}
-          </Button>
+          </button>
         ) : null}
-        <Button variant={confirmVariant} onClick={onConfirm}>
+        <button type="button" className={confirmButtonClass} onClick={onConfirm}>
           {confirmLabel}
-        </Button>
+        </button>
       </Modal.Footer>
     </Modal>
   );

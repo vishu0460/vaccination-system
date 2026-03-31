@@ -149,19 +149,23 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest req, HttpServletRequest request) {
-        User user = userRepository.findByEmail(req.email().toLowerCase())
+        String normalizedEmail = req.email().toLowerCase();
+        User user = userRepository.findByEmail(normalizedEmail)
                 .orElseThrow(() -> {
                     log.warn("Authentication failed for unknown account");
+                    auditService.logActionAs(normalizedEmail, "LOGIN_FAILED", "AUTH", null, "Unknown account login attempt", request);
                     return new BadCredentialsException("Invalid credentials");
                 });
 
         if (!user.getEnabled()) {
             log.warn("Disabled account login attempt for userId={}", user.getId());
+            auditService.logActionAs(user.getEmail(), "LOGIN_BLOCKED_DISABLED", "AUTH", user.getId(), "Disabled account login attempt", request);
             throw new AppException("Account is disabled. Please contact administrator.");
         }
 
         if (user.getLockUntil() != null && user.getLockUntil().isAfter(LocalDateTime.now())) {
             log.warn("Locked account login attempt for userId={}", user.getId());
+            auditService.logActionAs(user.getEmail(), "LOGIN_BLOCKED_LOCKED", "AUTH", user.getId(), "Locked account login attempt", request);
             throw new AppException("Account locked. Try again later.");
         }
 
@@ -174,12 +178,14 @@ public class AuthService {
             );
         } catch (Exception e) {
             log.warn("Authentication failed for userId={}", user.getId());
+            auditService.logActionAs(user.getEmail(), "LOGIN_FAILED", "AUTH", user.getId(), "Invalid password attempt", request);
 
             user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
 
             if (user.getFailedLoginAttempts() >= maxAttempts) {
                 user.setLockUntil(LocalDateTime.now().plusMinutes(lockMinutes));
                 log.warn("Account locked after repeated failures for userId={}", user.getId());
+                auditService.logActionAs(user.getEmail(), "ACCOUNT_LOCKED", "AUTH", user.getId(), "Account locked after repeated login failures", request);
             }
 
             userRepository.save(user);
@@ -189,6 +195,7 @@ public class AuthService {
 
         if (!user.getEmailVerified()) {
             log.warn("Login blocked because email is not verified for userId={}", user.getId());
+            auditService.logActionAs(user.getEmail(), "LOGIN_BLOCKED_UNVERIFIED", "AUTH", user.getId(), "Email verification required", request);
             throw new AppException("Email not verified. Please verify your email first.");
         }
 

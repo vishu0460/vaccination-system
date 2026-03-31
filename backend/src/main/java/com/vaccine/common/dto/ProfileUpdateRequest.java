@@ -12,5 +12,6 @@ public record ProfileUpdateRequest(
     String city,
     String state,
     String pincode,
+    String profileImage,
     String password
 ) {}

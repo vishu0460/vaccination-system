@@ -40,7 +40,9 @@ public class SlotService {
                     slot.getStartDateTime() != null ? slot.getStartDateTime() : slot.getStartTime().atDate(driveDate), 
                     slot.getEndDateTime() != null ? slot.getEndDateTime() : slot.getEndTime().atDate(driveDate), 
                     slot.getCapacity(), 
-                    slot.getBookedCount()))
+                    slot.getBookedCount(),
+                    slot.getAvailableSlots(),
+                    slot.getDisplayStatus().name()))
                 .collect(Collectors.toList());
     }
 }

@@ -1,4 +1,5 @@
 import React from "react";
+import { Toaster } from "react-hot-toast";
 import AppRoutes from "./routes/AppRoutes";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -12,6 +13,13 @@ export default function App() {
       <PublicCatalogProvider>
         <div className="app-shell d-flex flex-column min-vh-100">
           <ScrollToTop />
+          <Toaster
+            position="top-right"
+            gutter={12}
+            toastOptions={{
+              duration: 3500
+            }}
+          />
           <Navbar />
           <main className="app-main flex-grow-1">
             <AppRoutes />

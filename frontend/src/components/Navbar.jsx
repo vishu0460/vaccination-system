@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Modal, Spinner } from "react-bootstrap";
+import { Spinner } from "react-bootstrap";
 import { notificationAPI, unwrapApiData } from "../api/client";
 import { clearAuth, getRole, isAuthenticated } from "../utils/auth";
 import { connectNotificationSocket } from "../utils/notificationSocket";
+import Modal from "./ui/Modal";
 import ThemeToggle from "./ThemeToggle";
 
 const REPLY_NOTIFICATION_TYPES = new Set(["CONTACT_REPLY", "FEEDBACK_REPLY"]);
@@ -300,6 +301,12 @@ export default function Navbar() {
                   </button>
 
                   <ul className="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <Link className="dropdown-item" to="/profile" onClick={() => setMenuOpen(false)}>
+                        Profile
+                      </Link>
+                    </li>
+
                     {role === "ADMIN" || role === "SUPER_ADMIN" ? (
                       <li>
                         <Link className="dropdown-item" to="/admin/dashboard" onClick={() => setMenuOpen(false)}>
@@ -317,12 +324,6 @@ export default function Navbar() {
                         <li>
                           <Link className="dropdown-item" to="/certificates" onClick={() => setMenuOpen(false)}>
                             Certificates
-                          </Link>
-                        </li>
-
-                        <li>
-                          <Link className="dropdown-item" to="/profile" onClick={() => setMenuOpen(false)}>
-                            Profile
                           </Link>
                         </li>
                         <li>

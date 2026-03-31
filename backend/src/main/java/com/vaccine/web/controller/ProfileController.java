@@ -21,24 +21,26 @@ import java.util.Map;
 @Slf4j
 @RestController
 @Validated
-@RequestMapping({"/v1/profile", "/profile", "/api/v1/profile", "/api/profile"})
+@RequestMapping({"/v1/profile", "/profile", "/api/v1/profile", "/api/profile", "/users", "/api/users"})
 @PreAuthorize("isAuthenticated()")
 @RequiredArgsConstructor
 public class ProfileController {
 
     private final ProfileService profileService;
 
-    @GetMapping
+    @GetMapping({"", "/me", "/profile"})
     public ResponseEntity<ApiResponse<Map<String, Object>>> getProfile(Authentication auth) {
         User user = profileService.getProfile(auth.getName());
         Map<String, Object> response = new HashMap<>();
         response.put("id", user.getId());
         response.put("email", user.getEmail());
         response.put("fullName", user.getFullName());
+        response.put("role", user.getEffectiveRole());
         response.put("dob", user.getDob() != null ? user.getDob().toString() : "");
         response.put("age", user.getAge());
         response.put("phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : "");
         response.put("address", user.getAddress() != null ? user.getAddress() : "");
+        response.put("profileImage", user.getProfileImage() != null ? user.getProfileImage() : "");
         response.put("city", user.getUserCity() != null ? user.getUserCity() : "");
         response.put("state", user.getUserState() != null ? user.getUserState() : "");
         response.put("pincode", user.getUserPincode() != null ? user.getUserPincode() : "");
@@ -49,7 +51,7 @@ public class ProfileController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
-    @PutMapping
+    @PutMapping({"", "/update-profile"})
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateProfile(
             @Valid @RequestBody ProfileUpdateRequest request,
             Authentication auth) {
@@ -57,8 +59,11 @@ public class ProfileController {
         return ResponseEntity.ok(ApiResponse.success(Map.of(
             "message", "Profile updated successfully",
             "fullName", user.getFullName(),
+            "phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
+            "address", user.getAddress() != null ? user.getAddress() : "",
             "dob", user.getDob() != null ? user.getDob().toString() : "",
-            "age", user.getAge()
+            "age", user.getAge(),
+            "profileImage", user.getProfileImage() != null ? user.getProfileImage() : ""
         )));
     }
 
@@ -68,7 +73,7 @@ public class ProfileController {
         return ResponseEntity.ok(new ApiMessage("OTP sent to your email for verification."));
     }
 
-    @PostMapping("/change-password")
+    @RequestMapping(value = "/change-password", method = {RequestMethod.POST, RequestMethod.PUT})
     public ResponseEntity<ApiResponse<Void>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             Authentication auth) {

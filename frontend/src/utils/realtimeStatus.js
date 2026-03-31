@@ -21,15 +21,19 @@ export const getRealtimeStatus = (startValue, endValue, nowValue = Date.now()) =
   if (now > end) {
     return "EXPIRED";
   }
-  return "LIVE";
+  return "ACTIVE";
 };
 
 export const getStatusBadgeClass = (status) => {
   switch (status) {
+    case "ACTIVE":
+      return "bg-success";
+    case "FULL":
+      return "bg-danger";
     case "LIVE":
       return "bg-success";
     case "EXPIRED":
-      return "bg-danger";
+      return "bg-secondary";
     case "UPCOMING":
     default:
       return "bg-primary";
@@ -49,12 +53,12 @@ export const isAvailableFlag = (slot) => {
 };
 
 export const isSlotBookable = (slot, nowValue = Date.now()) => {
-  const status = getRealtimeStatus(
+  const status = String(slot?.status || slot?.slotStatus || getRealtimeStatus(
     slot?.startDateTime || slot?.startDate || slot?.dateTime || slot?.startTime,
     slot?.endDateTime || slot?.endDate || slot?.endTime,
     nowValue
-  );
-  return (status === "UPCOMING" || status === "LIVE") && isAvailableFlag(slot) && !isAtCapacity(slot);
+  )).toUpperCase();
+  return (status === "UPCOMING" || status === "ACTIVE" || status === "LIVE") && status !== "FULL" && isAvailableFlag(slot) && !isAtCapacity(slot);
 };
 
 export const isDriveBookable = (drive, nowValue = Date.now()) => {
@@ -92,8 +96,11 @@ export const getCountdownLabel = (status, startValue, endValue, nowValue = Date.
   if (status === "UPCOMING") {
     return `Starts in: ${formatCountdown(startValue, nowValue)}`;
   }
-  if (status === "LIVE") {
+  if (status === "ACTIVE" || status === "LIVE") {
     return `Ends in: ${formatCountdown(endValue, nowValue)}`;
+  }
+  if (status === "FULL") {
+    return "Fully booked";
   }
   return "Expired";
 };

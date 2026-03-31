@@ -1,51 +1,58 @@
-export default function Skeleton({ width, height, borderRadius = '4px' }) {
+import React from "react";
+import ReactLoadingSkeleton, { SkeletonTheme } from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+
+export default function Skeleton({ width, height, borderRadius = "12px", count = 1, className = "" }) {
   return (
-    <div 
-      className="skeleton"
-      style={{
-        width: width || '100%',
-        height: height || '20px',
-        borderRadius: borderRadius,
-        background: 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)',
-        backgroundSize: '200% 100%',
-        animation: 'skeleton-loading 1.5s infinite'
-      }}
-    />
+    <SkeletonTheme baseColor="#e2e8f0" highlightColor="#f8fafc">
+      <ReactLoadingSkeleton
+        width={width || "100%"}
+        height={height || 20}
+        borderRadius={borderRadius}
+        count={count}
+        className={className}
+      />
+    </SkeletonTheme>
   );
 }
 
-export function SkeletonCard() {
+export function SkeletonCard({ count = 1, height = 148 }) {
   return (
-    <div className="card skeleton-card">
-      <Skeleton height="200px" borderRadius="4px 4px 0 0" />
-      <div className="card-body">
-        <Skeleton width="70%" height="24px" />
-        <Skeleton width="100%" height="16px" />
-        <Skeleton width="60%" height="16px" />
-      </div>
+    <div className="dashboard-summary-grid">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="dashboard-summary-card" style={{ background: "#ffffff", minHeight: `${height}px` }}>
+          <div className="w-100">
+            <Skeleton width="38%" height={16} />
+            <div className="mt-3">
+              <Skeleton width="56%" height={34} />
+            </div>
+          </div>
+          <Skeleton width={38} height={38} borderRadius="999px" />
+        </div>
+      ))}
     </div>
   );
 }
 
-export function SkeletonTable({ rows = 5 }) {
+export function SkeletonTable({ rows = 5, columns = 5 }) {
   return (
     <div className="table-responsive">
       <table className="table">
         <thead>
           <tr>
-            <th><Skeleton width="80px" /></th>
-            <th><Skeleton width="120px" /></th>
-            <th><Skeleton width="100px" /></th>
-            <th><Skeleton width="80px" /></th>
+            {Array.from({ length: columns }).map((_, index) => (
+              <th key={index}><Skeleton width="80%" height={16} /></th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {Array.from({ length: rows }).map((_, i) => (
-            <tr key={i}>
-              <td><Skeleton width="80px" /></td>
-              <td><Skeleton width="120px" /></td>
-              <td><Skeleton width="100px" /></td>
-              <td><Skeleton width="80px" /></td>
+          {Array.from({ length: rows }).map((_, rowIndex) => (
+            <tr key={rowIndex}>
+              {Array.from({ length: columns }).map((_, columnIndex) => (
+                <td key={`${rowIndex}-${columnIndex}`}>
+                  <Skeleton width={columnIndex === 0 ? "45%" : "80%"} height={18} />
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import api, { certificateAPI, newsAPI, publicAPI, unwrapApiData } from "../api/client";
 import ModalPopup from "../components/ModalPopup";
+import Modal from "../components/ui/Modal";
 import Seo from "../components/Seo";
+import SlotCalendar from "../components/SlotCalendar";
 import useCurrentTime from "../hooks/useCurrentTime";
 import { getCountdownLabel, getRealtimeStatus, getStatusBadgeClass, isAtCapacity, isSlotBookable } from "../utils/realtimeStatus";
 import { broadcastDataUpdated, subscribeToDataUpdates } from "../utils/dataSync";
@@ -15,6 +17,40 @@ const getSlotStartDateTime = (slot) =>
 
 const getSlotEndDateTime = (slot) =>
   slot?.endDateTime || slot?.endDate || slot?.endTime || "";
+
+const getCalendarSlotStatus = (slot, nowValue = Date.now()) => {
+  const backendStatus = String(slot?.status || slot?.slotStatus || "").toUpperCase();
+  if (backendStatus) {
+    return backendStatus === "LIVE" ? "ACTIVE" : backendStatus;
+  }
+
+  return String(getRealtimeStatus(getSlotStartDateTime(slot), getSlotEndDateTime(slot), nowValue)).toUpperCase();
+};
+
+const getAvailableSlotCount = (slot) =>
+  Number(slot?.availableSlots ?? slot?.remaining ?? Math.max(0, Number(slot?.capacity || 0) - Number(slot?.bookedCount || 0)));
+
+const formatCalendarStamp = (value) => {
+  const parsed = value ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${parsed.getUTCFullYear()}${pad(parsed.getUTCMonth() + 1)}${pad(parsed.getUTCDate())}T${pad(parsed.getUTCHours())}${pad(parsed.getUTCMinutes())}${pad(parsed.getUTCSeconds())}Z`;
+};
+
+const buildGoogleCalendarLink = ({ title, start, end, details, location }) => {
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: title,
+    dates: `${formatCalendarStamp(start)}/${formatCalendarStamp(end)}`,
+    details,
+    location
+  });
+
+  return `https://www.google.com/calendar/render?${params.toString()}`;
+};
 
 const getNotificationCopy = (notification) => {
   if (notification?.type === "NEWS") {
@@ -44,13 +80,19 @@ export default function UserBookingsPage() {
   const [bookings, setBookings] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [profile, setProfile] = useState(null);
+  const [slotCatalog, setSlotCatalog] = useState([]);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [certificates, setCertificates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState("");
+  const [bookingError, setBookingError] = useState("");
   const [activeTab, setActiveTab] = useState("bookings");
   const [forms, setForms] = useState({ slotId: "" });
   const [bookingToCancel, setBookingToCancel] = useState(null);
+  const [selectedCalendarSlot, setSelectedCalendarSlot] = useState(null);
+  const [calendarActionLoading, setCalendarActionLoading] = useState(false);
+  const [lastCalendarLink, setLastCalendarLink] = useState("");
+  const [lastBookedSlotSummary, setLastBookedSlotSummary] = useState(null);
   const [waitlistEntries, setWaitlistEntries] = useState([]);
   const [waitlistLoadingId, setWaitlistLoadingId] = useState(null);
   const [slotCityFilter, setSlotCityFilter] = useState("");
@@ -137,24 +179,28 @@ export default function UserBookingsPage() {
         (unwrapApiData(slotResponse) || []).forEach((slot) => {
           const startDateTime = getSlotStartDateTime(slot);
           const endDateTime = getSlotEndDateTime(slot);
+          const status = getCalendarSlotStatus(slot);
+          const availableCount = getAvailableSlotCount(slot);
           slots.push({
             ...slot,
             driveId: drive.id,
             driveTitle: drive.title,
             driveDate: drive.driveDate,
+            vaccineType: drive.vaccineType,
             centerName: drive.center?.name || drive.centerName,
             centerCity: slot.centerCity || drive.center?.city || drive.centerCity,
             startDateTime,
             endDate: endDateTime,
             endDateTime,
-            slotStatus: slot.slotStatus || getRealtimeStatus(startDateTime, endDateTime)
+            slotStatus: slot.slotStatus || getRealtimeStatus(startDateTime, endDateTime),
+            status,
+            availableSlots: availableCount
           });
         });
       });
 
-      setAvailableSlots(
-        slots.filter((slot) => slot.capacity > (slot.bookedCount || 0) && getRealtimeStatus(slot.startDateTime, slot.endDateTime) !== "EXPIRED")
-      );
+      setSlotCatalog(slots);
+      setAvailableSlots(slots.filter((slot) => isSlotBookable(slot)));
     } finally {
       slotsRequestInFlightRef.current = false;
     }
@@ -201,22 +247,46 @@ export default function UserBookingsPage() {
 
   const bookSlot = async (slotId) => {
     try {
+      setBookingError("");
+      setCalendarActionLoading(true);
       const payload = buildBookingPayload(slotId);
       const response = await api.post("/user/bookings", payload);
       const booking = unwrapApiData(response);
+      const selectedSlot = slotCatalog.find((slot) => Number(slot.id) === Number(slotId));
       const assignedTime = booking?.assignedTime;
+      const slotStart = booking?.slotTime || selectedSlot?.startDateTime;
+      const slotEnd = booking?.slotEndTime || selectedSlot?.endDateTime;
+      const calendarLink = buildGoogleCalendarLink({
+        title: `Vaccination Slot${booking?.driveName ? ` - ${booking.driveName}` : ""}`,
+        start: slotStart,
+        end: slotEnd,
+        details: `Vaccination at ${booking?.centerName || selectedSlot?.centerName || "selected center"}${booking?.driveName ? ` for ${booking.driveName}` : ""}`,
+        location: booking?.centerName || selectedSlot?.centerName || "Vaccination Center"
+      });
+
+      setLastCalendarLink(calendarLink);
+      setLastBookedSlotSummary({
+        driveName: booking?.driveName || selectedSlot?.driveTitle,
+        centerName: booking?.centerName || selectedSlot?.centerName,
+        start: slotStart,
+        end: slotEnd
+      });
       setMsg(
         assignedTime
           ? `Booking request submitted successfully. Your appointment time: ${formatAppointmentTime(assignedTime)}`
           : "Booking request submitted successfully."
       );
+      setSelectedCalendarSlot(null);
       setForms({ slotId: "" });
       broadcastDataUpdated({ source: "user-bookings-book" });
       await refreshCatalog();
       await Promise.all([loadData({ silent: true }), loadAvailableSlots()]);
       setActiveTab("bookings");
     } catch (error) {
+      setBookingError(error.response?.data?.message || "Failed to book slot. Please try again.");
       setMsg(error.response?.data?.message || "Failed to book slot. Please try again.");
+    } finally {
+      setCalendarActionLoading(false);
     }
   };
 
@@ -260,8 +330,21 @@ export default function UserBookingsPage() {
   const pendingBookings = bookings.filter((booking) => booking.status === "PENDING");
   const confirmedBookings = bookings.filter((booking) => booking.status === "CONFIRMED");
   const completedBookings = bookings.filter((booking) => booking.status === "COMPLETED");
-  const slotCityOptions = [...new Set(availableSlots.map((slot) => slot.centerCity || slot.drive?.center?.city || "").filter(Boolean))].sort();
-  const filteredAvailableSlots = availableSlots.filter((slot) => !slotCityFilter || (slot.centerCity || slot.drive?.center?.city || "").toLowerCase() === slotCityFilter.toLowerCase());
+  const slotCityOptions = [...new Set(slotCatalog.map((slot) => slot.centerCity || slot.drive?.center?.city || "").filter(Boolean))].sort();
+  const filteredSlotCatalog = slotCatalog.filter((slot) => !slotCityFilter || (slot.centerCity || slot.drive?.center?.city || "").toLowerCase() === slotCityFilter.toLowerCase());
+  const filteredAvailableSlots = filteredSlotCatalog.filter((slot) => isSlotBookable(slot, now) || isAtCapacity(slot) || getCalendarSlotStatus(slot, now) === "EXPIRED");
+  const calendarEvents = useMemo(() => filteredSlotCatalog.map((slot) => {
+    const start = new Date(getSlotStartDateTime(slot));
+    const end = new Date(getSlotEndDateTime(slot));
+    const availableCount = getAvailableSlotCount(slot);
+
+    return {
+      title: `${start.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} - ${end.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} (Available: ${availableCount})`,
+      start,
+      end,
+      resource: slot
+    };
+  }).filter((event) => !Number.isNaN(event.start.getTime()) && !Number.isNaN(event.end.getTime())), [filteredSlotCatalog]);
 
   const getCertificateForBooking = (bookingId) => certificates.find((certificate) => certificate.bookingId === bookingId);
 
@@ -276,7 +359,7 @@ export default function UserBookingsPage() {
   }
 
   return (
-    <div className="container py-4">
+    <div className="slot-booking-page-shell">
       <Seo
         title="My Vaccination Bookings | VaxZone"
         description="Manage your vaccination bookings, slot availability, notifications, and certificate access from one secure dashboard."
@@ -298,6 +381,21 @@ export default function UserBookingsPage() {
           <button type="button" className="btn-close" onClick={() => setMsg("")}></button>
         </div>
       )}
+
+      {lastCalendarLink && lastBookedSlotSummary ? (
+        <div className="alert alert-info d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3" role="alert">
+          <div>
+            <div className="fw-semibold">Booking confirmed</div>
+            <div className="small text-muted">
+              {lastBookedSlotSummary.driveName || "Vaccination Slot"} at {lastBookedSlotSummary.centerName || "Selected center"}
+              {lastBookedSlotSummary.start ? ` on ${new Date(lastBookedSlotSummary.start).toLocaleString()}` : ""}
+            </div>
+          </div>
+          <a className="btn btn-outline-primary" href={lastCalendarLink} target="_blank" rel="noreferrer">
+            <i className="bi bi-google me-2"></i>Add to Google Calendar
+          </a>
+        </div>
+      ) : null}
 
       {profile && (
         <div className="card mb-4">
@@ -484,8 +582,8 @@ export default function UserBookingsPage() {
       {activeTab === "slots" && (
         <div className="card">
           <div className="card-header d-flex justify-content-between align-items-center">
-            <span><i className="bi bi-clock me-2"></i>Available Slots</span>
-            <span className="badge bg-success">{availableSlots.length} Available</span>
+            <span><i className="bi bi-clock me-2"></i>Slot Explorer</span>
+            <span className="badge bg-success">{availableSlots.length} Bookable</span>
           </div>
           <div className="card-body p-0">
             <div className="p-3 border-bottom">
@@ -495,14 +593,17 @@ export default function UserBookingsPage() {
                 {slotCityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
               </select>
             </div>
+            <div className="d-none d-lg-block p-3 border-bottom">
+              <SlotCalendar events={calendarEvents} onSelectEvent={setSelectedCalendarSlot} />
+            </div>
             {filteredAvailableSlots.length === 0 ? (
               <div className="empty-state">
                 <i className="bi bi-calendar-x"></i>
-                <h5>No Slots Available</h5>
-                <p>There are no available slots at the moment. Please check back later.</p>
+                <h5>No Slots Found</h5>
+                <p>There are no slots matching the current filters right now.</p>
               </div>
             ) : (
-              <div className="table-responsive">
+              <div className="table-responsive d-lg-none">
                 <table className="table table-hover mb-0">
                   <thead>
                     <tr>
@@ -525,12 +626,12 @@ export default function UserBookingsPage() {
                         <td><small>{slot.endDateTime ? new Date(slot.endDateTime).toLocaleString() : "-"}</small></td>
                         <td>
                           <div className="d-flex flex-column gap-1">
-                            <span className={`badge ${getStatusBadgeClass(getRealtimeStatus(slot.startDateTime, slot.endDateTime, now))}`}>
-                              {getRealtimeStatus(slot.startDateTime, slot.endDateTime, now)}
+                            <span className={`badge ${getStatusBadgeClass(getCalendarSlotStatus(slot, now))}`}>
+                              {getCalendarSlotStatus(slot, now)}
                             </span>
                             <small className="text-muted">
                               {getCountdownLabel(
-                                getRealtimeStatus(slot.startDateTime, slot.endDateTime, now),
+                                getCalendarSlotStatus(slot, now),
                                 slot.startDateTime,
                                 slot.endDateTime,
                                 now
@@ -542,10 +643,10 @@ export default function UserBookingsPage() {
                           <small>{slot.centerName || slot.drive?.center?.name}</small>
                           <div className="text-muted small">{slot.centerCity || slot.drive?.center?.city || "-"}</div>
                         </td>
-                        <td>{(slot.capacity || 0) - (slot.bookedCount || 0)} / {slot.capacity}</td>
+                        <td>{getAvailableSlotCount(slot)} / {slot.capacity}</td>
                         <td>
                           {isSlotBookable(slot, now) ? (
-                            <button className="btn btn-primary btn-sm" onClick={() => bookSlot(slot.id)} disabled={!isSlotBookable(slot, now)}>
+                            <button className="btn btn-primary btn-sm" onClick={() => setSelectedCalendarSlot(slot)} disabled={!isSlotBookable(slot, now)}>
                               <i className="bi bi-bookmark-plus me-1"></i>Book Now
                             </button>
                           ) : isAtCapacity(slot) ? (
@@ -636,6 +737,72 @@ export default function UserBookingsPage() {
           </div>
         </div>
       )}
+
+      <Modal show={Boolean(selectedCalendarSlot)} onHide={() => setSelectedCalendarSlot(null)} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Slot Details</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedCalendarSlot ? (
+            <div className="slot-booking-modal">
+              <div className="slot-booking-modal__hero">
+                <div>
+                  <div className="slot-booking-modal__eyebrow">{selectedCalendarSlot.driveTitle || "Vaccination Slot"}</div>
+                  <h3 className="slot-booking-modal__title">
+                    {selectedCalendarSlot.startDateTime ? new Date(selectedCalendarSlot.startDateTime).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Selected Slot"}
+                  </h3>
+                  <p className="slot-booking-modal__subtitle">
+                    Ends {selectedCalendarSlot.endDateTime ? new Date(selectedCalendarSlot.endDateTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "-"}
+                  </p>
+                </div>
+                <span className={`badge ${getStatusBadgeClass(getCalendarSlotStatus(selectedCalendarSlot, now))}`}>
+                  {getCalendarSlotStatus(selectedCalendarSlot, now)}
+                </span>
+              </div>
+
+              <div className="slot-booking-modal__grid">
+                <div className="slot-booking-modal__item">
+                  <span>Available Slots</span>
+                  <strong>{getAvailableSlotCount(selectedCalendarSlot)}</strong>
+                </div>
+                <div className="slot-booking-modal__item">
+                  <span>Center</span>
+                  <strong>{selectedCalendarSlot.centerName || "N/A"}</strong>
+                </div>
+                <div className="slot-booking-modal__item">
+                  <span>City</span>
+                  <strong>{selectedCalendarSlot.centerCity || "N/A"}</strong>
+                </div>
+                <div className="slot-booking-modal__item">
+                  <span>Vaccine</span>
+                  <strong>{selectedCalendarSlot.vaccineType || "General Vaccination"}</strong>
+                </div>
+              </div>
+
+              {bookingError ? <div className="alert alert-danger mb-0">{bookingError}</div> : null}
+            </div>
+          ) : null}
+        </Modal.Body>
+        <Modal.Footer>
+          {selectedCalendarSlot && isAtCapacity(selectedCalendarSlot) ? (
+            <button className="btn btn-outline-warning" onClick={() => joinWaitlist(selectedCalendarSlot.id)} disabled={waitlistLoadingId === selectedCalendarSlot.id}>
+              {waitlistLoadingId === selectedCalendarSlot.id ? "Joining..." : "Join Waitlist"}
+            </button>
+          ) : null}
+          <button type="button" className="btn btn-outline-secondary" onClick={() => setSelectedCalendarSlot(null)}>
+            Close
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => selectedCalendarSlot && bookSlot(selectedCalendarSlot.id)}
+            disabled={!selectedCalendarSlot || !isSlotBookable(selectedCalendarSlot, now) || calendarActionLoading}
+          >
+            {calendarActionLoading ? "Booking..." : "Confirm Booking"}
+          </button>
+        </Modal.Footer>
+      </Modal>
+
       <ModalPopup
         show={Boolean(bookingToCancel)}
         title="Cancel booking"

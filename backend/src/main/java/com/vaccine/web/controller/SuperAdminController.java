@@ -1,6 +1,7 @@
 package com.vaccine.web.controller;
 
 import com.vaccine.common.dto.AdminCreateRequest;
+import com.vaccine.common.dto.AdminManagementUpdateRequest;
 import com.vaccine.common.dto.ApiResponse;
 import com.vaccine.common.dto.CenterRequest;
 import com.vaccine.common.dto.DriveRequest;
@@ -67,6 +68,15 @@ public class SuperAdminController {
         return ResponseEntity.ok(ApiResponse.success(admins));
     }
 
+    @PutMapping("/admins/{adminId}")
+    public ResponseEntity<ApiResponse<User>> updateAdmin(
+        @PathVariable Long adminId,
+        @Valid @RequestBody AdminManagementUpdateRequest req,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(adminService.updateAdmin(adminId, req, request), "Admin updated successfully"));
+    }
+
     @DeleteMapping("/admins/{adminId}")
     public ResponseEntity<ApiResponse<Void>> deleteAdmin(@PathVariable Long adminId, HttpServletRequest request) {
         log.info("Delete admin ID={}", adminId);
@@ -86,13 +96,6 @@ public class SuperAdminController {
         log.info("Create center={}", req.name());
         VaccinationCenter center = adminService.createCenter(req);
         return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(center, "Center created"));
-    }
-
-    @DeleteMapping("/centers/{centerId}")
-    public ResponseEntity<ApiResponse<Void>> deleteCenter(@PathVariable Long centerId, HttpServletRequest request) {
-        log.info("Delete center ID={}", centerId);
-        adminService.deleteCenter(centerId, request);
-        return ResponseEntity.ok(ApiResponse.success(null, "Center deleted successfully"));
     }
 
     @GetMapping("/users")
@@ -129,6 +132,7 @@ public class SuperAdminController {
 
     @DeleteMapping({"/centers/{centerId}", "/center/{centerId}"})
     public ResponseEntity<ApiResponse<Void>> deleteCenterAny(@PathVariable Long centerId, HttpServletRequest request) {
+        log.info("Delete center ID={}", centerId);
         adminService.deleteCenter(centerId, request);
         return ResponseEntity.ok(ApiResponse.success(null, "Center deleted successfully"));
     }

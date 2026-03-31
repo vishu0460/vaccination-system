@@ -302,10 +302,10 @@ export const publicAPI = {
 };
 
 export const userAPI = {
-  getProfile: () => apiClient.get("/profile"),
-  updateProfile: (data) => apiClient.put("/profile", data),
-  requestPasswordChangeOtp: () => apiClient.post("/profile/change-password/request-otp"),
-  changePassword: (data) => apiClient.post("/profile/change-password", data),
+  getProfile: () => apiClient.get("/users/me"),
+  updateProfile: (data) => apiClient.put("/users/update-profile", data),
+  requestPasswordChangeOtp: () => apiClient.post("/users/change-password/request-otp"),
+  changePassword: (data) => apiClient.put("/users/change-password", data),
   getAccount: () => apiClient.get("/user/account"),
   getBookings: () => apiClient.get("/user/bookings"),
   bookSlot: (data) => apiClient.post("/user/bookings", data),
@@ -375,6 +375,8 @@ export const adminAPI = {
   exportBookings: () => apiClient.get("/admin/bookings/export", { responseType: "blob" }),
   getAuditLogs: () => apiClient.get("/admin/audit-logs"),
   getSystemLogs: (params = {}) => apiClient.get("/admin/logs", { params }),
+  getActivityLogs: (params = {}) => apiClient.get("/admin/logs/activity", { params }),
+  getSecurityLogs: (params = {}) => apiClient.get("/admin/logs/security", { params }),
   getAllFeedback: (page = 0, size = 10) => apiClient.get("/admin/feedback", { params: { page, size } }),
   respondToFeedback: (id, replyMessage) => apiClient.put(`/admin/feedback/${id}/reply`, { replyMessage }),
   getAllContacts: () => apiClient.get("/admin/contacts"),
@@ -386,6 +388,10 @@ export const adminAPI = {
 
 export const superAdminAPI = {
   createAdmin: (data) => apiClient.post("/superadmin/create-admin", data),
+  getAdmins: () => apiClient.get("/admins"),
+  createManagedAdmin: (data) => apiClient.post("/admins", data),
+  updateAdmin: (adminId, data) => apiClient.put(`/admins/${adminId}`, data),
+  deleteAdmin: (adminId) => apiClient.delete(`/admins/${adminId}`),
   updateUser: (userId, data) => apiClient.put(`/super-admin/users/${userId}`, data),
   deleteUser: (userId) => apiClient.delete(`/super-admin/users/${userId}`),
   updateCenter: (centerId, data) => apiClient.put(`/super-admin/centers/${centerId}`, data),

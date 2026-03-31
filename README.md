@@ -1,261 +1,111 @@
-# VaxZone Vaccination System
+# VaxZone 🩺 Vaccination Management System
 
-VaxZone is a full-stack vaccination booking platform built with Spring Boot, React, and MySQL. It supports citizen registration, slot booking, certificate verification, admin operations, notifications, and deployment-ready configuration for modern hosting platforms.
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.5-green.svg)](https://spring.io/projects/spring-boot)
+[![React](https://img.shields.io/badge/React-18-blue.svg)](https://reactjs.org)
+[![Java 17](https://img.shields.io/badge/Java-17-orange.svg)](https://openjdk.org)
+[![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen.svg)](https://github.com/example/vaxzone/actions)
 
-## Overview
+**VaxZone** is a production-ready, full-stack vaccination booking platform for citizens, admins, and super admins. Built with Spring Boot backend + React/Vite frontend, it handles slot booking, certificates, real-time notifications, analytics, and role-based management.
 
-- Citizens can browse centers and drives, book slots, manage bookings, and verify certificates.
-- Admins can manage centers, drives, slots, bookings, feedback, contacts, and analytics.
-- The platform includes JWT security, rate limiting, responsive UI, SEO metadata, and PWA support.
+![VaxZone Dashboard](docs/screenshots/dashboard.png) *(Add real screenshots)*
 
-## Features
+## 🚀 Key Features
 
-- JWT-based authentication with refresh flow
-- User registration, login, profile management, and booking history
-- Vaccination drive and slot discovery with filtering
-- Booking, cancellation, rescheduling, and certificate generation
-- Admin dashboard with charts, booking insights, and management tools
-- Personalized in-app/email/SMS-style notification messages
-- Feedback, contact, news, and review workflows
-- React Helmet SEO metadata, sitemap, robots rules, and Open Graph tags
-- PWA manifest and service worker registration
+| Role | Capabilities |
+|------|--------------|
+| **Citizens/Users** | Browse/search centers & drives, book/cancel/reschedule slots, waitlists, profile/certificates/notifications/recommendations/reviews/feedback/contacts |
+| **Admins** | Dashboard charts/stats/analytics/logs, CRUD centers/drives/slots/bookings/users/news/feedback/contacts/admins |
+| **Super Admins** | All admin + global users/centers/drives/slots management |
+| **Public** | Verify certificates, legal pages, SEO/PWA optimized |
 
-## Tech Stack
+- **Security**: JWT auth/refresh, role-based access (USER/ADMIN/SUPER_ADMIN), rate limiting
+- **Realtime**: WebSocket notifications (STOMP/SockJS)
+- **Integrations**: Email/SMS (Twilio), PDF/QR certificates
+- **DevOps**: Docker Compose, Flyway migrations (MySQL/H2), OpenAPI/Swagger
 
-- Backend: Spring Boot 3, Spring Security, Spring Data JPA, Flyway
-- Frontend: React 18, Vite, React Router, React Bootstrap, Chart.js
-- Database: MySQL
-- Dev/Test: H2, JUnit, Mockito, Vitest, Playwright
+## 🛠 Tech Stack
 
-## Project Structure
+**Backend**: Spring Boot 3.3.5, Spring Security/Data JPA/WebSocket/Mail/Cache, Flyway, JJWT, ZXing (QR), OpenPDF, Twilio SMS, MySQL/H2  
+**Frontend**: React 18, Vite 5, React Router, Bootstrap 5, Chart.js/Recharts, React Helmet (SEO), PWA/Service Worker  
+**Tools**: Maven, npm/Vitest/Playwright, Docker, Nginx reverse proxy
 
-### Backend
+## 📁 Quick Structure
 
-- `backend/src/main/java/com/vaccine/web/controller` API endpoints
-- `backend/src/main/java/com/vaccine/core/service` business logic
-- `backend/src/main/java/com/vaccine/infrastructure/persistence/repository` persistence layer
-- `backend/src/main/java/com/vaccine/common/dto` request and response DTOs
-- `backend/src/main/java/com/vaccine/domain` entities and enums
-- `backend/src/main/java/com/vaccine/config` app, cache, CORS, and rate-limit config
-- `backend/src/main/java/com/vaccine/security` JWT and auth filters
-- `backend/src/main/java/com/vaccine/util` certificate and export utilities
+```
+e:/vaccination-system/
+├── backend/          # Spring Boot API (Java 17)
+│   ├── src/main/java/com/vaccine/web/controller/  # REST controllers
+│   ├── src/main/resources/db/migration/           # 27 Flyway scripts
+│   └── pom.xml
+├── frontend/         # React/Vite SPA
+│   ├── src/pages/    # Home/Drives/Centers/AdminDashboard etc.
+│   ├── src/api/      # Axios client
+│   └── package.json
+├── docker-compose.yml # MySQL + Backend + Frontend + Nginx
+├── README.md         # You're here!
+└── docs/             # Full structure/API/Setup etc.
+```
 
-### Frontend
+Detailed: [PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)
 
-- `frontend/src/components` shared UI pieces
-- `frontend/src/pages` route-level pages
-- `frontend/src/api` API client layer
-- `frontend/src/hooks` reusable hooks
-- `frontend/src/utils` auth and helpers
-- `frontend/src/styles` global styling
-
-## Local Setup
+## ⚡ Quickstart (Local Dev)
 
 ### Prerequisites
+- Java 17+, Node 18+, Docker (optional for MySQL)
+- Copy `.env.example` → `.env` & set secrets (JWT_SECRET, DB creds)
 
-- Java 17+
-- Node.js 18+
-- MySQL 8+ for production profile
-- Docker Desktop optional
-
-### Backend
-
-Backend startup now requires environment variables for database access and JWT signing. No credentials are embedded in source-controlled config.
-
+### Backend (http://localhost:8080)
 ```bash
-cp .env.example .env
 cd backend
-mvn spring-boot:run
+mvn spring-boot:run  # H2 local profile (SPRING_PROFILES_ACTIVE=local)
+# Or MySQL: docker compose up -d mysql && SPRING_PROFILES_ACTIVE=local-fixed mvn spring-boot:run
 ```
+Swagger: http://localhost:8080/swagger-ui/index.html
 
-Backend default URL: `http://localhost:8080`
-
-Use `SPRING_PROFILES_ACTIVE=local` for local H2-backed development, `SPRING_PROFILES_ACTIVE=local-fixed` for MySQL-backed local development, and `SPRING_PROFILES_ACTIVE=dev` only when you explicitly want development-only sample data.
-
-For MySQL-backed local development:
-
-```bash
-docker compose up -d mysql
-SPRING_PROFILES_ACTIVE=local-fixed mvn spring-boot:run
-```
-
-Swagger UI: `http://localhost:8080/swagger-ui/index.html`
-
-### Frontend
-
+### Frontend (http://localhost:5174)
 ```bash
 cd frontend
 npm install
-cp .env.example .env
 npm run dev
 ```
 
-Frontend default URL: `http://localhost:5174`
+**Full Setup**: [SETUP_GUIDE.md](./SETUP_GUIDE.md)
 
-## Environment Variables
+## 🌐 API Overview
 
-Copy `.env.example` to `.env` and set the values you need.
+See [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) for full spec.
 
-### Backend
+| Method | Endpoint | Role | Description |
+|--------|----------|------|-------------|
+| POST | /api/auth/login | Public | JWT login |
+| GET | /api/public/centers | Public | Search centers |
+| POST | /api/user/bookings | USER | Create booking |
+| GET | /api/admin/dashboard/stats | ADMIN | Dashboard analytics |
+| POST | /api/certificates | USER/ADMIN | Generate certificate |
 
-- `SPRING_PROFILES_ACTIVE`
-- `DB_URL`
-- `DB_NAME`
-- `DB_USERNAME`
-- `DB_PASSWORD`
-- `JWT_SECRET`
-- `JWT_ISSUER`
-- `JWT_ACCESS_MINUTES`
-- `JWT_REFRESH_DAYS`
-- `CORS_ALLOWED_ORIGINS`
-- `APP_BASE_URL`
-- `MAIL_USERNAME`
-- `MAIL_PASSWORD`
-- `MAIL_FROM`
-- `SMS_ENABLED`
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `TWILIO_PHONE_NUMBER`
+## 🚀 Deployment
 
-### Frontend
+- **Docker**: `docker compose up -d --build`
+- **Backend**: Render/Heroku (`mvn package && java -jar app.jar`)
+- **Frontend**: Vercel/Netlify (`npm run build`)
+- **Prod Checklist**: HTTPS, env secrets, Flyway migrations
 
-- `VITE_API_BASE_URL`
-- `VITE_API_URL`
-- `VITE_APP_ENV`
-- `VITE_API_PORT_CANDIDATES`
-- `E2E_USER_EMAIL`
-- `E2E_USER_PASSWORD`
-- `E2E_ADMIN_EMAIL`
-- `E2E_ADMIN_PASSWORD`
+## 📖 Documentation
 
-## Database
+- [API Docs](./API_DOCUMENTATION.md) | [Setup](./SETUP_GUIDE.md) | [Features](./FEATURES.md)
+- [Security](./SECURITY.md) | [Architecture](./ARCHITECTURE.md)
+- [Changelog](./CHANGELOG.md) | [Contributing](./CONTRIBUTING.md)
 
-- Runtime database connection details come from environment variables only.
-- Flyway migrations live in `backend/src/main/resources/db/migration`.
-- The `dev` and `test` profiles are intentionally non-persistent and should not be used for data you need to keep.
-- Slot-notification subscriptions, notifications, search logs, bookings, users, and drives are stored in the database and survive application restarts when running with MySQL.
+## 🛠 Help Wanted
 
-### Backup
+See [TODO.md](./TODO.md) for priorities. Contributions welcome!
 
-- A repeatable MySQL backup script is available at `scripts/mysql-backup.sh`.
-- Example: `DB_PASSWORD=your-runtime-password ./scripts/mysql-backup.sh`
-- The script creates compressed dumps in `./backups/mysql` and prunes backups older than `BACKUP_RETENTION_DAYS` (default `14`).
+## 📄 License & Author
 
-### H2 to MySQL Migration
+MIT License. Built by [Your Name/Team]. Questions? Open an issue.
 
-- Use `migrate-db.ps1` on Windows or `migrate-db.sh` on Unix-like systems.
-- The migration tool exports from the H2 URL stored in the repo-local `.env`, then imports into MySQL using only the current shell's `DB_URL`, `DB_USERNAME`, and `DB_PASSWORD`.
-- Generated files are written under `backups/db-migration/` and are ignored by Git.
-- Safety checks:
-  - the tool refuses to run unless the source `.env` still points at H2
-  - the tool refuses to overwrite a non-empty MySQL target unless `ALLOW_TARGET_RESET=true`
-  - MySQL credentials are never written to source-controlled config
+---
 
-Example:
+⭐ **Star on GitHub if useful!**  
+![Footer](docs/screenshots/footer.png)
 
-```powershell
-$env:DB_URL="jdbc:mysql://localhost:3306/vaccination_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-$env:DB_USERNAME="your_mysql_user"
-$env:DB_PASSWORD="your_mysql_password"
-./migrate-db.ps1
-```
-
-Optional backend start after a successful import:
-
-```powershell
-./migrate-db.ps1 -StartBackend
-```
-
-## Deployment
-
-### Production Checklist
-
-- Set strong values for `JWT_SECRET`, `DB_ROOT_PASSWORD`, `DB_USERNAME`, and `DB_PASSWORD`
-- Keep `APP_SEED_ENABLED=false` in production. Development sample seeding runs only with the `dev` profile.
-- Set `CORS_ALLOWED_ORIGINS`, `APP_BASE_URL`, and `FRONTEND_URL` to your real HTTPS domains
-- Run Flyway migrations before exposing traffic
-- Replace MailHog with a real SMTP provider in production
-- Provision or rotate administrator access outside source control before going live
-- Use `scripts/rotate-secrets.ps1` locally to generate a fresh JWT secret and BCrypt password hash during incident response or credential rotation
-- Enable HTTPS at the reverse proxy and mount valid certificates in `nginx/certs`
-
-### Backend on Render
-
-- Build command: `cd backend && mvn clean package`
-- Start command: `java -jar backend/target/app.jar`
-- Set database, JWT, mail, and CORS environment variables in Render
-- Point `APP_BASE_URL` to the frontend production URL
-
-### Docker Compose Production
-
-```bash
-docker compose up -d --build
-```
-
-- The compose stack now fails fast when required database or JWT environment variables are missing
-- MySQL is only exposed to the internal Docker network by default
-- MailHog is available only through the optional `dev` profile:
-
-```bash
-docker compose --profile dev up -d
-```
-
-### Frontend on Vercel
-
-- Root directory: `frontend`
-- Build command: `npm run build`
-- Output directory: `dist`
-- Set `VITE_API_BASE_URL` to your deployed backend URL, for example `https://your-api.onrender.com/api`
-
-## API Documentation
-
-- Swagger/OpenAPI UI: `/swagger-ui/index.html`
-- Health endpoint: `/api/v1/health`
-- Public endpoints: `/api/public/*`
-- Auth endpoints: `/api/auth/*`
-- User endpoints: `/api/user/*`, `/api/profile`
-- Admin endpoints: `/api/admin/*`
-
-## Testing
-
-### Backend
-
-```bash
-cd backend
-mvn test
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm test -- --run
-npm run build
-```
-
-Authenticated Playwright scenarios use environment-provided credentials only. Set `E2E_USER_EMAIL`, `E2E_USER_PASSWORD`, `E2E_ADMIN_EMAIL`, and `E2E_ADMIN_PASSWORD` in your local `.env` or CI secret store before running them.
-
-## Verified Checks
-
-- Login and register flows pass
-- Booking and cancellation flows pass
-- Admin dashboard loads with stats and charts
-- Backend tests pass
-- Frontend tests pass
-- Frontend production build passes
-- PWA manifest and service worker are wired
-
-## Screenshots
-
-- `docs/screenshots/home.png`
-- `docs/screenshots/drives.png`
-- `docs/screenshots/bookings.png`
-- `docs/screenshots/admin-dashboard.png`
-- `docs/screenshots/certificate.png`
-
-## Notes
-
-- Replace placeholder screenshot files with real captures before sharing publicly.
-- Update `frontend/public/sitemap.xml` and `frontend/public/robots.txt` with your final production domain.
-- Review `.env` values before deployment so secrets are never committed.
-- Do not commit `.env`, `application-local*.yml`, or ad hoc secret files.

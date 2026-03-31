@@ -1,15 +1,26 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Container, Row, Col, Card, Table, Badge, Button, Spinner, Modal, Form, Alert, Tab, Tabs } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Badge, Button, Spinner, Form, Alert } from 'react-bootstrap';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
-import { Bar, Doughnut } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
+import { jsPDF } from 'jspdf';
 import { adminAPI, getErrorMessage, newsAPI, superAdminAPI, unwrapApiData } from '../api/client';
+import SystemOverviewChart from '../components/admin/SystemOverviewChart';
+import BookingStatusChart from '../components/admin/BookingStatusChart';
+import ActivityTimeline from '../components/admin/ActivityTimeline';
+import LogsTable from '../components/admin/LogsTable';
 import ErrorState from '../components/ErrorState';
+import Modal from '../components/ui/Modal';
+import ConfirmModal from '../components/ui/ConfirmModal';
+import Skeleton, { SkeletonCard, SkeletonTable } from '../components/Skeleton';
 import SearchInput from '../components/SearchInput';
+import AdminManagement from '../components/admin/AdminManagement';
 import useCurrentTime from '../hooks/useCurrentTime';
 import { getRole } from '../utils/auth';
+import { errorToast, infoToast, successToast } from '../utils/toast';
 import { getCountdownLabel, getRealtimeStatus } from '../utils/realtimeStatus';
 import { broadcastDataUpdated, debugDataSync, subscribeToDataUpdates } from '../utils/dataSync';
-import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaEnvelope, FaBell, FaCog, FaUserShield, FaComment, FaPhone, FaClipboardList } from 'react-icons/fa';
+import { FaUsers, FaCalendarCheck, FaSyringe, FaHospital, FaNewspaper, FaCertificate, FaPlus, FaTrash, FaEdit, FaCheck, FaTimes, FaChartLine, FaBell, FaCog, FaUserShield, FaComment, FaPhone, FaClipboardList, FaDownload, FaHistory, FaShieldAlt, FaSyncAlt } from 'react-icons/fa';
 import { calculateAgeFromDob } from '../utils/authValidation';
 import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, normalizeListSearch, shouldShowViewMore } from '../utils/listSearch';
 
@@ -45,16 +56,8 @@ const EMPTY_DASHBOARD_ANALYTICS = {
   slotUsage: []
 };
 
-const EMPTY_CONTACT_ANALYTICS = {
-  totalInquiries: 0,
-  todayInquiries: 0,
-  weeklyInquiries: 0,
-  inquiriesByDay: [],
-  mostActiveUsers: [],
-  recentInquiries: []
-};
-
 const DRIVE_STATUS_OPTIONS = ['UPCOMING', 'LIVE', 'EXPIRED'];
+const SLOT_STATUS_OPTIONS = ['ALL', 'ACTIVE', 'UPCOMING', 'FULL', 'EXPIRED'];
 
 const ensureArray = (payload) => {
   if (Array.isArray(payload)) {
@@ -117,7 +120,7 @@ const getSlotStatusPreview = (startValue, endValue) => {
   }
 
   if (now >= start && now <= end) {
-    return 'LIVE';
+    return 'ACTIVE';
   }
 
   return 'UPCOMING';
@@ -241,6 +244,9 @@ const normalizeSlotForEditing = (slot) => {
 
   return {
     ...slot,
+    totalCapacity: slot?.totalCapacity ?? slot?.capacity ?? 0,
+    availableSlots: slot?.availableSlots ?? slot?.remaining ?? Math.max(0, Number(slot?.capacity || 0) - Number(slot?.bookedCount || 0)),
+    status: slot?.status || slot?.slotStatus || getRealtimeStatus(baseStart, rawEnd),
     startDate: slot?.startDate || baseStart || null,
     endDate: slot?.endDate || rawEnd || null,
     driveId: normalizedDriveId,
@@ -252,6 +258,73 @@ const normalizeSlotForEditing = (slot) => {
 const formatSlotEndDisplay = (slot) => {
   const endDateTime = getSlotEndValue(slot);
   return formatDateTime(endDateTime);
+};
+
+const getSlotCapacityValue = (slot) => Number(slot?.totalCapacity ?? slot?.capacity ?? 0);
+
+const getSlotAvailableValue = (slot) => Number(slot?.availableSlots ?? slot?.remaining ?? Math.max(0, getSlotCapacityValue(slot) - Number(slot?.bookedCount || 0)));
+
+const getManagedSlotStatus = (slot, referenceTime = Date.now()) => {
+  const backendStatus = String(slot?.status || '').toUpperCase();
+  if (backendStatus) {
+    return backendStatus;
+  }
+
+  const legacyStatus = String(slot?.slotStatus || '').toUpperCase();
+  if (legacyStatus === 'LIVE') {
+    return getSlotAvailableValue(slot) <= 0 ? 'FULL' : 'ACTIVE';
+  }
+  if (legacyStatus) {
+    return legacyStatus;
+  }
+
+  const realtimeStatus = String(getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), referenceTime)).toUpperCase();
+  if ((realtimeStatus === 'ACTIVE' || realtimeStatus === 'LIVE') && getSlotAvailableValue(slot) <= 0) {
+    return 'FULL';
+  }
+  return realtimeStatus;
+};
+
+const combineDriveDateTime = (driveDate, timeValue) => {
+  if (!driveDate || !timeValue) {
+    return '';
+  }
+
+  const normalizedTime = String(timeValue).slice(0, 8);
+  return `${driveDate}T${normalizedTime}`;
+};
+
+const getDriveDisplayStatus = (drive, referenceTime = new Date()) => {
+  if (!drive?.driveDate) {
+    return drive?.status || 'UPCOMING';
+  }
+
+  const startDateTime = combineDriveDateTime(drive.driveDate, drive.startTime || '09:00:00');
+  const endDateTime = combineDriveDateTime(drive.driveDate, drive.endTime || '17:00:00');
+  return getRealtimeStatus(startDateTime, endDateTime, referenceTime) || drive?.status || 'UPCOMING';
+};
+
+const getDriveStatusBadge = (status) => {
+  const variants = {
+    UPCOMING: 'info',
+    LIVE: 'success',
+    EXPIRED: 'secondary'
+  };
+  const normalizedStatus = String(status || 'UPCOMING').toUpperCase();
+  return <Badge bg={variants[normalizedStatus] || 'secondary'}>{normalizedStatus}</Badge>;
+};
+
+const getRoleLabel = (user) => {
+  if (user?.isSuperAdmin) {
+    return 'SUPER_ADMIN';
+  }
+  if (user?.role) {
+    return String(user.role).toUpperCase();
+  }
+  if (user?.isAdmin) {
+    return 'ADMIN';
+  }
+  return 'USER';
 };
 
 const buildSlotPayload = (formState, fallbackSlot = null) => {
@@ -276,8 +349,15 @@ const buildSlotPayload = (formState, fallbackSlot = null) => {
   };
 };
 
-const mergeUpdatedSlot = (currentSlots, updatedSlot) =>
-  currentSlots.map((slot) => (Number(slot.id) === Number(updatedSlot.id) ? normalizeSlotForEditing(updatedSlot) : slot));
+const mergeUpdatedSlot = (currentSlots, updatedSlot) => {
+  const normalizedUpdatedSlot = normalizeSlotForEditing(updatedSlot);
+  const remainingSlots = currentSlots.filter((slot) => Number(slot.id) !== Number(normalizedUpdatedSlot.id));
+  return [normalizedUpdatedSlot, ...remainingSlots].sort((left, right) => {
+    const leftStart = new Date(getSlotStartValue(left) || 0).getTime();
+    const rightStart = new Date(getSlotStartValue(right) || 0).getTime();
+    return leftStart - rightStart;
+  });
+};
 
 const upsertDrive = (currentDrives, nextDrive) => {
   const normalizedId = Number(nextDrive?.id);
@@ -320,6 +400,8 @@ const DEFAULT_VISIBLE_COUNTS = {
   logs: DEFAULT_VISIBLE_COUNT
 };
 
+const LOG_PAGE_SIZE = 20;
+
 const DEFAULT_DASHBOARD_FILTERS = {
   bookings: { status: '', date: '' },
   centers: { city: '' },
@@ -328,8 +410,52 @@ const DEFAULT_DASHBOARD_FILTERS = {
   news: { category: '' },
   feedback: { status: '', type: '' },
   contacts: { status: '', type: '' },
-  logs: { level: '' }
+  logs: { level: '', user: '', actionType: '', startDate: '', endDate: '' }
 };
+
+const DEFAULT_LOG_META = {
+  timeline: { page: 0, total: 0, hasMore: false },
+  all: { page: 0, size: LOG_PAGE_SIZE, total: 0, hasMore: false },
+  security: { page: 0, total: 0, hasMore: false }
+};
+
+const DEFAULT_LOG_LOADING = {
+  timeline: false,
+  all: false,
+  security: false
+};
+
+const DEFAULT_LOG_ERRORS = {
+  timeline: '',
+  all: '',
+  security: ''
+};
+
+const LOG_VIEW_OPTIONS = [
+  { id: 'timeline', label: 'Activity Timeline', icon: <FaHistory /> },
+  { id: 'all', label: 'All Logs', icon: <FaClipboardList /> },
+  { id: 'security', label: 'Security Logs', icon: <FaShieldAlt /> }
+];
+
+const LOG_ACTION_OPTIONS = ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'ERROR', 'INFO'];
+
+const TAB_ROUTE_MAP = {
+  dashboard: '/admin/dashboard',
+  users: '/admin/users',
+  bookings: '/admin/bookings',
+  centers: '/admin/centers',
+  drives: '/admin/drives',
+  slots: '/admin/slots',
+  news: '/admin/news',
+  feedback: '/admin/feedback',
+  contacts: '/admin/contacts',
+  logs: '/admin/logs',
+  admins: '/admin/admins'
+};
+
+const ROUTE_TAB_MAP = Object.fromEntries(
+  Object.entries(TAB_ROUTE_MAP).map(([tabId, path]) => [path, tabId])
+);
 
 const matchesExactDate = (value, selectedDate) => {
   if (!selectedDate) {
@@ -372,13 +498,15 @@ const matchesDateRange = (value, startDate, endDate) => {
 };
 
 export default function AdminDashboardPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentRole = getRole();
   const isSuperAdmin = currentRole === 'SUPER_ADMIN';
   const [activeTab, setActiveTab] = useState(isSuperAdmin ? 'dashboard' : 'bookings');
   const [stats, setStats] = useState(EMPTY_STATS);
   const [searchAnalytics, setSearchAnalytics] = useState(EMPTY_SEARCH_ANALYTICS);
   const [dashboardAnalytics, setDashboardAnalytics] = useState(EMPTY_DASHBOARD_ANALYTICS);
-  const [contactAnalytics, setContactAnalytics] = useState(EMPTY_CONTACT_ANALYTICS);
+  const [dashboardAdminCount, setDashboardAdminCount] = useState(0);
   const [users, setUsers] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [centers, setCenters] = useState([]);
@@ -386,6 +514,12 @@ export default function AdminDashboardPage() {
   const [slots, setSlots] = useState([]);
   const [news, setNews] = useState([]);
   const [systemLogs, setSystemLogs] = useState([]);
+  const [activityLogs, setActivityLogs] = useState([]);
+  const [securityLogs, setSecurityLogs] = useState([]);
+  const [logsView, setLogsView] = useState('timeline');
+  const [logsMeta, setLogsMeta] = useState(DEFAULT_LOG_META);
+  const [logsLoadingState, setLogsLoadingState] = useState(DEFAULT_LOG_LOADING);
+  const [logsErrorState, setLogsErrorState] = useState(DEFAULT_LOG_ERRORS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -430,6 +564,8 @@ export default function AdminDashboardPage() {
   const [editSlotStartDate, setEditSlotStartDate] = useState('');
   const [editSlotEndDate, setEditSlotEndDate] = useState('');
   const [slotActionLoading, setSlotActionLoading] = useState(false);
+  const [driveSubmitLoading, setDriveSubmitLoading] = useState(false);
+  const [centerDeleteId, setCenterDeleteId] = useState(null);
   const [editUserForm, setEditUserForm] = useState({ email: '', fullName: '', dob: '', age: 0, phoneNumber: '', enabled: true });
   const [slotFilters, setSlotFilters] = useState({ status: 'ALL', centerId: '', driveId: '', date: '' });
   
@@ -441,14 +577,26 @@ export default function AdminDashboardPage() {
   const [selectedFeedback, setSelectedFeedback] = useState(null);
   const [selectedContact, setSelectedContact] = useState(null);
   const [responseText, setResponseText] = useState('');
-  const [createAdminForm, setCreateAdminForm] = useState({ name: '', email: '', password: '' });
-  const [createAdminLoading, setCreateAdminLoading] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, isLoading: false, title: '', message: '', type: 'delete', confirmLabel: 'Delete', onConfirm: null });
   const [refreshTick, setRefreshTick] = useState(0);
   const refreshInFlightRef = useRef(false);
   const now = useCurrentTime(1000);
+  const lastToastRef = useRef({ success: null, error: null });
 
   const requestRefresh = useCallback(() => {
     setRefreshTick((current) => current + 1);
+  }, []);
+
+  const setLogLoading = useCallback((view, value) => {
+    setLogsLoadingState((current) => ({ ...current, [view]: value }));
+  }, []);
+
+  const setLogError = useCallback((view, value) => {
+    setLogsErrorState((current) => ({ ...current, [view]: value || '' }));
+  }, []);
+
+  const updateLogMeta = useCallback((view, nextValue) => {
+    setLogsMeta((current) => ({ ...current, [view]: { ...current[view], ...nextValue } }));
   }, []);
 
   const refreshActiveTabData = async (options = {}) => {
@@ -464,7 +612,7 @@ export default function AdminDashboardPage() {
     if (activeTab === 'news') tasks.push(loadNews({ silent }));
     if (activeTab === 'feedback') tasks.push(loadFeedbacks({ silent }));
     if (activeTab === 'contacts') tasks.push(loadContacts({ silent }));
-    if (activeTab === 'logs') tasks.push(loadSystemLogs({ silent }));
+    if (activeTab === 'logs') tasks.push(loadActiveLogsView({ silent }));
     if (selectedDrive?.id && showManageSlotsModal) tasks.push(loadDriveSlots(selectedDrive.id, true));
 
     if (tasks.length === 0) {
@@ -524,9 +672,12 @@ export default function AdminDashboardPage() {
     if (!nextTab || nextTab === activeTab) {
       return;
     }
+
+    const nextPath = TAB_ROUTE_MAP[nextTab] || TAB_ROUTE_MAP.dashboard;
     setActiveTab(nextTab);
+    navigate(nextPath);
     requestRefresh();
-  }, [activeTab, requestRefresh]);
+  }, [activeTab, navigate, requestRefresh]);
 
   useEffect(() => {
     debugDataSync('admin drives state', drives);
@@ -543,6 +694,20 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     debugDataSync('edit slot end date', editSlotEndDate);
   }, [editSlotEndDate]);
+
+  useEffect(() => {
+    if (success && lastToastRef.current.success !== success) {
+      successToast(success);
+      lastToastRef.current.success = success;
+    }
+  }, [success]);
+
+  useEffect(() => {
+    if (error && lastToastRef.current.error !== error) {
+      errorToast(error);
+      lastToastRef.current.error = error;
+    }
+  }, [error]);
 
   const handleSlotFormFieldChange = (setter) => (event) => {
     const { name, value } = event.target;
@@ -584,30 +749,86 @@ export default function AdminDashboardPage() {
     }));
   }, []);
 
+  const closeConfirmDialog = useCallback(() => {
+    setConfirmDialog((current) => ({ ...current, isOpen: false, isLoading: false, onConfirm: null }));
+  }, []);
+
+  const openConfirmDialog = useCallback(({ title, message, type = 'delete', confirmLabel = 'Delete', onConfirm }) => {
+    setConfirmDialog({
+      isOpen: true,
+      isLoading: false,
+      title,
+      message,
+      type,
+      confirmLabel,
+      onConfirm
+    });
+  }, []);
+
   const loadDashboardData = async (options = {}) => {
     try {
       if (!options.silent) {
         setLoading(true);
       }
       setError(null);
-      const [statsRes, bookingsRes, searchAnalyticsRes, dashboardAnalyticsRes, contactAnalyticsRes] = await Promise.all([
+      const [
+        statsRes,
+        bookingsRes,
+        searchAnalyticsRes,
+        dashboardAnalyticsRes,
+        adminsRes,
+        usersRes,
+        centersRes,
+        drivesRes,
+        slotsRes
+      ] = await Promise.allSettled([
         adminAPI.getDashboardStats(),
         adminAPI.getAllBookings(),
         adminAPI.getSearchAnalytics(),
         adminAPI.getDashboardAnalytics(),
-        adminAPI.getContactAnalytics()
+        superAdminAPI.getAdmins(),
+        adminAPI.getAllUsers(),
+        adminAPI.getAllCenters(),
+        adminAPI.getAllDrives(),
+        adminAPI.getAllSlotsList()
       ]);
-      setStats(ensureStats(unwrapApiData(statsRes)));
-      setBookings(ensureArray(unwrapApiData(bookingsRes)));
-      setSearchAnalytics({ ...EMPTY_SEARCH_ANALYTICS, ...(unwrapApiData(searchAnalyticsRes) || {}) });
-      setDashboardAnalytics({ ...EMPTY_DASHBOARD_ANALYTICS, ...(unwrapApiData(dashboardAnalyticsRes) || {}) });
-      setContactAnalytics({ ...EMPTY_CONTACT_ANALYTICS, ...(unwrapApiData(contactAnalyticsRes) || {}) });
+
+      const getSettledData = (result) => (result.status === 'fulfilled' ? unwrapApiData(result.value) : null);
+      const failedRequest = [
+        statsRes,
+        bookingsRes,
+        searchAnalyticsRes,
+        dashboardAnalyticsRes,
+        adminsRes,
+        usersRes,
+        centersRes,
+        drivesRes,
+        slotsRes
+      ].find((result) => result.status === 'rejected');
+
+      setStats(ensureStats(getSettledData(statsRes)));
+      setBookings(ensureArray(getSettledData(bookingsRes)));
+      setSearchAnalytics({ ...EMPTY_SEARCH_ANALYTICS, ...(getSettledData(searchAnalyticsRes) || {}) });
+      setDashboardAnalytics({ ...EMPTY_DASHBOARD_ANALYTICS, ...(getSettledData(dashboardAnalyticsRes) || {}) });
+      setDashboardAdminCount(ensureArray(getSettledData(adminsRes)).length);
+      setUsers(ensureArray(getSettledData(usersRes)));
+      setCenters(normalizeCenterItems(getSettledData(centersRes)));
+      setDrives(ensureArray(getSettledData(drivesRes)));
+      setSlots(ensureArray(getSettledData(slotsRes)).map(normalizeSlotForEditing));
+
+      if (failedRequest?.status === 'rejected') {
+        setError(getErrorMessage(failedRequest.reason, 'Some dashboard data could not be loaded'));
+      }
     } catch (err) {
       setStats(EMPTY_STATS);
       setBookings([]);
       setSearchAnalytics(EMPTY_SEARCH_ANALYTICS);
       setDashboardAnalytics(EMPTY_DASHBOARD_ANALYTICS);
-      setContactAnalytics(EMPTY_CONTACT_ANALYTICS);
+      setDashboardAdminCount(0);
+      setUsers([]);
+      setCenters([]);
+      setDrives([]);
+      setSlots([]);
       setError(err.response?.data?.message || 'Failed to load dashboard stats');
     } finally {
       if (!options.silent) {
@@ -630,7 +851,7 @@ export default function AdminDashboardPage() {
       setUsers(items);
       setBookings(ensureArray(unwrapApiData(bookingsResponse)));
     } catch (err) {
-      setError('Failed to load users');
+      setError(getErrorMessage(err, 'Failed to load users'));
       setUsers([]);
     } finally {
       if (!options.silent) {
@@ -647,7 +868,7 @@ export default function AdminDashboardPage() {
       const response = await adminAPI.getAllBookings();
       setBookings(ensureArray(unwrapApiData(response)));
     } catch (err) {
-      setError('Failed to load bookings');
+      setError(getErrorMessage(err, 'Failed to load bookings'));
       setBookings([]);
     } finally {
       if (!options.silent) {
@@ -666,7 +887,7 @@ export default function AdminDashboardPage() {
       debugDataSync('admin centers response', centerItems);
       setCenters(centerItems);
     } catch (err) {
-      setError('Failed to load centers');
+      setError(getErrorMessage(err, 'Failed to load centers'));
       setCenters([]);
     } finally {
       if (!options.silent) {
@@ -685,7 +906,7 @@ export default function AdminDashboardPage() {
       debugDataSync('admin drives response', driveItems);
       setDrives(driveItems);
     } catch (err) {
-      setError('Failed to load drives');
+      setError(getErrorMessage(err, 'Failed to load drives'));
       setDrives([]);
     } finally {
       if (!options.silent) {
@@ -743,7 +964,7 @@ export default function AdminDashboardPage() {
 
       await Promise.all(metadataRequests);
     } catch (err) {
-      setError('Failed to load slots');
+      setError(getErrorMessage(err, 'Failed to load slots'));
       setSlots([]);
     } finally {
       if (!options.silent) {
@@ -769,26 +990,143 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const buildLogFeedParams = useCallback((page = 0) => ({
+    page,
+    size: LOG_PAGE_SIZE,
+    search: listSearch.logs || undefined,
+    user: dashboardFilters.logs.user || undefined,
+    actionType: dashboardFilters.logs.actionType || undefined,
+    startDate: dashboardFilters.logs.startDate || undefined,
+    endDate: dashboardFilters.logs.endDate || undefined
+  }), [dashboardFilters.logs.actionType, dashboardFilters.logs.endDate, dashboardFilters.logs.startDate, dashboardFilters.logs.user, listSearch.logs]);
+
   const loadSystemLogs = async (options = {}) => {
+    const append = Boolean(options.append);
+    const mergeTop = Boolean(options.mergeTop);
+    const nextPage = Number.isInteger(options.page) ? options.page : (append ? logsMeta.all.page + 1 : 0);
+
+    if (logsLoadingState.all && append) {
+      return;
+    }
+    if (append && !logsMeta.all.hasMore && systemLogs.length > 0) {
+      return;
+    }
+
     try {
-      if (!options.silent) {
-        setLoading(true);
-      }
+      setLogLoading('all', true);
+      setLogError('all', '');
+
       const response = await adminAPI.getSystemLogs({
-        limit: 200,
+        page: nextPage,
+        size: logsMeta.all.size || LOG_PAGE_SIZE,
         level: dashboardFilters.logs.level || undefined,
         search: listSearch.logs || undefined
       });
-      setSystemLogs(ensureArray(unwrapApiData(response)));
+      const payload = unwrapApiData(response) || {};
+      const entries = ensureArray(payload);
+      const mergeLogs = (current, incoming) => {
+        const combined = [...current, ...incoming];
+        const uniqueEntries = Array.from(
+          new Map(
+            combined.map((entry) => [
+              `${entry.timestamp || 'na'}|${entry.requestId || 'na'}|${entry.raw || entry.message || 'na'}`,
+              entry
+            ])
+          ).values()
+        );
+
+        return uniqueEntries.sort((left, right) => {
+          const leftTime = new Date(left.timestamp || 0).getTime();
+          const rightTime = new Date(right.timestamp || 0).getTime();
+          return rightTime - leftTime;
+        });
+      };
+
+      setSystemLogs((current) => {
+        if (append || mergeTop) {
+          return mergeLogs(current, entries);
+        }
+        return entries;
+      });
+      updateLogMeta('all', {
+        page: payload.page ?? nextPage,
+        size: payload.size || logsMeta.all.size || LOG_PAGE_SIZE,
+        total: Number(payload.totalElements || entries.length),
+        hasMore: !Boolean(payload.last)
+      });
     } catch (err) {
-      setError(getErrorMessage(err, 'Failed to load system logs'));
-      setSystemLogs([]);
-    } finally {
-      if (!options.silent) {
-        setLoading(false);
+      setLogError('all', getErrorMessage(err, 'Failed to load system logs'));
+      if (!append && !mergeTop) {
+        setSystemLogs([]);
       }
+    } finally {
+      setLogLoading('all', false);
     }
   };
+
+  const loadActivityLogs = async (options = {}) => {
+    const append = Boolean(options.append);
+    const nextPage = Number.isInteger(options.page) ? options.page : (append ? logsMeta.timeline.page + 1 : 0);
+
+    try {
+      setLogLoading('timeline', true);
+      setLogError('timeline', '');
+
+      const response = await adminAPI.getActivityLogs(buildLogFeedParams(nextPage));
+      const payload = unwrapApiData(response) || {};
+      const entries = ensureArray(payload);
+      setActivityLogs((current) => append ? [...current, ...entries] : entries);
+      updateLogMeta('timeline', {
+        page: payload.page ?? nextPage,
+        total: Number(payload.totalElements || entries.length),
+        hasMore: Boolean(payload.hasMore)
+      });
+    } catch (err) {
+      setLogError('timeline', getErrorMessage(err, 'Failed to load activity timeline'));
+      if (!append) {
+        setActivityLogs([]);
+      }
+    } finally {
+      setLogLoading('timeline', false);
+    }
+  };
+
+  const loadSecurityLogs = async (options = {}) => {
+    const append = Boolean(options.append);
+    const nextPage = Number.isInteger(options.page) ? options.page : (append ? logsMeta.security.page + 1 : 0);
+
+    try {
+      setLogLoading('security', true);
+      setLogError('security', '');
+
+      const response = await adminAPI.getSecurityLogs(buildLogFeedParams(nextPage));
+      const payload = unwrapApiData(response) || {};
+      const entries = ensureArray(payload);
+      setSecurityLogs((current) => append ? [...current, ...entries] : entries);
+      updateLogMeta('security', {
+        page: payload.page ?? nextPage,
+        total: Number(payload.totalElements || entries.length),
+        hasMore: Boolean(payload.hasMore)
+      });
+    } catch (err) {
+      setLogError('security', getErrorMessage(err, 'Failed to load security logs'));
+      if (!append) {
+        setSecurityLogs([]);
+      }
+    } finally {
+      setLogLoading('security', false);
+    }
+  };
+
+  const loadActiveLogsView = useCallback((options = {}) => {
+    if (logsView === 'all') {
+      return loadSystemLogs(options);
+    }
+    if (logsView === 'security') {
+      return loadSecurityLogs(options);
+    }
+    return loadActivityLogs(options);
+  }, [logsView, buildLogFeedParams, dashboardFilters.logs.level, listSearch.logs, logsMeta.all.page, logsMeta.all.size, logsMeta.all.hasMore, logsLoadingState.all, logsMeta.security.page, logsMeta.timeline.page, systemLogs.length]);
 
   // Form handlers
   const handleCreateNews = async (e) => {
@@ -831,15 +1169,23 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteNews = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this news?')) return;
-    try {
-      await newsAPI.deleteNews(id);
-      setSuccess('News deleted successfully!');
-      notifyDataUpdated();
-      loadNews();
-    } catch (err) {
-      setError('Failed to delete news');
-    }
+    openConfirmDialog({
+      title: 'Delete news?',
+      message: 'This action cannot be undone. Are you sure you want to delete this news item?',
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await newsAPI.deleteNews(id);
+          setSuccess('News deleted successfully!');
+          notifyDataUpdated();
+          loadNews();
+          closeConfirmDialog();
+        } catch (err) {
+          setError('Failed to delete news');
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        }
+      }
+    });
   };
 
 
@@ -901,6 +1247,7 @@ export default function AdminDashboardPage() {
 
   const handleCreateDrive = async (e) => {
     e.preventDefault();
+    setDriveSubmitLoading(true);
     try {
       const response = await adminAPI.createDrive({ ...driveForm, centerId: Number(driveForm.centerId) });
       const createdDrive = unwrapApiData(response);
@@ -911,10 +1258,15 @@ export default function AdminDashboardPage() {
       setShowDriveModal(false);
       setDriveForm({ title: '', description: '', vaccineType: '', centerId: '', driveDate: '', minAge: 18, maxAge: 100, totalSlots: 100, status: 'UPCOMING' });
       setSuccess('Drive created successfully!');
+      successToast('Drive created successfully');
       notifyDataUpdated();
       await loadDrives();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to create drive');
+      const message = err.response?.data?.message || 'Failed to create drive';
+      setError(message);
+      errorToast(message);
+    } finally {
+      setDriveSubmitLoading(false);
     }
   };
 
@@ -953,18 +1305,6 @@ export default function AdminDashboardPage() {
       await loadDrives();
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update drive');
-    }
-  };
-
-  const handleDriveStatusChange = async (driveId, status) => {
-    try {
-      await adminAPI.updateDrive(driveId, { status });
-      setDrives((current) => current.map((drive) => (drive.id === driveId ? { ...drive, status } : drive)));
-      setSuccess(`Drive status updated to ${status}.`);
-      notifyDataUpdated();
-      await refreshActiveTabData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update drive status');
     }
   };
 
@@ -1039,6 +1379,7 @@ export default function AdminDashboardPage() {
     });
     if (isExpired) {
       setSuccess('Warning: you are editing an expired slot.');
+      infoToast('You are editing an expired slot.');
     }
     setShowEditSlotModal(true);
   };
@@ -1053,12 +1394,27 @@ export default function AdminDashboardPage() {
         endDate: editSlotEndDate
       }, editingSlot);
       const nextStatus = getSlotStatusPreview(slotPayload.startDate, slotPayload.endDate);
+      const currentBookedCount = Number(editingSlot?.bookedCount || 0);
+
       if (!editingSlot?.id) {
         throw new Error('Slot ID is missing');
       }
       if (!Number.isFinite(slotPayload.driveId) || slotPayload.driveId <= 0) {
         throw new Error('Drive ID is missing from the slot payload');
       }
+      if (!slotPayload.startDate || !slotPayload.endDate) {
+        throw new Error('Start time and end time are required');
+      }
+      if (new Date(slotPayload.endDate).getTime() <= new Date(slotPayload.startDate).getTime()) {
+        throw new Error('End time must be after start time');
+      }
+      if (!Number.isFinite(slotPayload.capacity) || slotPayload.capacity < 1) {
+        throw new Error('Capacity must be at least 1');
+      }
+      if (slotPayload.capacity < currentBookedCount) {
+        throw new Error(`Capacity cannot be reduced below ${currentBookedCount} booked slot${currentBookedCount === 1 ? '' : 's'}`);
+      }
+
       const response = await (isSuperAdmin ? superAdminAPI.updateSlot(editingSlot.id, slotPayload) : adminAPI.updateSlot(editingSlot.id, slotPayload));
       const updatedSlot = normalizeSlotForEditing(unwrapApiData(response));
 
@@ -1093,15 +1449,23 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteSlot = async (slotId) => {
-    if (!window.confirm('Are you sure you want to delete this slot?')) return;
-    try {
-      await (isSuperAdmin ? superAdminAPI.deleteSlot(slotId) : adminAPI.deleteSlot(slotId));
-      setSuccess('Slot deleted successfully!');
-      notifyDataUpdated();
-      await refreshActiveTabData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete slot');
-    }
+    openConfirmDialog({
+      title: 'Delete slot?',
+      message: 'This action cannot be undone. Are you sure you want to delete this slot?',
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await (isSuperAdmin ? superAdminAPI.deleteSlot(slotId) : adminAPI.deleteSlot(slotId));
+          setSuccess('Slot deleted successfully!');
+          notifyDataUpdated();
+          await refreshActiveTabData();
+          closeConfirmDialog();
+        } catch (err) {
+          setError(err.response?.data?.message || 'Failed to delete slot');
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        }
+      }
+    });
   };
 
   const handleToggleUser = async (userId, enabled) => {
@@ -1145,44 +1509,73 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteBooking = async (bookingId) => {
-    if (!window.confirm('Delete booking?')) return;
-
-    try {
-      await adminAPI.deleteBooking(bookingId);
-      setBookings((current) => current.filter((booking) => booking.id !== bookingId));
-      if (selectedBooking?.id === bookingId) {
-        setSelectedBooking(null);
-        setShowEditBookingModal(false);
+    openConfirmDialog({
+      title: 'Delete booking?',
+      message: 'This action cannot be undone. Are you sure you want to delete this booking?',
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await adminAPI.deleteBooking(bookingId);
+          setBookings((current) => current.filter((booking) => booking.id !== bookingId));
+          if (selectedBooking?.id === bookingId) {
+            setSelectedBooking(null);
+            setShowEditBookingModal(false);
+          }
+          setSuccess('Booking deleted successfully!');
+          await Promise.all([loadDashboardData(), loadBookings()]);
+          closeConfirmDialog();
+        } catch (err) {
+          setError(err.response?.data?.message || 'Failed to delete booking');
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        }
       }
-      setSuccess('Booking deleted successfully!');
-      await Promise.all([loadDashboardData(), loadBookings()]);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete booking');
-    }
+    });
   };
 
   const handleDeleteCenter = async (centerId) => {
-    if (!window.confirm('Are you sure you want to delete this center?')) return;
-    try {
-      await (isSuperAdmin ? superAdminAPI.deleteCenter(centerId) : adminAPI.deleteCenter(centerId));
-      setSuccess('Center deleted successfully!');
-      notifyDataUpdated();
-      await refreshActiveTabData();
-    } catch (err) {
-      setError('Failed to delete center');
-    }
+    openConfirmDialog({
+      title: 'Delete center?',
+      message: 'This action cannot be undone. Are you sure you want to delete this center?',
+      onConfirm: async () => {
+        setCenterDeleteId(centerId);
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await (isSuperAdmin ? superAdminAPI.deleteCenter(centerId) : adminAPI.deleteCenter(centerId));
+          setSuccess('Center deleted successfully!');
+          successToast('Center deleted successfully');
+          notifyDataUpdated();
+          await refreshActiveTabData();
+          closeConfirmDialog();
+        } catch (err) {
+          const message = getErrorMessage(err, 'Failed to delete center');
+          setError(message);
+          errorToast(message);
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        } finally {
+          setCenterDeleteId(null);
+        }
+      }
+    });
   };
 
   const handleDeleteDrive = async (driveId) => {
-    if (!window.confirm('Are you sure you want to delete this drive?')) return;
-    try {
-      await (isSuperAdmin ? superAdminAPI.deleteDrive(driveId) : adminAPI.deleteDrive(driveId));
-      setSuccess('Drive deleted successfully!');
-      notifyDataUpdated();
-      await refreshActiveTabData();
-    } catch (err) {
-      setError('Failed to delete drive');
-    }
+    openConfirmDialog({
+      title: 'Delete drive?',
+      message: 'This action cannot be undone. Are you sure you want to delete this drive?',
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await (isSuperAdmin ? superAdminAPI.deleteDrive(driveId) : adminAPI.deleteDrive(driveId));
+          setSuccess('Drive deleted successfully!');
+          notifyDataUpdated();
+          await refreshActiveTabData();
+          closeConfirmDialog();
+        } catch (err) {
+          setError(getErrorMessage(err, 'Failed to delete drive'));
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        }
+      }
+    });
   };
 
   const openEditUserModal = (user) => {
@@ -1216,40 +1609,23 @@ export default function AdminDashboardPage() {
   };
 
   const handleDeleteUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to delete this user?')) return;
-    try {
-      await superAdminAPI.deleteUser(userId);
-      setSuccess('User deleted successfully!');
-      notifyDataUpdated();
-      await refreshActiveTabData();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete user');
-    }
-  };
-
-  const handleCreateAdmin = async (event) => {
-    event.preventDefault();
-    if (!isSuperAdmin) {
-      setError('Only super admin can create new admins.');
-      return;
-    }
-
-    setCreateAdminLoading(true);
-    setError(null);
-    try {
-      await superAdminAPI.createAdmin({
-        name: createAdminForm.name.trim(),
-        email: createAdminForm.email.trim().toLowerCase(),
-        password: createAdminForm.password
-      });
-      setCreateAdminForm({ name: '', email: '', password: '' });
-      setSuccess('Admin created successfully.');
-      await loadUsers();
-    } catch (err) {
-      setError(err?.response?.data?.message || 'Failed to create admin.');
-    } finally {
-      setCreateAdminLoading(false);
-    }
+    openConfirmDialog({
+      title: 'Delete user?',
+      message: 'This action cannot be undone. Are you sure you want to delete this user account?',
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await superAdminAPI.deleteUser(userId);
+          setSuccess('User deleted successfully!');
+          notifyDataUpdated();
+          await refreshActiveTabData();
+          closeConfirmDialog();
+        } catch (err) {
+          setError(err.response?.data?.message || 'Failed to delete user');
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        }
+      }
+    });
   };
 
   const openEditBooking = (booking) => {
@@ -1257,29 +1633,36 @@ export default function AdminDashboardPage() {
     setShowEditBookingModal(true);
   };
 
-  // Chart data
-  const chartData = stats ? {
-    labels: ['Users', 'Active Users', 'Bookings', 'Active Drives', 'Centers'],
-    datasets: [{
-      label: 'System Statistics',
-      data: [stats.totalUsers || 0, stats.activeUsers || 0, stats.totalBookings || 0, stats.activeDrives || 0, stats.totalCenters || 0],
-      backgroundColor: ['#0ea5e9', '#38bdf8', '#10b981', '#ef4444', '#f59e0b'],
-      borderRadius: 8
-    }]
-  } : null;
-
-  const bookingsByStatus = useMemo(() => ({
-    labels: ['Pending', 'Confirmed', 'Completed', 'Cancelled'],
-    datasets: [{
-      data: [
-        bookings.filter(b => b.status === 'PENDING').length,
-        bookings.filter(b => b.status === 'CONFIRMED').length,
-        bookings.filter(b => b.status === 'COMPLETED').length,
-        bookings.filter(b => b.status === 'CANCELLED').length
-      ],
-      backgroundColor: ['#f59e0b', '#0ea5e9', '#10b981', '#ef4444']
-    }]
-  }), [bookings]);
+  const bookingsByStatus = useMemo(() => ([
+    {
+      key: 'pending',
+      label: 'Pending',
+      value: Number(stats?.pendingBookings || bookings.filter((booking) => booking.status === 'PENDING').length || 0),
+      color: '#f59e0b',
+      tabKey: 'bookings'
+    },
+    {
+      key: 'confirmed',
+      label: 'Confirmed',
+      value: Number(stats?.approvedBookings || bookings.filter((booking) => booking.status === 'CONFIRMED').length || 0),
+      color: '#0ea5e9',
+      tabKey: 'bookings'
+    },
+    {
+      key: 'cancelled',
+      label: 'Cancelled',
+      value: Number(stats?.cancelledBookings || bookings.filter((booking) => booking.status === 'CANCELLED').length || 0),
+      color: '#ef4444',
+      tabKey: 'bookings'
+    },
+    {
+      key: 'completed',
+      label: 'Completed',
+      value: Number(stats?.completedVaccinations || bookings.filter((booking) => booking.status === 'COMPLETED').length || 0),
+      color: '#10b981',
+      tabKey: 'bookings'
+    }
+  ]), [bookings, stats?.approvedBookings, stats?.cancelledBookings, stats?.completedVaccinations, stats?.pendingBookings]);
 
   const getStatusBadge = (status) => {
     const colors = {
@@ -1291,21 +1674,113 @@ export default function AdminDashboardPage() {
     return <Badge bg={colors[status] || 'secondary'}>{status}</Badge>;
   };
 
-  const bookedUserIds = useMemo(() => new Set(
-    bookings
-      .map((booking) => Number(booking.userId || booking.user?.id))
-      .filter((value) => Number.isFinite(value))
-  ), [bookings]);
-
-  const filteredUsers = useMemo(() => users.filter((user) => {
-    const hasBooking = bookedUserIds.size === 0 || bookedUserIds.has(Number(user.id));
-    return hasBooking && matchesSmartSearch(user, listSearch.users);
-  }), [users, bookedUserIds, listSearch.users]);
+  const filteredUsers = useMemo(
+    () => users
+      .filter((user) => !['ADMIN', 'SUPER_ADMIN'].includes(getRoleLabel(user)))
+      .filter((user) => matchesSmartSearch(user, listSearch.users)),
+    [users, listSearch.users]
+  );
 
   const displayedUsers = useMemo(
     () => getDisplayedItems(filteredUsers, listSearch.users, visibleCounts.users),
     [filteredUsers, listSearch.users, visibleCounts.users]
   );
+
+  const adminUsers = useMemo(
+    () => users.filter((user) => ['ADMIN', 'SUPER_ADMIN'].includes(getRoleLabel(user))),
+    [users]
+  );
+
+  const dashboardSummaryCards = useMemo(() => ([
+    {
+      key: 'users',
+      label: 'Total Users',
+      value: Number(stats?.totalUsers || 0),
+      icon: <FaUsers size={22} />,
+      tone: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'
+    },
+    {
+      key: 'admins',
+      label: 'Total Admins',
+      value: Number(dashboardAdminCount || adminUsers.length || 0),
+      icon: <FaUserShield size={22} />,
+      tone: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)'
+    },
+    {
+      key: 'centers',
+      label: 'Total Centers',
+      value: Number(stats?.totalCenters || 0),
+      icon: <FaHospital size={22} />,
+      tone: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'
+    },
+    {
+      key: 'drives',
+      label: 'Total Drives',
+      value: Number(stats?.totalDrives || 0),
+      icon: <FaSyringe size={22} />,
+      tone: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+    },
+    {
+      key: 'slots',
+      label: 'Total Slots',
+      value: Number(stats?.totalSlots || 0),
+      icon: <FaCalendarCheck size={22} />,
+      tone: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+    }
+  ]), [adminUsers.length, dashboardAdminCount, stats?.totalCenters, stats?.totalDrives, stats?.totalSlots, stats?.totalUsers]);
+
+  const driveStatusSummary = useMemo(() => {
+    const summary = { UPCOMING: 0, LIVE: 0, EXPIRED: 0 };
+
+    drives.forEach((drive) => {
+      const status = getDriveDisplayStatus(drive, now);
+      if (summary[status] !== undefined) {
+        summary[status] += 1;
+      }
+    });
+
+    return summary;
+  }, [drives, now]);
+
+  const recentActivities = useMemo(() => {
+    const bookingActivities = bookings.slice(0, 4).map((booking) => ({
+      key: `booking-${booking.id}`,
+      title: `Booking #${booking.id} ${String(booking.status || 'PENDING').toLowerCase()}`,
+      meta: `${booking.userName || booking.user?.fullName || booking.user?.email || 'User'} · ${formatDateTime(booking.bookedAt || booking.createdAt)}`,
+      timestamp: booking.bookedAt || booking.createdAt || null
+    }));
+
+    const userActivities = users.slice(0, 3).map((user) => ({
+      key: `user-${user.id}`,
+      title: `${user.fullName || user.email} joined`,
+      meta: `${getRoleLabel(user)} account · ${formatDateTime(user.createdAt)}`,
+      timestamp: user.createdAt || null
+    }));
+
+    const contactActivities = contacts.slice(0, 3).map((contact) => ({
+      key: `contact-${contact.id}`,
+      title: `${contact.type || 'CONTACT'} inquiry received`,
+      meta: `${contact.userName || contact.name || contact.email || 'Guest'} · ${formatDateTime(contact.createdAt)}`,
+      timestamp: contact.createdAt || null
+    }));
+
+    return [...bookingActivities, ...userActivities, ...contactActivities]
+      .sort((left, right) => {
+        const leftValue = left.timestamp ? new Date(left.timestamp).getTime() : 0;
+        const rightValue = right.timestamp ? new Date(right.timestamp).getTime() : 0;
+        return rightValue - leftValue;
+      })
+      .slice(0, 6);
+  }, [bookings, contacts, users]);
+
+  const dashboardChartData = useMemo(() => (
+    dashboardSummaryCards.map((card) => ({
+      key: card.key,
+      label: card.label.replace('Total ', ''),
+      value: Number(card.value || 0),
+      tone: card.tone
+    }))
+  ), [dashboardSummaryCards]);
 
   const filteredBookings = useMemo(() => bookings.filter((booking) => {
     const filters = dashboardFilters.bookings;
@@ -1348,7 +1823,7 @@ export default function AdminDashboardPage() {
 
   const filteredSlots = useMemo(() => slots.filter((slot) => {
     const filters = dashboardFilters.slots;
-    const availableCapacity = Number(slot.capacity || 0) - Number(slot.bookedCount || 0);
+    const availableCapacity = getSlotAvailableValue(slot);
     return matchesSmartSearch(slot, listSearch.slots)
       && (!filters.availability
         || (filters.availability === 'AVAILABLE' ? availableCapacity > 0 : availableCapacity <= 0))
@@ -1397,11 +1872,14 @@ export default function AdminDashboardPage() {
 
   const getSlotStatusBadge = (status) => {
     const styles = {
-      LIVE: { bg: 'success', text: 'LIVE' },
+      ACTIVE: { bg: 'success', text: 'ACTIVE' },
+      LIVE: { bg: 'success', text: 'ACTIVE' },
       UPCOMING: { bg: 'primary', text: 'UPCOMING' },
-      EXPIRED: { bg: 'danger', text: 'EXPIRED' }
+      FULL: { bg: 'danger', text: 'FULL' },
+      EXPIRED: { bg: 'secondary', text: 'EXPIRED' }
     };
-    const config = styles[status] || { bg: 'secondary', text: status || 'UNKNOWN' };
+    const normalizedStatus = String(status || 'UNKNOWN').toUpperCase();
+    const config = styles[normalizedStatus] || { bg: 'secondary', text: normalizedStatus };
     return <Badge bg={config.bg}>{config.text}</Badge>;
   };
 
@@ -1433,17 +1911,6 @@ export default function AdminDashboardPage() {
     setter(normalizedRange.endDate);
   };
 
-const searchTrendChartData = useMemo(() => ({
-    labels: searchAnalytics.trends?.map((item) => item.day) || [],
-    datasets: [{
-      label: 'Searches',
-      data: searchAnalytics.trends?.map((item) => item.count) || [],
-      backgroundColor: 'rgba(14, 165, 233, 0.2)',
-      borderColor: '#0ea5e9',
-      borderWidth: 2
-    }]
-  }), [searchAnalytics]);
-
   const dailyBookingsChartData = useMemo(() => ({
     labels: dashboardAnalytics.dailyBookings?.map((item) => item.label) || [],
     datasets: [{
@@ -1466,37 +1933,27 @@ const searchTrendChartData = useMemo(() => ({
     }]
   }), [dashboardAnalytics]);
 
-  const contactTrendChartData = useMemo(() => ({
-    labels: contactAnalytics.inquiriesByDay?.map((item) => item.label) || [],
-    datasets: [{
-      label: 'Contact Inquiries',
-      data: contactAnalytics.inquiriesByDay?.map((item) => item.value) || [],
-      backgroundColor: 'rgba(16, 185, 129, 0.2)',
-      borderColor: '#10b981',
-      borderWidth: 2
-    }]
-  }), [contactAnalytics]);
-
   // Tab configuration
   const tabs = useMemo(() => {
     const defaultTabs = [
-    { id: 'bookings', label: 'Bookings', icon: <FaCalendarCheck /> },
-    { id: 'slots', label: 'Manage Slots', icon: <FaCalendarCheck /> },
-    { id: 'centers', label: 'Centers', icon: <FaHospital /> },
-    { id: 'drives', label: 'Drives', icon: <FaSyringe /> },
-    { id: 'news', label: 'News', icon: <FaNewspaper /> },
-    { id: 'feedback', label: 'Feedback', icon: <FaComment /> },
-    { id: 'contacts', label: 'Contacts', icon: <FaPhone /> },
-    { id: 'logs', label: 'System Logs', icon: <FaClipboardList /> }
+      { id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> },
+      { id: 'users', label: 'Users', icon: <FaUsers /> },
+      { id: 'bookings', label: 'Bookings', icon: <FaCalendarCheck /> },
+      { id: 'centers', label: 'Centers', icon: <FaHospital /> },
+      { id: 'drives', label: 'Drives', icon: <FaSyringe /> },
+      { id: 'slots', label: 'Slots', icon: <FaCalendarCheck /> },
+      { id: 'news', label: 'News', icon: <FaNewspaper /> },
+      { id: 'feedback', label: 'Feedback', icon: <FaComment /> },
+      { id: 'contacts', label: 'Contacts', icon: <FaPhone /> },
+      { id: 'logs', label: 'System Logs', icon: <FaClipboardList /> },
+      { id: 'admins', label: 'Admins', icon: <FaUserShield /> }
     ];
 
     if (isSuperAdmin) {
-      defaultTabs.unshift({ id: 'users', label: 'Users', icon: <FaUsers /> });
-      defaultTabs.unshift({ id: 'dashboard', label: 'Dashboard', icon: <FaChartLine /> });
-      defaultTabs.push({ id: 'create-admin', label: 'Create Admin', icon: <FaUserShield /> });
+      return defaultTabs;
     }
 
-    return defaultTabs;
+    return defaultTabs.filter((tab) => !['dashboard', 'users', 'admins'].includes(tab.id));
   }, [isSuperAdmin]);
 
   useEffect(() => {
@@ -1504,6 +1961,23 @@ const searchTrendChartData = useMemo(() => ({
       setActiveTab(isSuperAdmin ? 'dashboard' : 'bookings');
     }
   }, [activeTab, isSuperAdmin, tabs]);
+
+  useEffect(() => {
+    const pathname = location.pathname.replace(/\/+$/, '') || '/admin/dashboard';
+    const routeTab = ROUTE_TAB_MAP[pathname] || 'dashboard';
+    const isAllowedTab = tabs.some((tab) => tab.id === routeTab);
+    const resolvedTab = isAllowedTab ? routeTab : (isSuperAdmin ? 'dashboard' : 'bookings');
+    const resolvedPath = TAB_ROUTE_MAP[resolvedTab];
+
+    if (pathname !== resolvedPath && (!ROUTE_TAB_MAP[pathname] || !isAllowedTab)) {
+      navigate(resolvedPath, { replace: true });
+    }
+
+    if (resolvedTab !== activeTab) {
+      setActiveTab(resolvedTab);
+      requestRefresh();
+    }
+  }, [activeTab, isSuperAdmin, location.pathname, navigate, requestRefresh, tabs]);
 
   // Load functions for Feedback and Contacts
   const loadFeedbacks = async (options = {}) => {
@@ -1545,12 +2019,31 @@ const searchTrendChartData = useMemo(() => ({
       return undefined;
     }
 
+    loadActiveLogsView({ silent: true }).catch(() => {});
+
     const intervalId = window.setInterval(() => {
-      loadSystemLogs({ silent: true }).catch(() => {});
+      if (logsView === 'all' && systemLogs.length > (logsMeta.all.size || LOG_PAGE_SIZE)) {
+        loadSystemLogs({ silent: true, mergeTop: true, page: 0 }).catch(() => {});
+        return;
+      }
+
+      loadActiveLogsView({ silent: true }).catch(() => {});
     }, 5000);
 
     return () => window.clearInterval(intervalId);
-  }, [activeTab, dashboardFilters.logs.level, listSearch.logs]);
+  }, [
+    activeTab,
+    dashboardFilters.logs.actionType,
+    dashboardFilters.logs.endDate,
+    dashboardFilters.logs.level,
+    dashboardFilters.logs.startDate,
+    dashboardFilters.logs.user,
+    listSearch.logs,
+    loadActiveLogsView,
+    logsMeta.all.size,
+    systemLogs.length,
+    logsView
+  ]);
 
   const handleRespondToFeedback = async (id) => {
     if (!responseText.trim()) {
@@ -1589,15 +2082,23 @@ const searchTrendChartData = useMemo(() => ({
   };
 
   const handleDeleteContact = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this contact?')) return;
-    try {
-      await adminAPI.deleteContact(id);
-      setSuccess('Contact deleted successfully!');
-      notifyDataUpdated();
-      await refreshActiveTabData();
-    } catch (err) {
-      setError('Failed to delete contact');
-    }
+    openConfirmDialog({
+      title: 'Delete contact?',
+      message: 'This action cannot be undone. Are you sure you want to delete this contact inquiry?',
+      onConfirm: async () => {
+        try {
+          setConfirmDialog((current) => ({ ...current, isLoading: true }));
+          await adminAPI.deleteContact(id);
+          setSuccess('Contact deleted successfully!');
+          notifyDataUpdated();
+          await refreshActiveTabData();
+          closeConfirmDialog();
+        } catch (err) {
+          setError('Failed to delete contact');
+          setConfirmDialog((current) => ({ ...current, isLoading: false }));
+        }
+      }
+    });
   };
 
   const openFeedbackModal = (feedback) => {
@@ -1796,283 +2297,226 @@ const searchTrendChartData = useMemo(() => ({
   );
 
   const renderDashboard = () => (
-    <>
-      {/* Stats Cards - Matching user dashboard style */}
-      <Row className="mb-4 g-4">
-        <Col md={6} lg={3}>
-          <div className="stats-card" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'}}>
-            <div className="d-flex align-items-center justify-content-between">
+    <div className="dashboard-content-stack">
+      {loading ? (
+        <div className="dashboard-section">
+          <SkeletonCard count={5} />
+        </div>
+      ) : (
+        <div className="dashboard-summary-grid dashboard-section">
+          {dashboardSummaryCards.map((card) => (
+            <button
+              key={card.key}
+              type="button"
+              className="dashboard-summary-card text-start"
+              onClick={() => handleTabSelect(card.key)}
+              style={{ background: card.tone }}
+            >
               <div>
-                <div className="stat-label" style={{opacity: 0.9}}>Total Users</div>
-                <div className="stat-number">{stats?.totalUsers || 0}</div>
+                <div className="dashboard-summary-card__label">{card.label}</div>
+                <div className="dashboard-summary-card__value">{card.value}</div>
               </div>
-              <FaUsers size={40} style={{opacity: 0.3}} />
-            </div>
+              <div className="dashboard-summary-card__icon">{card.icon}</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="dashboard-chart-section dashboard-section">
+        <div className="dashboard-section-header">
+          <div>
+            <h4 className="mb-1 fw-bold">Dashboard Insights</h4>
+            <p className="text-muted mb-0">Live totals and booking status trends for the full system.</p>
           </div>
-        </Col>
-        <Col md={6} lg={3}>
-          <div className="stats-card" style={{background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}>
-            <div className="d-flex align-items-center justify-content-between">
+        </div>
+
+        <div className="dashboard-chart-grid">
+          <Card className="border-0 shadow-sm dashboard-chart-card" style={{ borderRadius: '1rem' }}>
+            <Card.Header className="dashboard-chart-card__header">
               <div>
-                <div className="stat-label" style={{opacity: 0.9}}>Total Bookings</div>
-                <div className="stat-number">{stats?.totalBookings || 0}</div>
+                <h5 className="mb-1 fw-bold"><FaChartLine className="me-2" />System Overview</h5>
+                <small className="text-muted">Users, admins, centers, drives, and slots. Click a bar to open that section.</small>
               </div>
-              <FaCalendarCheck size={40} style={{opacity: 0.3}} />
-            </div>
-          </div>
-        </Col>
-        <Col md={6} lg={3}>
-          <div className="stats-card" style={{background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'}}>
-            <div className="d-flex align-items-center justify-content-between">
+            </Card.Header>
+            <Card.Body>
+              {loading ? (
+                <Skeleton height={320} borderRadius="16px" />
+              ) : (
+                <SystemOverviewChart data={dashboardChartData} onItemClick={(item) => handleTabSelect(item.key)} />
+              )}
+            </Card.Body>
+          </Card>
+
+          <Card className="border-0 shadow-sm dashboard-chart-card" style={{ borderRadius: '1rem' }}>
+            <Card.Header className="dashboard-chart-card__header">
               <div>
-                <div className="stat-label" style={{opacity: 0.9}}>Active Drives</div>
-                <div className="stat-number">{stats?.activeDrives || 0}</div>
+                <h5 className="mb-1 fw-bold"><FaCalendarCheck className="me-2" />Bookings by Status</h5>
+                <small className="text-muted">Pending, confirmed, cancelled, and completed bookings. Click a segment to open bookings.</small>
               </div>
-              <FaSyringe size={40} style={{opacity: 0.3}} />
-            </div>
-          </div>
-        </Col>
-        <Col md={6} lg={3}>
-          <div className="stats-card" style={{background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)'}}>
-            <div className="d-flex align-items-center justify-content-between">
-              <div>
-                <div className="stat-label" style={{opacity: 0.9}}>Centers</div>
-                <div className="stat-number">{stats?.totalCenters || 0}</div>
-              </div>
-              <FaHospital size={40} style={{opacity: 0.3}} />
-            </div>
-          </div>
-        </Col>
-      </Row>
-
-      {/* Charts */}
-      <Row className="mb-4 g-4">
-        <Col md={8}>
-          <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
-            <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}}>
-              <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaChartLine className="me-2" />System Overview</h5>
             </Card.Header>
             <Card.Body>
-              <Bar 
-                data={chartData} 
-                options={{ 
-                  responsive: true, 
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { display: false }
-                  },
-                  scales: {
-                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                    x: { grid: { display: false } }
-                  }
-                }} 
-                height={300}
-              />
+              {loading ? (
+                <Skeleton height={320} borderRadius="16px" />
+              ) : (
+                <BookingStatusChart data={bookingsByStatus} onItemClick={(item) => handleTabSelect(item.tabKey)} />
+              )}
             </Card.Body>
           </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
-            <Card.Header style={{background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}}>
-              <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaCalendarCheck className="me-2" />Bookings by Status</h5>
-            </Card.Header>
-            <Card.Body className="d-flex justify-content-center align-items-center">
-              <Doughnut 
-                data={bookingsByStatus} 
-                options={{ 
-                  responsive: true, 
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { position: 'bottom' }
-                  }
-                }} 
-                height={250}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+        </div>
+      </div>
 
-      {/* Quick Stats */}
-      <Row className="g-4">
-        <Col md={4}>
-          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
-            <Card.Body className="text-center py-4">
-              <div style={{width: '60px', height: '60px', margin: '0 auto 1rem', background: 'linear-gradient(135deg, #e0f2fe 0%, #0ea5e9 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                <FaUsers size={24} style={{color: '#0ea5e9'}} />
-              </div>
-              <h2 className="fw-bold mb-1" style={{color: '#0ea5e9'}}>{stats?.newUsersThisMonth || 0}</h2>
-              <p className="text-muted mb-0">New Users This Month</p>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
-            <Card.Body className="text-center py-4">
-              <div style={{width: '60px', height: '60px', margin: '0 auto 1rem', background: 'linear-gradient(135deg, #d1fae5 0%, #10b981 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                <FaCalendarCheck size={24} style={{color: '#10b981'}} />
-              </div>
-              <h2 className="fw-bold mb-1" style={{color: '#10b981'}}>{stats?.bookingsToday || 0}</h2>
-              <p className="text-muted mb-0">Bookings Today</p>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={4}>
-          <Card className="border-0 shadow-sm h-100" style={{borderRadius: '0.75rem'}}>
-            <Card.Body className="text-center py-4">
-              <div style={{width: '60px', height: '60px', margin: '0 auto 1rem', background: 'linear-gradient(135deg, #cffafe 0%, #06b6d4 100%)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                <FaCertificate size={24} style={{color: '#06b6d4'}} />
-              </div>
-              <h2 className="fw-bold mb-1" style={{color: '#06b6d4'}}>{stats?.completedVaccinations || 0}</h2>
-              <p className="text-muted mb-0">Vaccinations Completed</p>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      <Row className="g-4">
-        <Col xl={12}>
-          <Card className="border-0 shadow-sm" style={{ borderRadius: '0.75rem' }}>
-            <Card.Header style={{background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.08)'}}>
-              <h5 className="mb-0 fw-bold"><FaChartLine className="me-2" />Premium Analytics</h5>
+      <Row className="dashboard-analytics-grid g-4">
+        <Col xl={4} lg={5} md={6} className="dashboard-grid-col">
+          <Card className="border-0 shadow-sm h-100 dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header style={{ background: 'linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)' }}>
+              <h5 className="mb-0 fw-bold"><FaChartLine className="me-2" />Overview</h5>
             </Card.Header>
-            <Card.Body>
-              <Row className="g-4">
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Total Users</div>
-                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.totalUsers || 0}</div>
-                  </div>
-                </Col>
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Total Bookings</div>
-                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.totalBookings || 0}</div>
-                  </div>
-                </Col>
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Active Drives</div>
-                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.activeDrives || 0}</div>
-                  </div>
-                </Col>
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Available Slots</div>
-                    <div className="h3 mb-0 fw-bold">{dashboardAnalytics.availableSlots || 0}</div>
-                  </div>
-                </Col>
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Most Searched City</div>
-                    <div className="fw-bold">{dashboardAnalytics.mostSearchedCity || 'N/A'}</div>
-                  </div>
-                </Col>
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Most Booked Vaccine</div>
-                    <div className="fw-bold">{dashboardAnalytics.mostBookedVaccine || 'N/A'}</div>
-                  </div>
-                </Col>
-                <Col md={6} xl={2}>
-                  <div className="border rounded-4 p-3 h-100">
-                    <div className="small text-muted mb-2">Slot Fill Rate</div>
-                    <div className="fw-bold">{dashboardAnalytics.slotFillRate || 0}%</div>
-                  </div>
-                </Col>
-              </Row>
+            <Card.Body className="d-grid gap-3">
+              <div className="d-flex justify-content-between align-items-center border rounded-4 p-3">
+                <div>
+                  <div className="small text-muted">Bookings Today</div>
+                  <div className="h4 mb-0 fw-bold">{stats?.bookingsToday || 0}</div>
+                </div>
+                <FaCalendarCheck className="text-primary" />
+              </div>
+              <div className="d-flex justify-content-between align-items-center border rounded-4 p-3">
+                <div>
+                  <div className="small text-muted">New Users This Month</div>
+                  <div className="h4 mb-0 fw-bold">{stats?.newUsersThisMonth || 0}</div>
+                </div>
+                <FaUsers className="text-info" />
+              </div>
+              <div className="d-flex justify-content-between align-items-center border rounded-4 p-3">
+                <div>
+                  <div className="small text-muted">Completed Vaccinations</div>
+                  <div className="h4 mb-0 fw-bold">{stats?.completedVaccinations || 0}</div>
+                </div>
+                <FaCertificate className="text-success" />
+              </div>
+              <div className="d-flex justify-content-between align-items-center border rounded-4 p-3">
+                <div>
+                  <div className="small text-muted">Available Slots</div>
+                  <div className="h4 mb-0 fw-bold">{dashboardAnalytics.availableSlots || 0}</div>
+                </div>
+                <FaClipboardList className="text-warning" />
+              </div>
             </Card.Body>
           </Card>
         </Col>
 
-        <Col lg={6}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Daily Bookings</h5>
+        <Col xl={5} lg={7} md={6} className="dashboard-grid-col">
+          <Card className="border-0 shadow-sm h-100 dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header style={{ background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)' }}>
+              <h5 className="mb-0 fw-bold"><FaBell className="me-2" />Recent Activities</h5>
             </Card.Header>
             <Card.Body>
-              <Bar
-                data={dailyBookingsChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: false } }
-                }}
-                height={250}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={6}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Slot Usage</h5>
-            </Card.Header>
-            <Card.Body>
-              <Bar
-                data={slotUsageChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: false } }
-                }}
-                height={250}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xl={12}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Most Popular Slots</h5>
-            </Card.Header>
-            <Card.Body>
-              {dashboardAnalytics.mostPopularSlots?.length ? (
-                <div className="table-responsive">
-                  <Table hover className="mb-0">
-                    <thead>
-                      <tr>
-                        <th>Slot</th>
-                        <th>Drive</th>
-                        <th>Center</th>
-                        <th>Bookings</th>
-                        <th>Fill Rate</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dashboardAnalytics.mostPopularSlots.map((slot) => (
-                        <tr key={slot.slotId}>
-                          <td>#{slot.slotId}</td>
-                          <td>{slot.driveName}</td>
-                          <td>{slot.centerName}</td>
-                          <td>{slot.bookingCount}</td>
-                          <td>{slot.fillRate}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </Table>
+              {recentActivities.length ? (
+                <div className="d-grid gap-3">
+                  {recentActivities.map((activity) => (
+                    <div key={activity.key} className="border rounded-4 p-3">
+                      <div className="fw-semibold">{activity.title}</div>
+                      <div className="small text-muted mt-1">{activity.meta}</div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <p className="text-muted mb-0">Popular slot insights will appear once bookings accumulate.</p>
+                <p className="text-muted mb-0">Activity will appear here as bookings, users, and inquiries are updated.</p>
               )}
             </Card.Body>
           </Card>
         </Col>
 
-        <Col lg={4}>
-          <Card className="border-0 shadow-sm h-100">
+        <Col xl={3} lg={12} className="dashboard-grid-col">
+          <Card className="border-0 shadow-sm mb-4 dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header style={{ background: 'linear-gradient(135deg, #ecfeff 0%, #f8fafc 100%)' }}>
+              <h5 className="mb-0 fw-bold"><FaCog className="me-2" />Quick Actions</h5>
+            </Card.Header>
+            <Card.Body className="d-grid gap-2">
+              <Button variant="outline-primary" onClick={() => handleTabSelect('users')} style={{ borderRadius: '0.5rem' }}>Manage Users</Button>
+              <Button variant="outline-primary" onClick={() => handleTabSelect('centers')} style={{ borderRadius: '0.5rem' }}>Manage Centers</Button>
+              <Button variant="outline-primary" onClick={() => handleTabSelect('drives')} style={{ borderRadius: '0.5rem' }}>Manage Drives</Button>
+              <Button variant="outline-primary" onClick={() => handleTabSelect('slots')} style={{ borderRadius: '0.5rem' }}>Manage Slots</Button>
+              <Button variant="outline-primary" onClick={() => handleTabSelect('admins')} style={{ borderRadius: '0.5rem' }}>Manage Admins</Button>
+            </Card.Body>
+          </Card>
+
+          <Card className="border-0 shadow-sm dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header style={{ background: 'linear-gradient(135deg, #f0fdf4 0%, #f8fafc 100%)' }}>
+              <h5 className="mb-0 fw-bold"><FaSyringe className="me-2" />Drive Status Overview</h5>
+            </Card.Header>
+            <Card.Body className="d-grid gap-3">
+              {Object.entries(driveStatusSummary).map(([status, count]) => (
+                <div key={status} className="d-flex justify-content-between align-items-center border rounded-4 p-3">
+                  {getDriveStatusBadge(status)}
+                  <span className="fw-bold">{count}</span>
+                </div>
+              ))}
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="dashboard-analytics-grid g-4">
+        <Col lg={6} className="dashboard-grid-col">
+          <Card className="border-0 shadow-sm h-100 dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Daily Bookings</h5>
+            </Card.Header>
+            <Card.Body className="dashboard-bar-chart-card">
+              <div className="dashboard-bar-chart-wrap">
+                <Bar
+                  data={dailyBookingsChartData}
+                  options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                />
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+        <Col lg={6} className="dashboard-grid-col">
+          <Card className="border-0 shadow-sm h-100 dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
+            <Card.Header>
+              <h5 className="mb-0 fw-bold">Slot Usage</h5>
+            </Card.Header>
+            <Card.Body className="dashboard-bar-chart-card">
+              <div className="dashboard-bar-chart-wrap">
+                <Bar
+                  data={slotUsageChartData}
+                  options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                />
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row className="dashboard-analytics-grid g-4">
+        <Col lg={4} className="dashboard-grid-col">
+          <Card className="border-0 shadow-sm h-100 dashboard-panel-card" style={{ borderRadius: '0.75rem' }}>
             <Card.Header>
               <h5 className="mb-0 fw-bold"><FaChartLine className="me-2" />Search Activity</h5>
             </Card.Header>
-            <Card.Body>
-              <div className="stat-number text-primary mb-2">{searchAnalytics.totalSearches || 0}</div>
-              <p className="text-muted mb-0">Searches tracked in the last 30 days.</p>
+            <Card.Body className="d-grid gap-3">
+              <div>
+                <div className="small text-muted">Total searches in the last 30 days</div>
+                <div className="h3 mb-0 text-primary">{searchAnalytics.totalSearches || 0}</div>
+              </div>
+              <div>
+                <div className="small text-muted">Most searched city</div>
+                <div className="fw-semibold">{dashboardAnalytics.mostSearchedCity || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="small text-muted">Most booked vaccine</div>
+                <div className="fw-semibold">{dashboardAnalytics.mostBookedVaccine || 'N/A'}</div>
+              </div>
+              <div>
+                <div className="small text-muted">Slot fill rate</div>
+                <div className="fw-semibold">{dashboardAnalytics.slotFillRate || 0}%</div>
+              </div>
             </Card.Body>
           </Card>
         </Col>
         <Col lg={4}>
-          <Card className="border-0 shadow-sm h-100">
+          <Card className="border-0 shadow-sm h-100" style={{ borderRadius: '0.75rem' }}>
             <Card.Header>
               <h5 className="mb-0 fw-bold">Most Searched Cities</h5>
             </Card.Header>
@@ -2093,204 +2537,29 @@ const searchTrendChartData = useMemo(() => ({
           </Card>
         </Col>
         <Col lg={4}>
-          <Card className="border-0 shadow-sm h-100">
+          <Card className="border-0 shadow-sm h-100" style={{ borderRadius: '0.75rem' }}>
             <Card.Header>
-              <h5 className="mb-0 fw-bold">Most Searched Keywords</h5>
+              <h5 className="mb-0 fw-bold">Most Popular Slots</h5>
             </Card.Header>
             <Card.Body>
-              {searchAnalytics.topKeywords?.length ? (
+              {dashboardAnalytics.mostPopularSlots?.length ? (
                 <div className="d-grid gap-3">
-                  {searchAnalytics.topKeywords.map((item) => (
-                    <div key={item.label} className="d-flex justify-content-between align-items-center">
-                      <span>{item.label}</span>
-                      <Badge bg="success">{item.count}</Badge>
+                  {dashboardAnalytics.mostPopularSlots.slice(0, 5).map((slot) => (
+                    <div key={slot.slotId} className="border rounded-4 p-3">
+                      <div className="fw-semibold">Slot #{slot.slotId}</div>
+                      <div className="small text-muted">{slot.driveName} · {slot.centerName}</div>
+                      <div className="small mt-2">Bookings: {slot.bookingCount} | Fill Rate: {slot.fillRate}%</div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-muted mb-0">Keyword analytics will appear once searches are logged.</p>
+                <p className="text-muted mb-0">Popular slot insights will appear once bookings accumulate.</p>
               )}
             </Card.Body>
           </Card>
         </Col>
       </Row>
-
-      <Row className="g-4 mt-1">
-        <Col lg={4}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold"><FaEnvelope className="me-2" />Contact Analytics</h5>
-            </Card.Header>
-            <Card.Body>
-              <div className="d-grid gap-3">
-                <div className="d-flex justify-content-between align-items-center">
-                  <span>Total Inquiries</span>
-                  <Badge bg="primary">{contactAnalytics.totalInquiries || 0}</Badge>
-                </div>
-                <div className="d-flex justify-content-between align-items-center">
-                  <span>Today</span>
-                  <Badge bg="success">{contactAnalytics.todayInquiries || 0}</Badge>
-                </div>
-                <div className="d-flex justify-content-between align-items-center">
-                  <span>Last 7 Days</span>
-                  <Badge bg="info">{contactAnalytics.weeklyInquiries || 0}</Badge>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={4}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Inquiry Trend</h5>
-            </Card.Header>
-            <Card.Body>
-              <Bar
-                data={contactTrendChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: false } },
-                  scales: {
-                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                    x: { grid: { display: false } }
-                  }
-                }}
-                height={220}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={4}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Most Active Users</h5>
-            </Card.Header>
-            <Card.Body>
-              {contactAnalytics.mostActiveUsers?.length ? (
-                <div className="d-grid gap-3">
-                  {contactAnalytics.mostActiveUsers.map((item) => (
-                    <div key={item.label} className="d-flex justify-content-between align-items-center">
-                      <span>{item.label}</span>
-                      <Badge bg="dark">{item.value}</Badge>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted mb-0">Active contact users will appear here as inquiries arrive.</p>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      <Row className="g-4 mt-1">
-        <Col lg={6}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Recent Inquiries</h5>
-            </Card.Header>
-            <Card.Body>
-              {contactAnalytics.recentInquiries?.length ? (
-                <div className="d-grid gap-3">
-                  {contactAnalytics.recentInquiries.map((item) => (
-                    <div key={item.id} className="border rounded-4 p-3">
-                      <div className="d-flex justify-content-between align-items-start gap-3">
-                        <div>
-                          <div className="fw-semibold">{item.userName || 'Guest'}</div>
-                          <div className="small text-muted">{item.userEmail || 'No email'}</div>
-                        </div>
-                        {communicationBadge(item.status)}
-                      </div>
-                      <div className="fw-medium mt-2">{item.subject || 'General inquiry'}</div>
-                      <div className="small text-muted mt-1">{item.message}</div>
-                      <div className="small text-muted mt-2">{formatDateTime(item.createdAt)}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted mb-0">Recent inquiries will appear here.</p>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col lg={6}>
-          <Card className="border-0 shadow-sm h-100">
-            <Card.Header>
-              <h5 className="mb-0 fw-bold">Search Trend</h5>
-            </Card.Header>
-            <Card.Body>
-              <Bar
-                data={searchTrendChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: { legend: { display: false } },
-                  scales: {
-                    y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                    x: { grid: { display: false } }
-                  }
-                }}
-                height={220}
-              />
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-    </>
-  );
-
-  const renderCreateAdmin = () => (
-    <Card className="border-0 shadow-sm" style={{ borderRadius: '0.75rem', maxWidth: 680, margin: '0 auto' }}>
-      <Card.Header style={{ background: 'linear-gradient(135deg, #e0f2fe 0%, #f0f9ff 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)' }} className="py-3">
-        <h5 className="mb-0 fw-bold" style={{ color: '#0ea5e9' }}><FaUserShield className="me-2" />Create Admin</h5>
-      </Card.Header>
-      <Card.Body className="p-4">
-        <Form onSubmit={handleCreateAdmin}>
-          <Form.Group className="mb-3">
-            <Form.Label>Name</Form.Label>
-            <Form.Control
-              type="text"
-              value={createAdminForm.name}
-              onChange={(event) => setCreateAdminForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder="Enter full name"
-              required
-              style={{ borderRadius: '0.5rem' }}
-            />
-          </Form.Group>
-          <Form.Group className="mb-3">
-            <Form.Label>Email</Form.Label>
-            <Form.Control
-              type="email"
-              value={createAdminForm.email}
-              onChange={(event) => setCreateAdminForm((current) => ({ ...current, email: event.target.value }))}
-              placeholder="Enter admin email"
-              required
-              style={{ borderRadius: '0.5rem' }}
-            />
-          </Form.Group>
-          <Form.Group className="mb-4">
-            <Form.Label>Password</Form.Label>
-            <Form.Control
-              type="password"
-              value={createAdminForm.password}
-              onChange={(event) => setCreateAdminForm((current) => ({ ...current, password: event.target.value }))}
-              placeholder="Set a strong password"
-              required
-              minLength={8}
-              style={{ borderRadius: '0.5rem' }}
-            />
-          </Form.Group>
-          <Button
-            type="submit"
-            disabled={createAdminLoading}
-            style={{ background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem' }}
-          >
-            {createAdminLoading ? 'Creating...' : 'Create Admin'}
-          </Button>
-        </Form>
-      </Card.Body>
-    </Card>
+    </div>
   );
 
   const renderUsers = () => (
@@ -2299,7 +2568,7 @@ const searchTrendChartData = useMemo(() => ({
         <Row className="align-items-center">
           <Col md={6}>
             <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaUsers className="me-2" />User Management</h5>
-            <small className="text-muted">Showing users who have booked at least one drive.</small>
+            <small className="text-muted">Showing end-user accounts only. Admin accounts now live in the Admins tab.</small>
           </Col>
           <Col md={6}>
               <SearchInput
@@ -2313,7 +2582,11 @@ const searchTrendChartData = useMemo(() => ({
         </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        {filteredUsers.length === 0 ? (
+        {loading ? (
+          <div className="p-4">
+            <SkeletonTable rows={5} columns={7} />
+          </div>
+        ) : filteredUsers.length === 0 ? (
           <div className="text-center py-5">
             <FaUsers size={48} className="text-muted mb-3" />
             <p className="text-muted mb-0">No results found.</p>
@@ -2507,7 +2780,11 @@ const searchTrendChartData = useMemo(() => ({
         </Row>
       </Card.Header>
       <Card.Body>
-        {filteredCenters.length === 0 ? (
+        {loading ? (
+          <div className="p-1">
+            <SkeletonCard count={3} height={220} />
+          </div>
+        ) : filteredCenters.length === 0 ? (
           <div className="text-center py-5">
             <FaHospital size={48} className="text-muted mb-3" />
             <p className="text-muted mb-0">No results found.</p>
@@ -2543,8 +2820,23 @@ const searchTrendChartData = useMemo(() => ({
                         <Button variant="outline-primary" size="sm" onClick={() => openEditCenterModal(center)} style={{borderRadius: '0.375rem'}}>
                           <FaEdit className="me-1" />Edit
                         </Button>
-                        <Button variant="outline-danger" size="sm" onClick={() => handleDeleteCenter(center.id)} style={{borderRadius: '0.375rem'}}>
-                          <FaTrash className="me-1" />Delete
+                        <Button
+                          variant="outline-danger"
+                          size="sm"
+                          onClick={() => handleDeleteCenter(center.id)}
+                          disabled={centerDeleteId === center.id}
+                          style={{borderRadius: '0.375rem'}}
+                        >
+                          {centerDeleteId === center.id ? (
+                            <>
+                              <Spinner animation="border" size="sm" className="me-1" />
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <FaTrash className="me-1" />Delete
+                            </>
+                          )}
                         </Button>
                       </div>
                     </Card.Body>
@@ -2602,7 +2894,11 @@ const searchTrendChartData = useMemo(() => ({
         </Row>
       </Card.Header>
       <Card.Body className="p-0">
-        {filteredDrives.length === 0 ? (
+        {loading ? (
+          <div className="p-4">
+            <SkeletonTable rows={5} columns={7} />
+          </div>
+        ) : filteredDrives.length === 0 ? (
           <div className="text-center py-5">
             <FaSyringe size={48} className="text-muted mb-3" />
             <p className="text-muted mb-0">No results found.</p>
@@ -2629,16 +2925,7 @@ const searchTrendChartData = useMemo(() => ({
                     <td>{drive.center?.name || drive.centerName || 'N/A'}</td>
                     <td>{drive.driveDate}</td>
                     <td>{drive.minAge} - {drive.maxAge}</td>
-                    <td>
-                      <Form.Select
-                        size="sm"
-                        value={drive.status || 'UPCOMING'}
-                        onChange={(e) => handleDriveStatusChange(drive.id, e.target.value)}
-                        style={{borderRadius: '0.5rem', minWidth: '140px'}}
-                      >
-                        {DRIVE_STATUS_OPTIONS.map(status => <option key={status} value={status}>{status}</option>)}
-                      </Form.Select>
-                    </td>
+                    <td>{getDriveStatusBadge(getDriveDisplayStatus(drive, now))}</td>
                     <td className="text-end pe-4">
                       <div className="d-flex justify-content-end gap-2">
                         <Button variant="outline-primary" size="sm" onClick={() => openEditDriveModal(drive)} style={{borderRadius: '0.375rem'}}>
@@ -2692,10 +2979,11 @@ const searchTrendChartData = useMemo(() => ({
             <Form.Group>
               <Form.Label>Status</Form.Label>
               <Form.Select value={slotFilters.status} onChange={(e) => setSlotFilters((current) => ({ ...current, status: e.target.value }))} style={{borderRadius: '0.5rem'}}>
-                <option value="ALL">All</option>
-                <option value="LIVE">Live</option>
-                <option value="UPCOMING">Upcoming</option>
-                <option value="EXPIRED">Expired</option>
+                {SLOT_STATUS_OPTIONS.map((statusOption) => (
+                  <option key={statusOption} value={statusOption}>
+                    {statusOption === 'ALL' ? 'All' : statusOption}
+                  </option>
+                ))}
               </Form.Select>
             </Form.Group>
           </Col>
@@ -2774,6 +3062,7 @@ const searchTrendChartData = useMemo(() => ({
                   <th>Center</th>
                   <th>Drive</th>
                   <th>Capacity</th>
+                  <th>Available</th>
                   <th>Status</th>
                   <th className="text-end pe-4">Actions</th>
                 </tr>
@@ -2787,13 +3076,14 @@ const searchTrendChartData = useMemo(() => ({
                     </td>
                     <td>{slot.centerName || 'N/A'}</td>
                     <td>{slot.driveName || 'N/A'}</td>
-                    <td>{slot.bookedCount || 0} / {slot.capacity || 0}</td>
+                    <td>{slot.bookedCount || 0} / {getSlotCapacityValue(slot)}</td>
+                    <td>{getSlotAvailableValue(slot)}</td>
                     <td>
                       <div className="d-flex flex-column gap-1">
-                        {getSlotStatusBadge(getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now))}
+                        {getSlotStatusBadge(getManagedSlotStatus(slot, now))}
                         <small className="text-muted">
                           {getCountdownLabel(
-                            getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now),
+                            getManagedSlotStatus(slot, now),
                             getSlotStartValue(slot),
                             getSlotEndValue(slot),
                             now
@@ -2914,38 +3204,179 @@ const searchTrendChartData = useMemo(() => ({
   );
 
   const renderLogs = () => {
-    const displayedLogs = getDisplayedItems(systemLogs, visibleCounts.logs);
+    const deriveSystemLogActionType = (entry) => {
+      const message = `${entry?.message || ''} ${entry?.raw || ''}`.toUpperCase();
+      const level = String(entry?.level || '').toUpperCase();
 
-    const levelBadge = (level) => {
-      const normalized = String(level || 'INFO').toUpperCase();
-      const variant = normalized === 'ERROR'
-        ? 'danger'
-        : normalized === 'WARN'
-          ? 'warning'
-          : normalized === 'DEBUG'
-            ? 'secondary'
-            : 'info';
-      return <Badge bg={variant}>{normalized}</Badge>;
+      if (message.includes('LOGIN')) {
+        return message.includes('FAIL') ? 'ERROR' : 'LOGIN';
+      }
+      if (message.includes('LOGOUT')) {
+        return 'LOGOUT';
+      }
+      if (message.includes('DELETE')) {
+        return 'DELETE';
+      }
+      if (message.includes('CREATE')) {
+        return 'CREATE';
+      }
+      if (message.includes('UPDATE') || message.includes('EDIT')) {
+        return 'UPDATE';
+      }
+      if (level === 'ERROR' || message.includes('FAIL') || message.includes('EXCEPTION')) {
+        return 'ERROR';
+      }
+      return 'INFO';
+    };
+
+    const filteredSystemLogs = systemLogs.filter((entry) => {
+      if (dashboardFilters.logs.user) {
+        const userNeedle = dashboardFilters.logs.user.toLowerCase();
+        const userText = `${entry.userEmail || ''} ${entry.userId || ''}`.toLowerCase();
+        if (!userText.includes(userNeedle)) {
+          return false;
+        }
+      }
+
+      if (dashboardFilters.logs.actionType && deriveSystemLogActionType(entry) !== dashboardFilters.logs.actionType) {
+        return false;
+      }
+
+      return matchesDateRange(entry.timestamp, dashboardFilters.logs.startDate, dashboardFilters.logs.endDate);
+    });
+
+    const currentEntries = logsView === 'timeline'
+      ? activityLogs
+      : logsView === 'security'
+        ? securityLogs
+        : filteredSystemLogs;
+
+    const currentError = logsErrorState[logsView];
+    const currentLoading = logsLoadingState[logsView];
+    const currentHasMore = logsMeta[logsView]?.hasMore;
+
+    const exportRows = currentEntries.map((entry) => (
+      logsView === 'all'
+        ? {
+            timestamp: formatDateTime(entry.timestamp),
+            level: entry.level || 'INFO',
+            summary: entry.message || entry.raw || 'N/A',
+            user: entry.userEmail || 'Anonymous',
+            request: `${entry.httpMethod || ''} ${entry.requestPath || ''}`.trim(),
+            source: entry.logger || entry.service || 'Backend'
+          }
+        : {
+            timestamp: formatDateTime(entry.timestamp),
+            action: entry.actionType || 'INFO',
+            actor: entry.actorName || 'System',
+            role: entry.actorRole || 'User',
+            summary: entry.readableMessage || entry.rawDetails || 'N/A',
+            resource: entry.resource || '',
+            ipAddress: entry.ipAddress || ''
+          }
+    ));
+
+    const downloadFile = (blob, filename) => {
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    };
+
+    const handleExportCsv = () => {
+      if (exportRows.length === 0) {
+        infoToast('There are no logs to export yet.');
+        return;
+      }
+
+      const headers = Object.keys(exportRows[0]);
+      const csvLines = [
+        headers.join(','),
+        ...exportRows.map((row) => headers.map((header) => `"${String(row[header] ?? '').replace(/"/g, '""')}"`).join(','))
+      ];
+      downloadFile(new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' }), `vaxzone-${logsView}-logs.csv`);
+      successToast('Logs exported as CSV.');
+    };
+
+    const handleExportPdf = () => {
+      if (exportRows.length === 0) {
+        infoToast('There are no logs to export yet.');
+        return;
+      }
+
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const title = logsView === 'timeline' ? 'Activity Timeline' : logsView === 'security' ? 'Security Logs' : 'System Logs';
+      let yPosition = 42;
+
+      doc.setFontSize(16);
+      doc.text(`VaxZone ${title}`, 40, yPosition);
+      yPosition += 24;
+      doc.setFontSize(10);
+
+      exportRows.slice(0, 30).forEach((row) => {
+        const text = Object.values(row).filter(Boolean).join(' | ');
+        const lines = doc.splitTextToSize(text, 515);
+        if (yPosition + (lines.length * 14) > 780) {
+          doc.addPage();
+          yPosition = 42;
+        }
+        doc.text(lines, 40, yPosition);
+        yPosition += (lines.length * 14) + 8;
+      });
+
+      doc.save(`vaxzone-${logsView}-logs.pdf`);
+      successToast('Logs exported as PDF.');
+    };
+
+    const handleLoadMoreLogs = () => {
+      if (logsView === 'all') {
+        loadSystemLogs({ append: true, page: (logsMeta.all.page || 0) + 1 }).catch(() => {});
+        return;
+      }
+
+      const nextPage = (logsMeta[logsView]?.page || 0) + 1;
+      loadActiveLogsView({ append: true, page: nextPage }).catch(() => {});
     };
 
     return (
-      <Card className="border-0 shadow-sm" style={{borderRadius: '0.75rem'}}>
-        <Card.Header style={{background: 'linear-gradient(135deg, #ecfeff 0%, #f8fafc 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)'}} className="py-3">
+      <Card className="border-0 shadow-sm logs-panel" style={{ borderRadius: '0.75rem' }}>
+        <Card.Header style={{ background: 'linear-gradient(135deg, #ecfeff 0%, #f8fafc 100%)', borderBottom: '1px solid rgba(14, 165, 233, 0.1)' }} className="py-3">
           <Row className="g-3 align-items-end">
-            <Col lg={3}>
-              <h5 className="mb-0 fw-bold" style={{color: '#0ea5e9'}}><FaClipboardList className="me-2" />System Logs</h5>
+            <Col xl={3}>
+              <h5 className="mb-1 fw-bold" style={{ color: '#0ea5e9' }}><FaClipboardList className="me-2" />System Logs</h5>
+              <p className="text-muted mb-0 small">Readable activity, live monitoring, and audit-ready security events.</p>
             </Col>
-            <Col lg={5}>
+            <Col xl={3}>
               <SearchInput
                 value={listSearch.logs}
                 onChange={(value) => setTabSearchValue('logs', value)}
-                placeholder="Search message, path, user, stack trace"
+                placeholder="Search logs..."
                 icon="search"
                 onClear={() => setTabSearchValue('logs', '')}
               />
             </Col>
-            <Col md={4} lg={2}>
-              <Form.Select value={dashboardFilters.logs.level} onChange={(event) => updateDashboardFilter('logs', 'level', event.target.value)} style={{borderRadius: '0.5rem'}}>
+            <Col sm={6} xl={2}>
+              <Form.Control
+                value={dashboardFilters.logs.user}
+                onChange={(event) => updateDashboardFilter('logs', 'user', event.target.value)}
+                placeholder="Filter by user"
+                style={{ borderRadius: '0.5rem' }}
+              />
+            </Col>
+            <Col sm={6} xl={2}>
+              <Form.Select value={dashboardFilters.logs.actionType} onChange={(event) => updateDashboardFilter('logs', 'actionType', event.target.value)} style={{ borderRadius: '0.5rem' }}>
+                <option value="">All actions</option>
+                {LOG_ACTION_OPTIONS.map((action) => (
+                  <option key={action} value={action}>{action}</option>
+                ))}
+              </Form.Select>
+            </Col>
+            <Col sm={6} xl={1}>
+              <Form.Select value={dashboardFilters.logs.level} onChange={(event) => updateDashboardFilter('logs', 'level', event.target.value)} style={{ borderRadius: '0.5rem' }}>
                 <option value="">All levels</option>
                 <option value="ERROR">ERROR</option>
                 <option value="WARN">WARN</option>
@@ -2953,66 +3384,82 @@ const searchTrendChartData = useMemo(() => ({
                 <option value="DEBUG">DEBUG</option>
               </Form.Select>
             </Col>
-            <Col md={4} lg={2} className="d-grid">
-              <Button variant="outline-secondary" onClick={() => loadSystemLogs({ silent: false })} style={{borderRadius: '0.5rem'}}>
-                Refresh Logs
-              </Button>
+            <Col sm={6} lg={3} xl={1}>
+              <Form.Control type="date" value={dashboardFilters.logs.startDate} onChange={(event) => updateDashboardFilter('logs', 'startDate', event.target.value)} style={{ borderRadius: '0.5rem' }} />
+            </Col>
+          </Row>
+          <Row className="g-3 align-items-end mt-1">
+            <Col sm={6} lg={3} xl={2}>
+              <Form.Control type="date" value={dashboardFilters.logs.endDate} onChange={(event) => updateDashboardFilter('logs', 'endDate', event.target.value)} style={{ borderRadius: '0.5rem' }} />
+            </Col>
+            <Col xl={5}>
+              <div className="logs-tab-strip" role="tablist" aria-label="Logs views">
+                {LOG_VIEW_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`logs-tab-strip__button ${logsView === option.id ? 'logs-tab-strip__button--active' : ''}`}
+                    onClick={() => setLogsView(option.id)}
+                  >
+                    {option.icon}
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            </Col>
+            <Col xl={5}>
+              <div className="logs-toolbar-actions">
+                <Button variant="outline-secondary" onClick={() => loadActiveLogsView({ silent: false })} style={{ borderRadius: '999px' }}>
+                  <FaSyncAlt className="me-2" />
+                  Refresh
+                </Button>
+                <Button variant="outline-primary" onClick={handleExportCsv} style={{ borderRadius: '999px' }}>
+                  <FaDownload className="me-2" />
+                  Export CSV
+                </Button>
+                <Button variant="outline-primary" onClick={handleExportPdf} style={{ borderRadius: '999px' }}>
+                  <FaDownload className="me-2" />
+                  Export PDF
+                </Button>
+              </div>
             </Col>
           </Row>
         </Card.Header>
-        <Card.Body className="p-0">
-          <div className="table-responsive">
-            <Table hover className="mb-0">
-              <thead style={{background: '#f8fafc'}}>
-                <tr>
-                  <th>Time</th>
-                  <th>Level</th>
-                  <th>Message</th>
-                  <th>Request</th>
-                  <th>User</th>
-                  <th>Logger</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayedLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="text-center py-5">
-                      <FaClipboardList size={48} className="text-muted mb-3 d-block" />
-                      <p className="text-muted mb-0">No logs found for the selected filters.</p>
-                    </td>
-                  </tr>
-                ) : displayedLogs.map((entry, index) => (
-                  <tr key={`${entry.timestamp || 'log'}-${index}`}>
-                    <td className="ps-4">
-                      <div className="fw-medium">{formatDateTime(entry.timestamp)}</div>
-                      <small className="text-muted">{entry.service || 'vaccination-backend'}</small>
-                    </td>
-                    <td>{levelBadge(entry.level)}</td>
-                    <td style={{minWidth: '320px'}}>
-                      <div className="fw-medium">{entry.message || entry.raw || 'N/A'}</div>
-                      {entry.stackTrace ? (
-                        <pre className="mt-2 mb-0 p-2 bg-light border rounded small text-wrap" style={{whiteSpace: 'pre-wrap', maxHeight: '9rem', overflow: 'auto'}}>
-                          {entry.stackTrace}
-                        </pre>
-                      ) : null}
-                    </td>
-                    <td>
-                      <div>{entry.httpMethod || 'N/A'} {entry.requestPath || ''}</div>
-                      <small className="text-muted">requestId: {entry.requestId || 'N/A'}</small>
-                    </td>
-                    <td>
-                      <div>{entry.userEmail || 'Anonymous'}</div>
-                      <small className="text-muted">userId: {entry.userId || 'N/A'}</small>
-                    </td>
-                    <td className="pe-4">
-                      <small className="text-muted">{entry.logger || 'N/A'}</small>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-            {renderViewMoreButton('logs', systemLogs, listSearch.logs)}
-          </div>
+        <Card.Body className="p-4">
+          {currentError ? (
+            <Alert variant="danger" className="d-flex flex-wrap align-items-center justify-content-between gap-3 logs-alert">
+              <span>{currentError || 'Failed to load dashboard data'}</span>
+              <Button variant="outline-danger" size="sm" onClick={() => loadActiveLogsView({ silent: false })}>
+                Retry
+              </Button>
+            </Alert>
+          ) : null}
+
+          {logsView === 'timeline' ? (
+            <ActivityTimeline
+              entries={activityLogs}
+              loading={currentLoading}
+              hasMore={currentHasMore}
+              onLoadMore={handleLoadMoreLogs}
+              emptyMessage="No activity matched the current filters."
+            />
+          ) : (
+            <LogsTable
+              entries={currentEntries}
+              loading={currentLoading}
+              mode={logsView === 'security' ? 'security' : 'system'}
+              hasMore={currentHasMore}
+              onLoadMore={handleLoadMoreLogs}
+              emptyMessage={logsView === 'security' ? 'No security events matched the current filters.' : 'No logs found for the selected filters.'}
+            />
+          )}
+
+          {currentLoading && currentEntries.length > 0 ? (
+            <div className="d-flex align-items-center justify-content-center pt-3 text-muted small">
+              <Spinner animation="border" size="sm" className="me-2" />
+              Updating logs in real time...
+            </div>
+          ) : null}
         </Card.Body>
       </Card>
     );
@@ -3020,11 +3467,16 @@ const searchTrendChartData = useMemo(() => ({
 
   if (loading && !stats.totalUsers && !stats.totalBookings && !stats.activeDrives && !stats.totalCenters) {
     return (
-      <div className="dashboard-loading d-flex align-items-center justify-content-center">
-        <div className="text-center">
-          <Spinner animation="border" variant="primary" />
-          <p className="mt-3 text-muted">Loading dashboard...</p>
-        </div>
+      <div className="dashboard-loading">
+        <Container className="py-4">
+          <SkeletonCard count={5} />
+          <div className="mt-4">
+            <Skeleton height={320} borderRadius="16px" />
+          </div>
+          <div className="mt-4">
+            <SkeletonTable rows={5} columns={6} />
+          </div>
+        </Container>
       </div>
     );
   }
@@ -3034,7 +3486,7 @@ const searchTrendChartData = useMemo(() => ({
       {/* Admin Header - Matching user dashboard hero style */}
       <div className="admin-hero">
         <div className="admin-hero__pattern"></div>
-        <Container position="relative">
+        <Container className="admin-dashboard-shell">
           <Row className="align-items-center">
             <Col md={8}>
               <div className="d-flex align-items-center gap-3 mb-3">
@@ -3051,27 +3503,26 @@ const searchTrendChartData = useMemo(() => ({
         </Container>
       </div>
 
-      <Container>
+      <Container className="admin-dashboard-shell">
         {/* Alerts */}
         {error && <Alert variant="danger" dismissible onClose={() => setError(null)} className="mb-4 admin-alert">{error}</Alert>}
         {success && <Alert variant="success" dismissible onClose={() => setSuccess(null)} className="mb-4 admin-alert admin-alert--success">{success}</Alert>}
 
-        {/* Tab Navigation - Matching user dashboard style */}
-        <div className="mb-4 admin-tabs-shell">
-          <Tabs activeKey={activeTab} onSelect={handleTabSelect} className="justify-content-center">
-            {tabs.map(tab => (
-              <Tab 
-                key={tab.id} 
-                eventKey={tab.id} 
-                title={
-                  <span className={`d-flex align-items-center gap-2 ${activeTab === tab.id ? '' : 'text-muted'}`}>
-                    {tab.icon}
-                    {tab.label}
-                  </span>
-                } 
-              />
+        {/* Tab Navigation */}
+        <div className="mb-4 admin-nav-shell">
+          <div className="admin-nav-scroll" role="tablist" aria-label="Admin dashboard navigation">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`admin-nav-button ${activeTab === tab.id ? 'admin-nav-button--active' : ''}`}
+                onClick={() => handleTabSelect(tab.id)}
+              >
+                {tab.icon}
+                <span>{tab.label}</span>
+              </button>
             ))}
-          </Tabs>
+          </div>
         </div>
 
         {/* Tab Content */}
@@ -3097,7 +3548,7 @@ const searchTrendChartData = useMemo(() => ({
         {activeTab === 'feedback' && renderFeedback()}
         {activeTab === 'contacts' && renderContacts()}
         {activeTab === 'logs' && renderLogs()}
-        {activeTab === 'create-admin' && isSuperAdmin && renderCreateAdmin()}
+        {activeTab === 'admins' && isSuperAdmin && <AdminManagement onDataChanged={requestRefresh} />}
       </Container>
 
       {/* Create News Modal */}
@@ -3371,7 +3822,21 @@ const searchTrendChartData = useMemo(() => ({
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={() => setShowDriveModal(false)} style={{borderRadius: '0.5rem'}}>Cancel</Button>
-            <Button type="submit" style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Create Drive</Button>
+            <Button
+              type="submit"
+              disabled={driveSubmitLoading}
+              aria-label="Create drive"
+              style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem', opacity: driveSubmitLoading ? 0.8 : 1, cursor: driveSubmitLoading ? 'not-allowed' : 'pointer'}}
+            >
+              {driveSubmitLoading ? (
+                <>
+                  <Spinner animation="border" size="sm" className="me-2" />
+                  Saving...
+                </>
+              ) : (
+                'Create Drive'
+              )}
+            </Button>
           </Modal.Footer>
         </Form>
       </Modal>
@@ -3470,6 +3935,7 @@ const searchTrendChartData = useMemo(() => ({
                 value={slotForm.startDate} 
                 onChange={updateSlotDateField(setSlotForm, 'startDate')} 
                 required 
+                min={formatDateTimeLocal(new Date())}
                 style={{borderRadius: '0.5rem'}}
               />
             </Form.Group>
@@ -3481,6 +3947,7 @@ const searchTrendChartData = useMemo(() => ({
                 value={slotForm.endDate} 
                 onChange={updateSlotDateField(setSlotForm, 'endDate')} 
                 required 
+                min={slotForm.startDate || formatDateTimeLocal(new Date())}
                 style={{borderRadius: '0.5rem'}}
               />
             </Form.Group>
@@ -3517,9 +3984,11 @@ const searchTrendChartData = useMemo(() => ({
               <thead>
                 <tr>
                   <th>ID</th>
+                  <th>Status</th>
                   <th>Start</th>
                   <th>End</th>
                   <th>Capacity</th>
+                  <th>Available</th>
                   <th>Booked</th>
                   <th className="text-end">Actions</th>
                 </tr>
@@ -3528,11 +3997,12 @@ const searchTrendChartData = useMemo(() => ({
                 {driveSlots.map(slot => (
                   <tr key={slot.id}>
                     <td>#{slot.id}</td>
+                    <td>{getSlotStatusBadge(getManagedSlotStatus(slot, now))}</td>
                     <td>
                       <div>{formatDateTime(getSlotStartValue(slot))}</div>
                       <small className="text-muted">
                         {getCountdownLabel(
-                          getRealtimeStatus(getSlotStartValue(slot), getSlotEndValue(slot), now),
+                          getManagedSlotStatus(slot, now),
                           getSlotStartValue(slot),
                           getSlotEndValue(slot),
                           now
@@ -3540,7 +4010,8 @@ const searchTrendChartData = useMemo(() => ({
                       </small>
                     </td>
                     <td>{formatSlotEndDisplay(slot)}</td>
-                    <td>{slot.capacity}</td>
+                    <td>{getSlotCapacityValue(slot)}</td>
+                    <td>{getSlotAvailableValue(slot)}</td>
                     <td>{slot.bookedCount || 0}</td>
                     <td className="text-end">
                       <div className="d-flex justify-content-end gap-2">
@@ -3575,8 +4046,8 @@ const searchTrendChartData = useMemo(() => ({
                 if (previewStatus === 'EXPIRED') {
                   return 'This slot is editable, but the selected time window is already in the past, so it will remain EXPIRED after saving.';
                 }
-                if (previewStatus === 'LIVE') {
-                  return 'Saving these values will make this slot LIVE immediately.';
+                if (previewStatus === 'ACTIVE') {
+                  return 'Saving these values will make this slot ACTIVE immediately.';
                 }
                 if (previewStatus === 'UPCOMING') {
                   return 'Saving these values will make this slot UPCOMING.';
@@ -3584,6 +4055,9 @@ const searchTrendChartData = useMemo(() => ({
                 return 'Edit the slot date/time and capacity, then save your changes.';
               })()}
             </Alert>
+            <div className="small text-muted mb-3">
+              Booked: {editingSlot?.bookedCount || 0} | Available after update: {Math.max(0, Number(editSlotForm.capacity || 0) - Number(editingSlot?.bookedCount || 0))}
+            </div>
             <Form.Group className="mb-3">
               <Form.Label>Drive</Form.Label>
               <Form.Select name="driveId" value={editSlotForm.driveId} onChange={handleSlotFormFieldChange(setEditSlotForm)} required style={{borderRadius: '0.5rem'}}>
@@ -3597,7 +4071,7 @@ const searchTrendChartData = useMemo(() => ({
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>End Time</Form.Label>
-              <Form.Control type="datetime-local" name="endDate" value={editSlotEndDate} onChange={updateEditSlotDate('endDate', setEditSlotEndDate)} required style={{borderRadius: '0.5rem'}} />
+              <Form.Control type="datetime-local" name="endDate" value={editSlotEndDate} onChange={updateEditSlotDate('endDate', setEditSlotEndDate)} min={editSlotStartDate || undefined} required style={{borderRadius: '0.5rem'}} />
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label>Capacity</Form.Label>
@@ -3765,6 +4239,17 @@ const searchTrendChartData = useMemo(() => ({
           <Button onClick={() => handleRespondToContact(selectedContact?.id)} style={{background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)', border: 'none', borderRadius: '0.5rem'}}>Send Reply</Button>
         </Modal.Footer>
       </Modal>
+
+      <ConfirmModal
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        onConfirm={() => confirmDialog.onConfirm?.()}
+        onCancel={closeConfirmDialog}
+        type={confirmDialog.type}
+        isLoading={confirmDialog.isLoading}
+        confirmLabel={confirmDialog.confirmLabel}
+      />
 
     </div>
   );

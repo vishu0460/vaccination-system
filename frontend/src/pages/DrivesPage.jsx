@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import { Button, Modal } from "react-bootstrap";
+import { Button } from "react-bootstrap";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getErrorMessage, publicAPI, unwrapApiData, userAPI } from "../api/client";
 import CityAutocomplete from "../components/CityAutocomplete";
+import Modal from "../components/ui/Modal";
 import SearchInput from "../components/SearchInput";
 import useDebounce from "../hooks/useDebounce";
 import useCurrentTime from "../hooks/useCurrentTime";

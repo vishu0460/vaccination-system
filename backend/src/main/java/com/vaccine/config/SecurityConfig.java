@@ -64,6 +64,7 @@ public class SecurityConfig {
                 .requestMatchers("/certificates/verify/**", "/api/certificates/verify/**").permitAll()
                 .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**", "/h2-console/**", "/actuator/**", "/robots.txt", "/sitemap.xml").permitAll()
                 .requestMatchers("/admin/**", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                .requestMatchers("/admins/**", "/api/admins/**").hasRole("SUPER_ADMIN")
                 .requestMatchers("/super-admin/**", "/api/super-admin/**", "/superadmin/**", "/api/superadmin/**").hasRole("SUPER_ADMIN")
                 .anyRequest().authenticated()
             )

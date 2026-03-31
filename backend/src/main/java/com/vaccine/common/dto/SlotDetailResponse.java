@@ -3,7 +3,9 @@ package com.vaccine.common.dto;
 import com.vaccine.domain.Slot;
 import com.vaccine.util.SlotStatusResolver;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 public record SlotDetailResponse(
     Long id,
@@ -25,19 +27,26 @@ public record SlotDetailResponse(
     Boolean available,
     Boolean bookable,
     String availability,
-    String slotStatus
+    String slotStatus,
+    LocalDate date,
+    LocalTime startTime,
+    LocalTime endTime,
+    Integer totalCapacity,
+    Integer availableSlots,
+    String status
 ) {
     public static SlotDetailResponse from(Slot slot) {
         LocalDateTime startDate = slot.getStartDateTime();
         LocalDateTime endDate = SlotStatusResolver.resolveEnd(slot);
-        int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
+        int capacity = slot.getTotalCapacity() == null ? 0 : slot.getTotalCapacity();
         int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
-        int remaining = Math.max(0, capacity - bookedCount);
+        int remaining = slot.getAvailableSlots() == null ? 0 : slot.getAvailableSlots();
         boolean available = remaining > 0;
         boolean bookable = available && SlotStatusResolver.resolve(slot) != com.vaccine.domain.SlotStatus.EXPIRED;
         double fillRate = capacity <= 0 ? 0d : (double) bookedCount / capacity;
         boolean almostFull = capacity > 0 && remaining <= Math.max(1, Math.ceil(capacity * 0.2));
         String demandLevel = fillRate >= 0.85 ? "HIGH_DEMAND" : almostFull ? "ALMOST_FULL" : "NORMAL";
+        String displayStatus = slot.getDisplayStatus().name();
 
         return new SlotDetailResponse(
             slot.getId(),
@@ -59,7 +68,13 @@ public record SlotDetailResponse(
             available,
             bookable,
             available ? "AVAILABLE" : "FULL",
-            SlotStatusResolver.resolve(slot).name()
+            SlotStatusResolver.resolve(slot).name(),
+            slot.getSlotDate(),
+            slot.getStartTime(),
+            slot.getEndTime(),
+            capacity,
+            remaining,
+            displayStatus
         );
     }
 }

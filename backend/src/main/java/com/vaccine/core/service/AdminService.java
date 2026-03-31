@@ -6,6 +6,7 @@ import com.vaccine.common.exception.AppException;
 import com.vaccine.infrastructure.persistence.repository.*;
 import com.vaccine.util.AgeCalculator;
 import com.vaccine.util.CsvExportUtil;
+import com.vaccine.util.DriveStatusResolver;
 import com.vaccine.util.SlotStatusResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -70,6 +71,7 @@ public class AdminService {
         if (getRestrictedAdminIdOrNull() != null) {
             throw new AppException("Global analytics are available only for super admin");
         }
+        refreshDriveStatuses(driveRepository.findAll());
         long totalUsers = userRepository.count();
         long activeUsers = userRepository.countByEnabledTrue();
         long totalBookings = bookingRepository.count();
@@ -156,6 +158,7 @@ public class AdminService {
         if (getRestrictedAdminIdOrNull() != null) {
             throw new AppException("Global analytics are available only for super admin");
         }
+        refreshDriveStatuses(driveRepository.findAll());
         long totalUsers = userRepository.count();
         long totalBookings = bookingRepository.count();
         long activeDrives = driveRepository.countByStatusIn(List.of(Status.UPCOMING, Status.LIVE));
@@ -445,15 +448,19 @@ public class AdminService {
         List<VaccinationDrive> drives = isRestrictedAdmin(currentUser)
             ? driveRepository.findByAdminId(currentUser.getId())
             : driveRepository.findAll();
+        refreshDriveStatuses(drives);
         long total = drives.size();
         List<VaccinationDrive> pageContent = drives.stream()
+            .sorted(Comparator
+                .comparing(VaccinationDrive::getDriveDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(VaccinationDrive::getId, Comparator.nullsLast(Comparator.reverseOrder())))
             .skip(pageable.getOffset())
             .limit(pageable.getPageSize())
             .collect(Collectors.toList());
         return Map.of("content", pageContent, "totalElements", total);
     }
 
-    public Map<String, Object> getAllSlots(PageRequest pageable, SlotStatus status, Long centerId, Long driveId, LocalDate date) {
+    public Map<String, Object> getAllSlots(PageRequest pageable, String status, Long centerId, Long driveId, LocalDate date) {
         List<AdminSlotResponse> slots = getAllSlots(status, centerId, driveId, date);
         long total = slots.size();
         List<AdminSlotResponse> pageContent = slots.stream()
@@ -463,19 +470,22 @@ public class AdminService {
         return Map.of("content", pageContent, "totalElements", total);
     }
 
-    public List<AdminSlotResponse> getAllSlots(SlotStatus status, Long centerId, Long driveId, LocalDate date) {
+    public List<AdminSlotResponse> getAllSlots(String status, Long centerId, Long driveId, LocalDate date) {
         User currentUser = getCurrentUserOrNull();
+        String normalizedStatus = normalizeRequestedSlotStatus(status);
         List<Slot> scopedSlots = isRestrictedAdmin(currentUser)
             ? slotRepository.findByAdminId(currentUser.getId())
             : slotRepository.findAll();
 
         return scopedSlots.stream()
-            .filter(slot -> status == null || SlotStatusResolver.resolve(slot) == status)
+            .filter(slot -> normalizedStatus == null
+                || normalizedStatus.equalsIgnoreCase(slot.getDisplayStatus().name())
+                || normalizedStatus.equalsIgnoreCase(SlotStatusResolver.resolve(slot).name()))
             .filter(slot -> centerId == null || (slot.getDrive() != null && slot.getDrive().getCenter() != null
                 && centerId.equals(slot.getDrive().getCenter().getId())))
             .filter(slot -> driveId == null || (slot.getDrive() != null && driveId.equals(slot.getDrive().getId())))
-            .filter(slot -> date == null || (slot.getDateTime() != null && date.equals(slot.getDateTime().toLocalDate())))
-            .sorted(Comparator.comparing(Slot::getDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
+            .filter(slot -> date == null || (slot.getStartDateTime() != null && date.equals(slot.getStartDateTime().toLocalDate())))
+            .sorted(Comparator.comparing(Slot::getStartDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
             .map(this::toAdminSlotResponse)
             .toList();
     }
@@ -509,6 +519,7 @@ public class AdminService {
                 .status(req.status() != null ? req.status() : Status.UPCOMING)
                 .active(req.active() != null ? req.active() : true)
                 .build();
+        applyResolvedDriveStatus(drive);
         VaccinationDrive savedDrive = driveRepository.save(drive);
         log.info("Drive created id={} centerId={} date={} vaccine={}", savedDrive.getId(), center.getId(), savedDrive.getDriveDate(), savedDrive.getVaccineType());
         auditService.logAction("CREATE_DRIVE", "DRIVE", savedDrive.getId(), "Drive created: " + savedDrive.getTitle());
@@ -564,6 +575,7 @@ public class AdminService {
         if (req.active() != null) {
             drive.setActive(req.active());
         }
+        applyResolvedDriveStatus(drive);
         VaccinationDrive savedDrive = driveRepository.save(drive);
         log.info("Drive updated id={} centerId={} date={} vaccine={}", savedDrive.getId(), savedDrive.getCenter() != null ? savedDrive.getCenter().getId() : null, savedDrive.getDriveDate(), savedDrive.getVaccineType());
         auditService.logAction("UPDATE_DRIVE", "DRIVE", savedDrive.getId(), "Drive updated: " + savedDrive.getTitle());
@@ -601,7 +613,16 @@ public class AdminService {
         int currentBooked = slot.getBookedCount() != null ? slot.getBookedCount() : 0;
         int requestedCapacity = normalizedRequest.getCapacity() != null ? normalizedRequest.getCapacity() : slot.getCapacity();
         if (requestedCapacity < currentBooked) {
-            throw new AppException("Capacity cannot be less than existing bookings");
+            throw new AppException("Cannot reduce capacity below booked slots");
+        }
+        if (requestedCapacity < 1) {
+            throw new AppException("Slot capacity must be at least 1");
+        }
+        if (normalizedRequest.getStartDate() == null || normalizedRequest.getEndDate() == null) {
+            throw new AppException("Slot start time and end time are required");
+        }
+        if (!normalizedRequest.getEndDate().isAfter(normalizedRequest.getStartDate())) {
+            throw new AppException("Slot end time must be after start time");
         }
 
         slot.setDrive(drive);
@@ -621,7 +642,7 @@ public class AdminService {
         Long currentAdminId = getRestrictedAdminIdOrNull();
         List<AdminSlotResponse> slots = slotRepository.findByDrive_IdOrderByDateTimeAsc(driveId).stream()
             .filter(slot -> currentAdminId == null || currentAdminId.equals(slot.getAdminId()))
-            .sorted(Comparator.comparing(Slot::getDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
+            .sorted(Comparator.comparing(Slot::getStartDateTime, Comparator.nullsLast(Comparator.naturalOrder())))
             .map(this::toAdminSlotResponse)
             .toList();
         return Map.of("slots", slots);
@@ -767,42 +788,84 @@ public class AdminService {
 
     @Transactional
     public void createAdmin(AdminCreateRequest req, HttpServletRequest request) {
-        User currentUser = getCurrentUserOrNull();
-        if (currentUser != null && !currentUser.isSuperAdmin()) {
-            throw new AppException("Only super admin can create admin accounts");
-        }
-        if (userRepository.existsAnyByEmail(req.email())) {
-            throw new AppException("Email already exists");
-        }
-        Role adminRole = roleRepository.findByName(RoleName.ADMIN).orElseThrow();
-        Long currentUserId = currentUser != null ? currentUser.getId() : null;
-        User admin = User.builder()
-            .email(req.email().trim().toLowerCase())
-            .fullName(req.fullName().trim())
-            .password(passwordEncoder.encode(req.password()))
-            .phoneNumber(req.phoneNumber())
-            .age(req.age() != null ? req.age() : 30)
-            .createdBy(currentUserId)
-            .role(RoleName.ADMIN.name())
-            .isAdmin(true)
-            .isSuperAdmin(false)
-            .roles(new HashSet<>(Set.of(adminRole)))
-            .enabled(true)
-            .emailVerified(true)
-            .build();
-        userRepository.save(admin);
-        auditService.logAction("CREATE_ADMIN", "USER", admin.getId(), "Admin created: " + req.email(), request);
+        createManagedAdmin(
+            req.fullName(),
+            req.email(),
+            req.phoneNumber(),
+            req.password(),
+            RoleName.ADMIN,
+            true,
+            null,
+            null,
+            req.age(),
+            request
+        );
     }
 
     public List<User> getAllAdmins() {
         return userRepository.findAll().stream()
-            .filter(u -> u.getRoles().stream().anyMatch(r -> r.getName() == RoleName.ADMIN))
+            .filter(this::isManagedAdmin)
+            .sorted(Comparator.comparing(User::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
             .toList();
     }
 
     @Transactional
+    public User createAdmin(AdminManagementCreateRequest req, HttpServletRequest request) {
+        return createManagedAdmin(
+            req.fullName(),
+            req.email(),
+            req.phoneNumber(),
+            req.password(),
+            req.role(),
+            req.enabled(),
+            req.address(),
+            req.profileImage(),
+            30,
+            request
+        );
+    }
+
+    @Transactional
+    public User updateAdmin(Long adminId, AdminManagementUpdateRequest req, HttpServletRequest request) {
+        User currentUser = requireSuperAdmin();
+        User admin = userRepository.findById(adminId).orElseThrow(() -> new AppException("Admin not found"));
+        ensureManagedAdmin(admin);
+
+        String email = req.email().trim().toLowerCase();
+        if (!email.equalsIgnoreCase(admin.getEmail()) && userRepository.existsAnyByEmail(email)) {
+            throw new AppException("Email already exists");
+        }
+
+        RoleName role = resolveManagedRole(req.role());
+        if (admin.getId().equals(currentUser.getId()) && role != RoleName.SUPER_ADMIN) {
+            throw new AppException("You cannot remove your own super admin role");
+        }
+
+        admin.setFullName(req.fullName().trim());
+        admin.setEmail(email);
+        admin.setPhoneNumber(normalizeOptionalValue(req.phoneNumber()));
+        admin.setEnabled(Boolean.TRUE.equals(req.enabled()));
+        admin.setAddress(normalizeOptionalValue(req.address()));
+        admin.setProfileImage(normalizeOptionalValue(req.profileImage()));
+        applyRole(admin, role);
+
+        if (req.password() != null && !req.password().isBlank()) {
+            admin.setPassword(passwordEncoder.encode(req.password()));
+        }
+
+        User savedAdmin = userRepository.save(admin);
+        auditService.logAction("UPDATE_ADMIN", "USER", savedAdmin.getId(), "Admin updated: " + savedAdmin.getEmail(), request);
+        return savedAdmin;
+    }
+
+    @Transactional
     public void deleteAdmin(Long adminId, HttpServletRequest request) {
-        User admin = userRepository.findById(adminId).orElseThrow();
+        User currentUser = requireSuperAdmin();
+        User admin = userRepository.findById(adminId).orElseThrow(() -> new AppException("Admin not found"));
+        ensureManagedAdmin(admin);
+        if (admin.getId().equals(currentUser.getId())) {
+            throw new AppException("You cannot delete your own account");
+        }
         softDeleteUser(admin, auditService.getCurrentActor());
         auditService.logAction("SOFT_DELETE_ADMIN", "USER", adminId, "Admin soft deleted: " + admin.getEmail(), request);
     }
@@ -878,6 +941,89 @@ public class AdminService {
         user.setIsAdmin(role == RoleName.ADMIN || role == RoleName.SUPER_ADMIN);
         userRepository.save(user);
         auditService.logAction("UPDATE_ROLE", "USER", userId, "Role updated to " + role, request);
+    }
+
+    private User createManagedAdmin(
+        String fullName,
+        String email,
+        String phoneNumber,
+        String rawPassword,
+        RoleName requestedRole,
+        Boolean enabled,
+        String address,
+        String profileImage,
+        Integer age,
+        HttpServletRequest request
+    ) {
+        User currentUser = requireSuperAdmin();
+        String normalizedEmail = email.trim().toLowerCase();
+        if (userRepository.existsAnyByEmail(normalizedEmail)) {
+            throw new AppException("Email already exists");
+        }
+
+        RoleName role = resolveManagedRole(requestedRole);
+        User admin = User.builder()
+            .email(normalizedEmail)
+            .fullName(fullName.trim())
+            .password(passwordEncoder.encode(rawPassword))
+            .phoneNumber(normalizeOptionalValue(phoneNumber))
+            .age(age != null ? age : 30)
+            .createdBy(currentUser.getId())
+            .enabled(Boolean.TRUE.equals(enabled))
+            .emailVerified(true)
+            .address(normalizeOptionalValue(address))
+            .profileImage(normalizeOptionalValue(profileImage))
+            .build();
+
+        applyRole(admin, role);
+
+        User savedAdmin = userRepository.save(admin);
+        auditService.logAction("CREATE_ADMIN", "USER", savedAdmin.getId(), "Admin created: " + savedAdmin.getEmail(), request);
+        return savedAdmin;
+    }
+
+    private User requireSuperAdmin() {
+        User currentUser = getCurrentUserOrNull();
+        if (currentUser == null || !currentUser.isSuperAdmin()) {
+            throw new AppException("Only super admin can manage admin accounts");
+        }
+        return currentUser;
+    }
+
+    private RoleName resolveManagedRole(RoleName requestedRole) {
+        if (requestedRole == null) {
+            return RoleName.ADMIN;
+        }
+        if (requestedRole != RoleName.ADMIN && requestedRole != RoleName.SUPER_ADMIN) {
+            throw new AppException("Only ADMIN and SUPER_ADMIN roles are allowed");
+        }
+        return requestedRole;
+    }
+
+    private void applyRole(User user, RoleName role) {
+        Role roleEntity = roleRepository.findByName(role).orElseThrow();
+        user.setRoles(new HashSet<>(Set.of(roleEntity)));
+        user.setRole(role.name());
+        user.setIsSuperAdmin(role == RoleName.SUPER_ADMIN);
+        user.setIsAdmin(role == RoleName.ADMIN || role == RoleName.SUPER_ADMIN);
+    }
+
+    private boolean isManagedAdmin(User user) {
+        return user != null && (user.isAdmin() || user.isSuperAdmin());
+    }
+
+    private void ensureManagedAdmin(User user) {
+        if (!isManagedAdmin(user)) {
+            throw new AppException("Admin not found");
+        }
+    }
+
+    private String normalizeOptionalValue(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isBlank() ? null : normalized;
     }
 
     private User getCurrentUserOrNull() {
@@ -981,6 +1127,36 @@ public class AdminService {
         }
     }
 
+    // Keep persisted drive status aligned with the current schedule so dashboards and API consumers
+    // see the same source-of-truth without waiting for the scheduler cycle.
+    private void refreshDriveStatuses(List<VaccinationDrive> drives) {
+        if (drives == null || drives.isEmpty()) {
+            return;
+        }
+
+        List<VaccinationDrive> changedDrives = drives.stream()
+            .filter(this::applyResolvedDriveStatus)
+            .toList();
+
+        if (!changedDrives.isEmpty()) {
+            driveRepository.saveAll(changedDrives);
+        }
+    }
+
+    private boolean applyResolvedDriveStatus(VaccinationDrive drive) {
+        if (drive == null) {
+            return false;
+        }
+
+        Status resolvedStatus = Status.valueOf(DriveStatusResolver.resolve(drive));
+        if (drive.getStatus() == resolvedStatus) {
+            return false;
+        }
+
+        drive.setStatus(resolvedStatus);
+        return true;
+    }
+
     private void deleteDriveInternal(VaccinationDrive drive, String actor) {
         feedbackRepository.deleteByDriveId(drive.getId());
         for (Slot slot : slotRepository.findByDrive_Id(drive.getId())) {
@@ -1045,13 +1221,14 @@ public class AdminService {
 
     private AdminSlotResponse toAdminSlotResponse(Slot slot) {
         int bookedCount = slot.getBookedCount() == null ? 0 : slot.getBookedCount();
-        int capacity = slot.getCapacity() == null ? 0 : slot.getCapacity();
-        int remaining = Math.max(0, capacity - bookedCount);
+        int capacity = slot.getTotalCapacity() == null ? 0 : slot.getTotalCapacity();
+        int remaining = slot.getAvailableSlots() == null ? 0 : slot.getAvailableSlots();
         boolean available = remaining > 0;
         boolean bookable = available && SlotStatusResolver.resolve(slot) != SlotStatus.EXPIRED;
         double fillRate = capacity <= 0 ? 0d : (double) bookedCount / capacity;
         boolean almostFull = capacity > 0 && remaining <= Math.max(1, Math.ceil(capacity * 0.2));
         String demandLevel = fillRate >= 0.85 ? "HIGH_DEMAND" : almostFull ? "ALMOST_FULL" : "NORMAL";
+        String displayStatus = slot.getDisplayStatus().name();
 
         return new AdminSlotResponse(
             slot.getId(),
@@ -1071,8 +1248,22 @@ public class AdminService {
             slot.getDrive() != null ? slot.getDrive().getTitle() : null,
             almostFull,
             demandLevel,
-            SlotStatusResolver.resolve(slot).name()
+            SlotStatusResolver.resolve(slot).name(),
+            slot.getSlotDate(),
+            slot.getStartTime(),
+            slot.getEndTime(),
+            capacity,
+            remaining,
+            displayStatus
         );
+    }
+
+    private String normalizeRequestedSlotStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        String normalized = status.trim().toUpperCase();
+        return "LIVE".equals(normalized) ? "ACTIVE" : normalized;
     }
 
     private VaccinationDrive findDriveOrThrow(Long driveId) {
@@ -1093,6 +1284,9 @@ public class AdminService {
         }
         if (!req.getEndDate().isAfter(req.getStartDate())) {
             throw new AppException("Slot end date must be after start date");
+        }
+        if (currentSlotId == null && req.getStartDate().isBefore(LocalDateTime.now())) {
+            throw new AppException("Slot start date cannot be in the past");
         }
         if (req.getCapacity() == null || req.getCapacity() < 1) {
             throw new AppException("Slot capacity must be at least 1");
@@ -1121,7 +1315,7 @@ public class AdminService {
     }
 
     private SlotRequest normalizeSlotRequestForUpdate(SlotRequest req, Slot slot) {
-        LocalDateTime existingStart = slot.getDateTime();
+        LocalDateTime existingStart = slot.getStartDateTime();
         LocalDateTime existingEnd = SlotStatusResolver.resolveEnd(slot);
         Duration existingDuration = resolveSlotDuration(existingStart, existingEnd);
 

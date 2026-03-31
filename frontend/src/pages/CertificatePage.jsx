@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { certificateAPI } from '../api/client';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
+import Modal from '../components/ui/Modal';
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 
@@ -342,39 +343,44 @@ export default function CertificatePage() {
       </div>
 
       {/* QR Code Modal */}
-      {showQrModal && selectedCert && (
-        <div className="modal show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={() => setShowQrModal(false)}>
-          <div className="modal-dialog modal-dialog-centered" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header bg-success text-white">
-                <h5 className="modal-title">Certificate Verification</h5>
-                <button type="button" className="btn-close btn-close-white" onClick={() => setShowQrModal(false)}></button>
-              </div>
-              <div className="modal-body text-center">
-                {qrCodeUrl && (
-                  <img src={qrCodeUrl} alt="QR Code" className="img-fluid mb-3" style={{ maxWidth: '200px' }} />
-                )}
-                <h6 className="mb-2">Certificate No: {selectedCert.certificateNumber}</h6>
-                <p className="text-muted small mb-2">{selectedCert.userName}</p>
-                <p className="text-muted small mb-2">{selectedCert.vaccineName} - Dose {selectedCert.doseNumber}</p>
-                <hr />
-                <p className="small text-muted mb-1">Digital Verification Code:</p>
-                <code className="d-block mb-3">{selectedCert.digitalVerificationCode}</code>
-                <p className="small text-muted">Scan this QR code or enter the verification code at the verification page to confirm the certificate authenticity.</p>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setShowQrModal(false)}>Close</button>
-                <button type="button" className="btn btn-success" onClick={() => {
-                  downloadCertificate(selectedCert.id, 'pdf');
-                  setShowQrModal(false);
-                }}>
-                  <i className="bi bi-download me-1"></i> Download PDF
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal show={showQrModal && Boolean(selectedCert)} onHide={() => setShowQrModal(false)} size="md">
+        <Modal.Header closeButton style={{ background: 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)' }}>
+          <Modal.Title>Certificate Verification</Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="text-center">
+          {selectedCert && (
+            <>
+              {qrCodeUrl && (
+                <img src={qrCodeUrl} alt="QR Code" className="img-fluid mb-3" style={{ maxWidth: '200px' }} />
+              )}
+              <h6 className="mb-2">Certificate No: {selectedCert.certificateNumber}</h6>
+              <p className="text-muted small mb-2">{selectedCert.userName}</p>
+              <p className="text-muted small mb-2">{selectedCert.vaccineName} - Dose {selectedCert.doseNumber}</p>
+              <hr />
+              <p className="small text-muted mb-1">Digital Verification Code:</p>
+              <code className="d-block mb-3">{selectedCert.digitalVerificationCode}</code>
+              <p className="small text-muted mb-0">Scan this QR code or enter the verification code at the verification page to confirm the certificate authenticity.</p>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <button type="button" className="app-modal-btn app-modal-btn--secondary" onClick={() => setShowQrModal(false)}>
+            Close
+          </button>
+          {selectedCert ? (
+            <button
+              type="button"
+              className="app-modal-btn app-modal-btn--primary"
+              onClick={() => {
+                downloadCertificate(selectedCert.id, 'pdf');
+                setShowQrModal(false);
+              }}
+            >
+              <i className="bi bi-download me-1" /> Download PDF
+            </button>
+          ) : null}
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }

@@ -1,7 +1,10 @@
 package com.vaccine.domain;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.vaccine.util.SlotStatusResolver;
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -105,5 +108,31 @@ public class Slot {
 
     public void setEndDateTime(LocalDateTime endDateTime) {
         this.endTime = endDateTime != null ? endDateTime.toLocalTime() : null;
+    }
+
+    @Transient
+    @JsonProperty("date")
+    public LocalDate getSlotDate() {
+        return dateTime != null ? dateTime.toLocalDate() : null;
+    }
+
+    @Transient
+    @JsonProperty("totalCapacity")
+    public Integer getTotalCapacity() {
+        return capacity == null ? 0 : capacity;
+    }
+
+    @Transient
+    @JsonProperty("availableSlots")
+    public Integer getAvailableSlots() {
+        int normalizedCapacity = getTotalCapacity();
+        int normalizedBookedCount = bookedCount == null ? 0 : bookedCount;
+        return Math.max(0, normalizedCapacity - normalizedBookedCount);
+    }
+
+    @Transient
+    @JsonProperty("status")
+    public SlotDisplayStatus getDisplayStatus() {
+        return SlotStatusResolver.resolveDisplayStatus(this);
     }
 }

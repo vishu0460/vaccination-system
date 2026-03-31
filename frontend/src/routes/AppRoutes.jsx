@@ -80,7 +80,15 @@ export default function AppRoutes() {
         <Route
           path="/profile"
           element={(
-            <ProtectedRoute roles={["USER"]}>
+            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
+              <ProfilePage />
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/account"
+          element={(
+            <ProtectedRoute roles={["USER", "ADMIN", "SUPER_ADMIN"]}>
               <ProfilePage />
             </ProtectedRoute>
           )}
@@ -115,6 +123,106 @@ export default function AppRoutes() {
           element={(
             <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
               <PageErrorBoundary resetKey="/admin/dashboard">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/users"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/users">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/bookings"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/bookings">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/centers"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/centers">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/drives"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/drives">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/slots"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/slots">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/news"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/news">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/feedback"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/feedback">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/contacts"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/contacts">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/logs"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/logs">
+                <AdminDashboardPage />
+              </PageErrorBoundary>
+            </ProtectedRoute>
+          )}
+        />
+        <Route
+          path="/admin/admins"
+          element={(
+            <ProtectedRoute roles={["ADMIN", "SUPER_ADMIN"]}>
+              <PageErrorBoundary resetKey="/admin/admins">
                 <AdminDashboardPage />
               </PageErrorBoundary>
             </ProtectedRoute>
