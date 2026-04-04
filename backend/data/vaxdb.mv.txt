@@ -1,0 +1,328 @@
+File E:/vaccination-system/backend/data/vaxdb.mv.db, 94208 bytes, 0 MB
+00000 fileHeader H:2,block:3,blockSize:1000,chunk:568,clean:1,created:19d142c7f7f,format:3,version:568,fletcher:3cfd89e3
+01000 fileHeader H:2,block:3,blockSize:1000,chunk:568,clean:1,created:19d142c7f7f,format:3,version:568,fletcher:3cfd89e3
+
+02000 chunkHeader chunk:565,block:2,len:1,pages:5,max:b10,map:8e,next:6,root:159400001d603,time:e151677,version:565,toc:a3f
++000ac node, map 1, 4 entries, 81 bytes, maxLen 60
+    21 children @ chunk 563 +086d5
+    22 children @ chunk 565 +000fd
+    24 children @ chunk 563 +08bd8
+    21 children @ chunk 565 +005e7
++000fd leaf, map 1, 22 entries, 1258 bytes, maxLen 600
++005e7 leaf, map 1, 21 entries, 369 bytes, maxLen 180
++00758 node, map 0, 2 entries, 36 bytes, maxLen 30
+    10 children < root.19 @ chunk 565 +0077c
+    25 children >= null @ chunk 563 +0914d
++0077c leaf, map 0, 10 entries, 707 bytes, maxLen 300
+    chunk.562 = chunk:562,block:4,len:2,pages:8,livePages:1,max:17c0,liveMax:800,map:8c,next:6,root:158800003e643,time:cf8cc9e,unusedAtVersion:563,version:562,toc:155f,occupancy:fd
+    chunk.563 = chunk:563,block:1b,len:a,pages:33,livePages:30,max:af20,liveMax:aa90,map:8c,next:25,root:158c000236703,time:cf8ec9e,unusedAtVersion:563,version:563,toc:9378,occupancy:00000000002003
+    chunk.564 = chunk:564,block:2,len:1,pages:5,livePages:0,max:b10,liveMax:0,map:8d,next:3,root:159000001d603,time:e15105a,unused:e151677,unusedAtVersion:564,version:564,toc:984,occupancy:1f
+    meta.id = 1
+    root.1 = 1594000002b07
+    root.10 = 158c0001d2d04
+    root.12 = 158c0001d3bd6
+    root.16 = 158c0001e9d80
+    root.17 = 158c0001ea34a
+    root.18 = 158c0001ec782
+map 0: 743 bytes, 30%
+map 1: 1708 bytes, 69%
++00f80 chunkFooter chunk:565,len:1,version:565,fletcher:f631e4f8
+
+03000 chunkHeader chunk:568,block:3,len:1,pages:5,max:c10,map:8f,next:4,root:15a000001d603,time:e15209e,version:568,toc:aec
++000ac node, map 1, 4 entries, 81 bytes, maxLen 60
+    21 children @ chunk 566 +063d4
+    22 children @ chunk 568 +000fd
+    24 children @ chunk 566 +068d7
+    21 children @ chunk 568 +005e7
++000fd leaf, map 1, 22 entries, 1258 bytes, maxLen 600
++005e7 leaf, map 1, 21 entries, 369 bytes, maxLen 180
++00758 node, map 0, 2 entries, 36 bytes, maxLen 30
+    11 children < root.19 @ chunk 568 +0077c
+    25 children >= null @ chunk 566 +06d6d
++0077c leaf, map 0, 11 entries, 880 bytes, maxLen 400
+    chunk.563 = chunk:563,block:5,len:a,pages:33,livePages:21,max:af20,liveMax:32e0,map:8c,root:158c000236703,time:cf8ec9e,unusedAtVersion:565,version:563,toc:9378,occupancy:f33f000000e007
+    chunk.565 = chunk:565,block:2,len:1,pages:5,livePages:0,max:b10,liveMax:0,map:8e,root:159400001d603,time:e151677,unused:e15209e,unusedAtVersion:567,version:565,toc:a3f,occupancy:1f
+    chunk.566 = chunk:566,block:f,len:8,pages:13,livePages:10,max:8340,liveMax:7fb0,map:8e,root:15980001aa6c3,time:e151710,unusedAtVersion:567,version:566,toc:6f98,occupancy:002003
+    chunk.567 = chunk:567,block:17,len:1,pages:2,livePages:0,max:430,liveMax:0,map:8e,next:18,root:159c000002b03,time:e151743,unused:e15209e,unusedAtVersion:567,version:567,toc:42c,occupancy:03
+    meta.id = 1
+    root.1 = 15a0000002b07
+    root.10 = 158c0001d2d04
+    root.12 = 158c0001d3bd6
+    root.16 = 158c0001e9d80
+    root.17 = 158c0001ea34a
+    root.18 = 158c0001ec782
+map 0: 916 bytes, 34%
+map 1: 1708 bytes, 65%
++00f80 chunkFooter chunk:568,len:1,version:568,fletcher:1732eaf8
+
+05000 chunkHeader chunk:563,block:5,len:a,pages:33,max:af20,map:8c,next:25,root:158c000236703,time:cf8ec9e,version:563,toc:9378
++000ac node, map 2, 2 entries, 37 bytes, maxLen 30
+    34 children @ chunk 562 +000d1
+    35 children @ chunk 563 +000d1
++000d1 leaf, map 2, 35 entries, 2727 bytes, maxLen c00
++00b78 leaf, map 43, 7 entries, 188 bytes, maxLen c0
++00c34 leaf, map 44, 7 entries, 25 bytes, maxLen 20
++00c4d node, map 5, 9 entries, 99 bytes, maxLen 80
+    12 children @ chunk 563 +00cb0
+    11 children @ chunk 563 +01709
+    9 children @ chunk 563 +0206b
+    11 children @ chunk 563 +025be
+    12 children @ chunk 563 +02e12
+    11 children @ chunk 563 +0352c
+    11 children @ chunk 563 +041b3
+    8 children @ chunk 563 +0485b
+    22 children @ chunk 563 +04d89
++00cb0 leaf, map 5, 12 entries, 2649 bytes, maxLen c00
++01709 leaf, map 5, 11 entries, 2402 bytes, maxLen c00
++0206b leaf, map 5, 9 entries, 1363 bytes, maxLen 600
++025be leaf, map 5, 11 entries, 2132 bytes, maxLen c00
++02e12 leaf, map 5, 12 entries, 1818 bytes, maxLen 800
++0352c leaf, map 5, 11 entries, 3207 bytes, maxLen 1000
++041b3 leaf, map 5, 11 entries, 1704 bytes, maxLen 800
++0485b leaf, map 5, 8 entries, 1326 bytes, maxLen 600
++04d89 leaf, map 5, 22 entries, 3821 bytes, maxLen 1000
++05c76 leaf, map 47, 7 entries, 27 bytes, maxLen 20
++05c91 node, map b, 5 entries, 59 bytes, maxLen 40
+    9 children @ chunk 563 +05ccc
+    9 children @ chunk 563 +06023
+    9 children @ chunk 563 +06374
+    9 children @ chunk 563 +066ad
+    17 children @ chunk 563 +069c1
++05ccc leaf, map b, 9 entries, 855 bytes, maxLen 400
++06023 leaf, map b, 9 entries, 849 bytes, maxLen 400
++06374 leaf, map b, 9 entries, 825 bytes, maxLen 400
++066ad leaf, map b, 9 entries, 788 bytes, maxLen 400
++069c1 leaf, map b, 17 entries, 1554 bytes, maxLen 800
++06fd3 leaf, map d, 4 entries, 731 bytes, maxLen 300
++072ae leaf, map 4e, 4 entries, 376 bytes, maxLen 180
++07426 leaf, map e, 1 entries, 142 bytes, maxLen c0
++074b4 leaf, map 10, 1 entries, 59 bytes, maxLen 40
++074ef leaf, map 12, 8 entries, 1415 bytes, maxLen 600
++07a76 leaf, map 16, 4 entries, 23 bytes, maxLen 20
++07a8d leaf, map 17, 5 entries, 145 bytes, maxLen c0
++07b1e leaf, map 18, 11 entries, 48 bytes, maxLen 30
++07b4e leaf, map 19, 11 entries, 48 bytes, maxLen 30
++07b7e leaf, map 1a, 11 entries, 1797 bytes, maxLen 800
++08283 leaf, map 1b, 2 entries, 242 bytes, maxLen 100
++08375 leaf, map 1c, 2 entries, 126 bytes, maxLen 80
++083f3 leaf, map 1d, 4 entries, 103 bytes, maxLen 80
++0845a leaf, map 1e, 4 entries, 19 bytes, maxLen 20
++0846d leaf, map 21, 11 entries, 342 bytes, maxLen 180
++085c3 leaf, map 24, 4 entries, 19 bytes, maxLen 20
++085d6 leaf, map 25, 1 entries, 13 bytes, maxLen 20
++085e3 leaf, map 26, 1 entries, 13 bytes, maxLen 20
++085f0 leaf, map 27, 1 entries, 13 bytes, maxLen 20
++085fd leaf, map 28, 8 entries, 29 bytes, maxLen 20
++0861a leaf, map 2b, 5 entries, 21 bytes, maxLen 20
++0862f leaf, map 2c, 11 entries, 33 bytes, maxLen 30
++08650 leaf, map 2d, 11 entries, 37 bytes, maxLen 30
++08675 leaf, map 2e, 2 entries, 15 bytes, maxLen 20
++08684 node, map 1, 4 entries, 81 bytes, maxLen 60
+    21 children @ chunk 563 +086d5
+    23 children @ chunk 562 +00904
+    24 children @ chunk 563 +08bd8
+    22 children @ chunk 562 +00e16
++086d5 leaf, map 1, 21 entries, 1283 bytes, maxLen 600
++08bd8 leaf, map 1, 24 entries, 452 bytes, maxLen 200
++08d9c node, map 0, 2 entries, 36 bytes, maxLen 30
+    11 children < root.19 @ chunk 563 +08dc0
+    25 children >= null @ chunk 563 +0914d
++08dc0 leaf, map 0, 11 entries, 909 bytes, maxLen 400
+    chunk.55f = chunk:55f,block:15,len:6,pages:28,livePages:0,max:6ae0,liveMax:0,map:8c,next:1b,root:157c00015ac83,time:cf81e71,unused:cf8ec9e,unusedAtVersion:562,version:55f,toc:5c7c,occupancy:ffffffffff
+    chunk.560 = chunk:560,block:9,len:4,pages:9,livePages:0,max:41b0,liveMax:0,map:8c,next:d,root:15800000bbe03,time:cf82560,unused:cf8ec9e,unusedAtVersion:562,version:560,toc:34c0,occupancy:ff01
+    chunk.561 = chunk:561,block:2,len:2,pages:9,livePages:0,max:1170,liveMax:0,map:8c,next:4,root:1584000026b43,time:cf83c77,unused:cf8ec9e,unusedAtVersion:562,version:561,toc:f75,occupancy:ff01
+    chunk.562 = chunk:562,block:4,len:2,pages:8,livePages:3,max:17c0,liveMax:1000,map:8c,next:6,root:158800003e643,time:cf8cc9e,unusedAtVersion:562,version:562,toc:155f,occupancy:e5
+    meta.id = 1
+    root.1 = 158c00021a107
+    root.10 = 158c0001d2d04
+    root.12 = 158c0001d3bd6
+    root.16 = 158c0001e9d80
+    root.17 = 158c0001ea34a
+    root.18 = 158c0001ec782
++0914d leaf, map 0, 25 entries, 555 bytes, maxLen 300
+    root.19 = 158c0001ed382
+    root.1a = 158c0001edf98
+    root.1b = 158c00020a0cc
+    root.1c = 158c00020dd48
+    root.1d = 158c00020fcc8
+    root.1e = 158c000211680
+    root.2 = 158c000002b03
+    root.21 = 158c000211b4e
+    root.24 = 158c0002170c0
+    root.25 = 158c000217580
+    root.26 = 158c0002178c0
+    root.27 = 158c000217c00
+    root.28 = 158c000217f40
+    root.2b = 158c000218680
+    root.2c = 158c000218bc2
+    root.2d = 158c000219402
+    root.2e = 158c000219d40
+    root.43 = 158c00002de0a
+    root.44 = 158c000030d00
+    root.47 = 158c000171d80
+    root.4e = 158c0001cab8e
+    root.5 = 158c000031349
+    root.b = 158c000172445
+    root.d = 158c0001bf4d2
+    root.e = 158c0001d098a
+map 0: 1500 bytes, 3%
+map 1: 1816 bytes, 4%
+map 2: 2764 bytes, 7%
+map 5: 20521 bytes, 54%
+map b: 4930 bytes, 13%
+map d: 731 bytes, 1%
+map e: 142 bytes, 0%
+map 10: 59 bytes, 0%
+map 12: 1415 bytes, 3%
+map 16: 23 bytes, 0%
+map 17: 145 bytes, 0%
+map 18: 48 bytes, 0%
+map 19: 48 bytes, 0%
+map 1a: 1797 bytes, 4%
+map 1b: 242 bytes, 0%
+map 1c: 126 bytes, 0%
+map 1d: 103 bytes, 0%
+map 1e: 19 bytes, 0%
+map 21: 342 bytes, 0%
+map 24: 19 bytes, 0%
+map 25: 13 bytes, 0%
+map 26: 13 bytes, 0%
+map 27: 13 bytes, 0%
+map 28: 29 bytes, 0%
+map 2b: 21 bytes, 0%
+map 2c: 33 bytes, 0%
+map 2d: 37 bytes, 0%
+map 2e: 15 bytes, 0%
+map 43: 188 bytes, 0%
+map 44: 25 bytes, 0%
+map 47: 27 bytes, 0%
+map 4e: 376 bytes, 1%
++09f80 chunkFooter chunk:563,len:a,version:563,fletcher:303310f9
+
+0f000 chunkHeader chunk:566,block:f,len:8,pages:13,max:8340,map:8e,next:3,root:15980001aa6c3,time:e151710,version:566,toc:6f98
++000ac node, map 2, 2 entries, 37 bytes, maxLen 30
+    34 children @ chunk 566 +000d1
+    35 children @ chunk 566 +008b3
++000d1 leaf, map 2, 34 entries, 2018 bytes, maxLen 800
++008b3 leaf, map 2, 35 entries, 2727 bytes, maxLen c00
++0135a node, map 5, 9 entries, 99 bytes, maxLen 80
+    12 children @ chunk 566 +013bd
+    11 children @ chunk 566 +01e16
+    9 children @ chunk 566 +02778
+    11 children @ chunk 566 +02ccb
+    12 children @ chunk 566 +0351f
+    11 children @ chunk 566 +03c39
+    11 children @ chunk 566 +048c0
+    8 children @ chunk 566 +04f68
+    22 children @ chunk 566 +05496
++013bd leaf, map 5, 12 entries, 2649 bytes, maxLen c00
++01e16 leaf, map 5, 11 entries, 2402 bytes, maxLen c00
++02778 leaf, map 5, 9 entries, 1363 bytes, maxLen 600
++02ccb leaf, map 5, 11 entries, 2132 bytes, maxLen c00
++0351f leaf, map 5, 12 entries, 1818 bytes, maxLen 800
++03c39 leaf, map 5, 11 entries, 3207 bytes, maxLen 1000
++048c0 leaf, map 5, 11 entries, 1704 bytes, maxLen 800
++04f68 leaf, map 5, 8 entries, 1326 bytes, maxLen 600
++05496 leaf, map 5, 22 entries, 3821 bytes, maxLen 1000
++06383 node, map 1, 4 entries, 81 bytes, maxLen 60
+    21 children @ chunk 566 +063d4
+    22 children @ chunk 565 +000fd
+    24 children @ chunk 566 +068d7
+    21 children @ chunk 565 +005e7
++063d4 leaf, map 1, 21 entries, 1283 bytes, maxLen 600
++068d7 leaf, map 1, 24 entries, 452 bytes, maxLen 200
++06a9b node, map 0, 2 entries, 36 bytes, maxLen 30
+    10 children < root.19 @ chunk 566 +06abf
+    25 children >= null @ chunk 566 +06d6d
++06abf leaf, map 0, 10 entries, 686 bytes, maxLen 300
+    chunk.562 = chunk:562,block:25,len:2,pages:8,livePages:0,max:17c0,liveMax:0,map:8c,root:158800003e643,time:cf8cc9e,unused:e151710,unusedAtVersion:565,version:562,toc:155f,occupancy:ff
+    chunk.563 = chunk:563,block:27,len:a,pages:33,livePages:21,max:af20,liveMax:32e0,map:8c,root:158c000236703,time:cf8ec9e,unusedAtVersion:565,version:563,toc:9378,occupancy:f33f000000e007
+    chunk.565 = chunk:565,block:2,len:1,pages:5,livePages:2,max:b10,liveMax:780,map:8e,root:159400001d603,time:e151677,unusedAtVersion:565,version:565,toc:a3f,occupancy:19
+    meta.id = 1
+    root.1 = 159800018e0c7
+    root.10 = 158c0001d2d04
+    root.12 = 158c0001d3bd6
+    root.16 = 158c0001e9d80
+    root.17 = 158c0001ea34a
+    root.18 = 158c0001ec782
++06d6d leaf, map 0, 25 entries, 555 bytes, maxLen 300
+    root.19 = 158c0001ed382
+    root.1a = 158c0001edf98
+    root.1b = 158c00020a0cc
+    root.1c = 158c00020dd48
+    root.1d = 158c00020fcc8
+    root.1e = 158c000211680
+    root.2 = 1598000002b03
+    root.21 = 158c000211b4e
+    root.24 = 158c0002170c0
+    root.25 = 158c000217580
+    root.26 = 158c0002178c0
+    root.27 = 158c000217c00
+    root.28 = 158c000217f40
+    root.2b = 158c000218680
+    root.2c = 158c000218bc2
+    root.2d = 158c000219402
+    root.2e = 158c000219d40
+    root.43 = 158c00002de0a
+    root.44 = 158c000030d00
+    root.47 = 158c000171d80
+    root.4e = 158c0001cab8e
+    root.5 = 159800004d689
+    root.b = 158c000172445
+    root.d = 158c0001bf4d2
+    root.e = 158c0001d098a
+map 0: 1277 bytes, 4%
+map 1: 1816 bytes, 6%
+map 2: 4782 bytes, 16%
+map 5: 20521 bytes, 72%
++07f80 chunkFooter chunk:566,len:8,version:566,fletcher:3232edf8
+
+17000 eof
+
+page size total: 71051 bytes, page count: 80, average page size: 888 bytes
+map 0: 4436 bytes, 6%
+map 1: 7048 bytes, 9%
+map 2: 7546 bytes, 10%
+map 5: 41042 bytes, 57%
+map b: 4930 bytes, 6%
+map d: 731 bytes, 1%
+map e: 142 bytes, 0%
+map 10: 59 bytes, 0%
+map 12: 1415 bytes, 1%
+map 16: 23 bytes, 0%
+map 17: 145 bytes, 0%
+map 18: 48 bytes, 0%
+map 19: 48 bytes, 0%
+map 1a: 1797 bytes, 2%
+map 1b: 242 bytes, 0%
+map 1c: 126 bytes, 0%
+map 1d: 103 bytes, 0%
+map 1e: 19 bytes, 0%
+map 21: 342 bytes, 0%
+map 24: 19 bytes, 0%
+map 25: 13 bytes, 0%
+map 26: 13 bytes, 0%
+map 27: 13 bytes, 0%
+map 28: 29 bytes, 0%
+map 2b: 21 bytes, 0%
+map 2c: 33 bytes, 0%
+map 2d: 37 bytes, 0%
+map 2e: 15 bytes, 0%
+map 43: 188 bytes, 0%
+map 44: 25 bytes, 0%
+map 47: 27 bytes, 0%
+map 4e: 376 bytes, 0%
+Created: 2026-03-22 11:42:33 (+0 s)
+Last modified: 2026-04-04 14:25:30 (+1132976 s)
+File length: 94208
+The last chunk is not listed
+Chunk length: 81920
+Chunk count: 4
+Used space: 86%
+Chunk fill rate: 55%
+Chunk fill rate excluding empty chunks: 58%
+  Chunk 1379: 2026-03-25 00:09:53 (+217640 s), 29% used, 10 blocks
+  Chunk 1381: 2026-03-25 05:20:16 (+236263 s), 0% used, 1 blocks, unused: 2026-03-25 05:20:19 (+236265 s)
+  Chunk 1382: 2026-03-25 05:20:16 (+236263 s), 96% used, 8 blocks
+  Chunk 1383: 2026-03-25 05:20:17 (+236263 s), 0% used, 1 blocks, unused: 2026-03-25 05:20:19 (+236265 s)
+
