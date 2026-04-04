@@ -4,11 +4,14 @@ import com.vaccine.common.dto.ApiMessage;
 import com.vaccine.common.dto.ApiResponse;
 import com.vaccine.common.dto.ChangePasswordRequest;
 import com.vaccine.common.dto.ProfileUpdateRequest;
+import com.vaccine.common.exception.AppException;
 import com.vaccine.domain.User;
 import com.vaccine.core.service.ProfileService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,15 +25,29 @@ import java.util.Map;
 @RestController
 @Validated
 @RequestMapping({"/v1/profile", "/profile", "/api/v1/profile", "/api/profile", "/users", "/api/users"})
-@PreAuthorize("isAuthenticated()")
 @RequiredArgsConstructor
 public class ProfileController {
 
     private final ProfileService profileService;
 
+    @Value("${app.dev.disable-auth-for-profile:false}")
+    private boolean disableAuthForProfile;
+
     @GetMapping({"", "/me", "/profile"})
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getProfile(Authentication auth) {
-        User user = profileService.getProfile(auth.getName());
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getProfile(Authentication auth, HttpServletRequest request) {
+        String principal = auth != null ? auth.getName() : "anonymous";
+        log.info("Profile request path={} principal={} authPresent={} debugBypass={}",
+            request.getRequestURI(), principal, auth != null, disableAuthForProfile);
+
+        User user;
+        if (auth != null && auth.getName() != null && !auth.getName().isBlank()) {
+            user = profileService.getProfile(auth.getName());
+        } else if (disableAuthForProfile) {
+            user = profileService.getFirstEnabledUserForDebug();
+        } else {
+            throw new AppException("Authentication required for profile access");
+        }
+
         Map<String, Object> response = new HashMap<>();
         response.put("id", user.getId());
         response.put("email", user.getEmail());
@@ -48,10 +65,12 @@ public class ProfileController {
         response.put("phoneVerified", user.getPhoneVerified() != null ? user.getPhoneVerified() : false);
         response.put("enabled", user.getEnabled());
         response.put("createdAt", user.getCreatedAt() != null ? user.getCreatedAt().toString() : "");
+        log.info("Profile response resolved userId={} email={}", user.getId(), user.getEmail());
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @PutMapping({"", "/update-profile"})
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Map<String, Object>>> updateProfile(
             @Valid @RequestBody ProfileUpdateRequest request,
             Authentication auth) {
@@ -68,12 +87,14 @@ public class ProfileController {
     }
 
     @PostMapping("/change-password/request-otp")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiMessage> requestPasswordChangeOtp(Authentication auth) {
         profileService.sendPasswordChangeOtp(auth.getName());
         return ResponseEntity.ok(new ApiMessage("OTP sent to your email for verification."));
     }
 
     @RequestMapping(value = "/change-password", method = {RequestMethod.POST, RequestMethod.PUT})
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> changePassword(
             @Valid @RequestBody ChangePasswordRequest request,
             Authentication auth) {
@@ -82,6 +103,7 @@ public class ProfileController {
     }
 
     @PostMapping("/deactivate")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> deactivateAccount(Authentication auth) {
         profileService.deactivateAccount(auth.getName());
         return ResponseEntity.ok(ApiResponse.success(null, "Account deactivated successfully"));

@@ -22,6 +22,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
@@ -97,14 +98,16 @@ public class UserController {
 
     @GetMapping("/account")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getAccount(Authentication auth) {
+        log.info("Loading account data for principal={}", auth != null ? auth.getName() : "anonymous");
         User user = profileService.getProfile(auth.getName());
-        Map<String, Object> profile = Map.of(
-            "fullName", user.getFullName(),
-            "email", user.getEmail(),
-            "dob", user.getDob() != null ? user.getDob().toString() : "",
-            "age", user.getAge(),
-            "emailVerified", user.getEmailVerified()
-        );
+        Map<String, Object> profile = new HashMap<>();
+        profile.put("id", user.getId());
+        profile.put("fullName", user.getFullName() != null ? user.getFullName() : "");
+        profile.put("email", user.getEmail() != null ? user.getEmail() : "");
+        profile.put("dob", user.getDob() != null ? user.getDob().toString() : "");
+        profile.put("age", user.getAge());
+        profile.put("emailVerified", Boolean.TRUE.equals(user.getEmailVerified()));
+        profile.put("enabled", Boolean.TRUE.equals(user.getEnabled()));
         return ResponseEntity.ok(ApiResponse.success(profile));
     }
 

@@ -7,11 +7,13 @@ import com.vaccine.domain.OtpPurpose;
 import com.vaccine.domain.User;
 import com.vaccine.infrastructure.persistence.repository.UserRepository;
 import com.vaccine.util.AgeCalculator;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 public class ProfileService {
     private static final String STRONG_PASSWORD_REGEX = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^A-Za-z0-9]).{8,}$";
 
@@ -28,8 +30,16 @@ public class ProfileService {
     }
 
     public User getProfile(String email) {
+        log.info("Resolving profile for email={}", email);
         return userRepository.findByEmail(email)
             .orElseThrow(() -> new AppException("User not found"));
+    }
+
+    public User getFirstEnabledUserForDebug() {
+        User user = userRepository.findFirstByEnabledTrueOrderByIdAsc()
+            .orElseThrow(() -> new AppException("No enabled user found for debug profile access"));
+        log.warn("Using debug profile fallback userId={} email={}", user.getId(), user.getEmail());
+        return user;
     }
 
     @Transactional

@@ -41,6 +41,9 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins:http://localhost:5174,http://localhost:5173,http://localhost:3000}")
     private String corsAllowedOrigins;
 
+    @Value("${app.dev.disable-auth-for-profile:false}")
+    private boolean disableAuthForProfile;
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthFilter jwtFilter, RateLimitFilter rateLimitFilter,
                                            RequestTracingFilter requestTracingFilter,
@@ -53,21 +56,28 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(ex -> ex.authenticationEntryPoint(restAuthenticationEntryPoint))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/auth/**", "/api/auth/**").permitAll()
-                .requestMatchers("/public/**", "/v1/public/**", "/api/public/**", "/api/v1/public/**").permitAll()
-                .requestMatchers("/health/**", "/v1/health/**", "/api/health/**", "/api/v1/health/**").permitAll()
-                .requestMatchers("/ws/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/contact", "/api/contact").permitAll()
-                .requestMatchers("/reviews/center/**", "/v1/reviews/center/**", "/api/reviews/center/**", "/api/v1/reviews/center/**").permitAll()
-                .requestMatchers("/certificates/verify/**", "/api/certificates/verify/**").permitAll()
-                .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**", "/h2-console/**", "/actuator/**", "/robots.txt", "/sitemap.xml").permitAll()
-                .requestMatchers("/admin/**", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
-                .requestMatchers("/admins/**", "/api/admins/**").hasRole("SUPER_ADMIN")
-                .requestMatchers("/super-admin/**", "/api/super-admin/**", "/superadmin/**", "/api/superadmin/**").hasRole("SUPER_ADMIN")
-                .anyRequest().authenticated()
-            )
+            .authorizeHttpRequests(auth -> {
+                auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                    .requestMatchers("/auth/**", "/api/auth/**").permitAll()
+                    .requestMatchers("/public/**", "/v1/public/**", "/api/public/**", "/api/v1/public/**").permitAll()
+                    .requestMatchers("/health/**", "/v1/health/**", "/api/health/**", "/api/v1/health/**").permitAll()
+                    .requestMatchers("/ws/**").permitAll()
+                    .requestMatchers(HttpMethod.POST, "/contact", "/api/contact").permitAll()
+                    .requestMatchers("/reviews/center/**", "/v1/reviews/center/**", "/api/reviews/center/**", "/api/v1/reviews/center/**").permitAll()
+                    .requestMatchers("/certificates/verify/**", "/api/certificates/verify/**", "/certificate/verify/**", "/api/certificate/verify/**").permitAll()
+                    .requestMatchers("/error", "/v3/api-docs/**", "/swagger-ui/**", "/h2-console/**", "/actuator/**", "/robots.txt", "/sitemap.xml").permitAll()
+                    .requestMatchers("/admin/**", "/api/admin/**").hasAnyRole("ADMIN", "SUPER_ADMIN")
+                    .requestMatchers("/admins/**", "/api/admins/**").hasRole("SUPER_ADMIN")
+                    .requestMatchers("/super-admin/**", "/api/super-admin/**", "/superadmin/**", "/api/superadmin/**").hasRole("SUPER_ADMIN");
+
+                if (disableAuthForProfile) {
+                    auth.requestMatchers(HttpMethod.GET, "/users", "/users/me", "/profile", "/profile/me", "/api/users", "/api/users/me", "/api/profile", "/api/profile/me").permitAll();
+                }
+
+                auth.requestMatchers("/user/**", "/api/user/**", "/users/**", "/api/users/**", "/profile/**", "/api/profile/**", "/v1/profile/**", "/api/v1/profile/**").authenticated()
+                    .requestMatchers("/certificates/**", "/api/certificates/**").authenticated()
+                    .anyRequest().authenticated();
+            })
             .headers(headers -> headers
                 .frameOptions(frame -> frame.sameOrigin())
                 .referrerPolicy(referrer -> referrer.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))

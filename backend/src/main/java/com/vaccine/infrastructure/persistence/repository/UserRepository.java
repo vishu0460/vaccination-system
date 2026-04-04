@@ -13,6 +13,7 @@ import java.util.Optional;
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByEmail(String email);
+    Optional<User> findFirstByEnabledTrueOrderByIdAsc();
     Optional<User> findByVerificationToken(String verificationToken);
     Optional<User> findByPhoneNumber(String phoneNumber);
     @Query("SELECT u.id FROM User u WHERE lower(u.email) = lower(:email)")

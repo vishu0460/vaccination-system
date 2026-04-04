@@ -47,6 +47,7 @@ app:
   dev:
     auto-verify-email: false
     include-otp-in-messages: ${DEV_INCLUDE_OTP_IN_MESSAGES:false}
+    disable-auth-for-profile: ${DEV_DISABLE_AUTH_FOR_PROFILE:true}
   seed:
     enabled: ${APP_SEED_ENABLED:false}
 
@@ -54,3 +55,5 @@ logging:
   level:
     root: INFO
     com.vaccine: INFO
+    com.vaccine.security: DEBUG
+    org.springframework.security: DEBUG

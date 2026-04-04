@@ -91,6 +91,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             "/api/v1/reviews/center/",
             "/certificates/verify/",
             "/api/certificates/verify/",
+            "/certificate/verify/",
+            "/api/certificate/verify/",
             "/v3/api-docs/",
             "/swagger-ui/",
             "/h2-console/"
@@ -112,8 +114,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
 
         String authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        log.info("JWT filter processing method={} path={} hasAuthorization={}",
+            request.getMethod(), request.getRequestURI(), authHeader != null && !authHeader.isBlank());
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            if (!"OPTIONS".equalsIgnoreCase(request.getMethod())) {
+                log.debug("JWT header missing for {} {}", request.getMethod(), request.getRequestURI());
+            }
             filterChain.doFilter(request, response);
             return;
         }
@@ -134,6 +141,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     userRepository.findIdByEmail(email)
                         .ifPresent(userId -> MDC.put(LogContextKeys.USER_ID, String.valueOf(userId)));
                     MDC.put(LogContextKeys.USER_EMAIL, email);
+                    log.info("JWT authenticated principal={} path={}", email, request.getRequestURI());
 
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(
@@ -147,12 +155,14 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
                     SecurityContextHolder.getContext()
                             .setAuthentication(authentication);
+                } else {
+                    log.warn("JWT token invalid for principal={} path={}", email, request.getRequestURI());
                 }
             }
 
         } catch (Exception ex) {
 
-            log.warn("JWT authentication failed: {}", ex.getMessage());
+            log.warn("JWT authentication failed for path={}: {}", request.getRequestURI(), ex.getMessage());
             SecurityContextHolder.clearContext();
         }
 

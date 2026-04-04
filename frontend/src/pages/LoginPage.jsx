@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { authAPI, getErrorMessage } from "../api/client";
+import { authAPI, getErrorMessage, unwrapApiData } from "../api/client";
 import FormContainer from "../components/auth/FormContainer";
 import InputField from "../components/auth/InputField";
 import PasswordField from "../components/auth/PasswordField";
@@ -62,10 +62,11 @@ export default function LoginPage() {
     setServerMessage("");
 
     try {
-      const { data } = await authAPI.login({
+      const response = await authAPI.login({
         email: form.email.trim(),
         password: form.password
       });
+      const data = unwrapApiData(response) || {};
 
       if (data.requiresTwoFactor) {
         setShow2FA(true);
@@ -100,10 +101,11 @@ export default function LoginPage() {
     setTwoFactorMessage("");
 
     try {
-      const { data } = await authAPI.verifyTwoFactor({
+      const response = await authAPI.verifyTwoFactor({
         email: form.email.trim(),
         twoFactorCode: verificationCode.trim()
       });
+      const data = unwrapApiData(response) || {};
 
       setAuth(data, { remember: form.rememberMe });
       navigate(redirect || (data.role === "USER" ? "/user/bookings" : "/admin/dashboard"), { replace: true });

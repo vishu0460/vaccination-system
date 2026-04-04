@@ -15,17 +15,21 @@ const notifyAuthChanged = () => {
 };
 
 export function setAuth(data, options = {}) {
-  const { remember = true } = options;
-  const storage = remember ? window.localStorage : window.sessionStorage;
+  const normalizedData = data && typeof data === "object" && "data" in data ? data.data : data;
+  const normalizedName = normalizedData?.name || normalizedData?.fullName || normalizedData?.userName || "";
 
   removeStoredAuth();
 
-  storage.setItem("accessToken", data.accessToken);
-  storage.setItem("refreshToken", data.refreshToken);
-  storage.setItem("role", data.role);
-  storage.setItem("email", data.email);
-  if (data.name) {
-    storage.setItem("name", data.name);
+  if (!normalizedData?.accessToken || !normalizedData?.refreshToken) {
+    return;
+  }
+
+  window.localStorage.setItem("accessToken", normalizedData.accessToken);
+  window.localStorage.setItem("refreshToken", normalizedData.refreshToken);
+  window.localStorage.setItem("role", normalizedData.role || "");
+  window.localStorage.setItem("email", normalizedData.email || "");
+  if (normalizedName) {
+    window.localStorage.setItem("name", normalizedName);
   }
 
   notifyAuthChanged();

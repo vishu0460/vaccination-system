@@ -51,13 +51,18 @@ public class CertificateService {
             .vaccineName(vaccineName)
             .doseNumber(doseNumber != null ? doseNumber : (booking.getDoseNumber() != null ? booking.getDoseNumber() : 1))
             .vaccinationDate(booking.getFirstDoseDate() != null ? booking.getFirstDoseDate() : booking.getBookedAt())
+            .qrCodeData(certificateNumber)
             .qrCode(generateQrCode(certificateNumber))
             .digitalVerificationCode(generateDigitalVerificationCode(certificateNumber, booking))
             .nextDoseDate(booking.getNextDoseDueDate())
             .issuedAt(LocalDateTime.now())
             .build();
 
-        return certificateRepository.save(certificate);
+        Certificate savedCertificate = certificateRepository.save(certificate);
+        String verificationUrl = buildFrontendVerificationUrl(savedCertificate.getId());
+        savedCertificate.setQrCodeData(verificationUrl);
+        savedCertificate.setQrCode(generateQrCode(verificationUrl));
+        return certificateRepository.save(savedCertificate);
     }
 
     @Transactional
@@ -88,6 +93,16 @@ public class CertificateService {
             .orElseThrow(() -> new AppException("Certificate not found"));
     }
 
+    public Certificate getCertificateByVerificationId(String certificateId) {
+        if (certificateId == null || certificateId.isBlank()) {
+            throw new AppException("Certificate not found");
+        }
+
+        return certificateRepository.findByCertificateNumber(certificateId)
+            .or(() -> parseNumericCertificateId(certificateId).flatMap(certificateRepository::findById))
+            .orElseThrow(() -> new AppException("Certificate not found"));
+    }
+
     public List<Certificate> getUserCertificates(Long userId) {
         return certificateRepository.findByBookingUserIdOrderByIssuedAtDesc(userId);
     }
@@ -108,6 +123,18 @@ public class CertificateService {
 
     private String generateQrCode(String certificateNumber) {
         return "https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=" + certificateNumber;
+    }
+
+    private String buildFrontendVerificationUrl(Long certificateId) {
+        return "http://localhost:5173/verify-certificate?certId=" + certificateId;
+    }
+
+    private Optional<Long> parseNumericCertificateId(String value) {
+        try {
+            return Optional.of(Long.parseLong(value.trim()));
+        } catch (NumberFormatException exception) {
+            return Optional.empty();
+        }
     }
 
     private String generateDigitalVerificationCode(String certificateNumber, Booking booking) {

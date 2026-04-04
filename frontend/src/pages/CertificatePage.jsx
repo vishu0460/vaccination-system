@@ -1,267 +1,220 @@
-import React, { useState, useEffect } from 'react';
-import { certificateAPI } from '../api/client';
-import Skeleton from '../components/Skeleton';
-import EmptyState from '../components/EmptyState';
-import Modal from '../components/ui/Modal';
-import { jsPDF } from 'jspdf';
-import QRCode from 'qrcode';
+import React, { useEffect, useRef, useState } from "react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
+import QRCode from "qrcode";
+import { certificateAPI, unwrapApiData } from "../api/client";
+import Skeleton from "../components/Skeleton";
+import EmptyState from "../components/EmptyState";
+import Modal from "../components/ui/Modal";
+import CertificatePreview from "../components/CertificatePreview";
+import {
+  buildCertificateFileName,
+  CERTIFICATE_THEME,
+  formatCertificateDate,
+  getCalculatedAge,
+  getDoseLabel,
+  getVerificationPath,
+  getVerificationUrl
+} from "../utils/certificateDocument";
+
+const EXPORT_WIDTH = 1400;
+const EXPORT_SCALE = 2;
 
 export default function CertificatePage() {
   const [certificates, setCertificates] = useState([]);
+  const [downloadHistory, setDownloadHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [selectedCert, setSelectedCert] = useState(null);
-  const [qrCodeUrl, setQrCodeUrl] = useState(null);
+  const [selectedQrCodeUrl, setSelectedQrCodeUrl] = useState(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const exportPreviewRef = useRef(null);
 
   useEffect(() => {
-    fetchCertificates();
+    fetchCertificateData();
   }, []);
 
-  const fetchCertificates = async () => {
+  useEffect(() => {
+    if (!selectedCert) {
+      setSelectedQrCodeUrl(null);
+      return;
+    }
+
+    let active = true;
+    generateQRCode(selectedCert).then((url) => {
+      if (active) {
+        setSelectedQrCodeUrl(url);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedCert]);
+
+  const fetchCertificateData = async () => {
+    console.log("[CertificatePage] Fetching certificate data");
     try {
-      const response = await certificateAPI.getMyCertificates();
-      setCertificates(response.data);
-    } catch (err) {
-      console.error('Failed to fetch certificates');
+      const [certificatesResult, historyResult] = await Promise.allSettled([
+        certificateAPI.getMyCertificates(),
+        certificateAPI.getDownloadHistory()
+      ]);
+
+      if (certificatesResult.status === "fulfilled") {
+        const certificatePayload = unwrapApiData(certificatesResult.value) || [];
+        console.log("[CertificatePage] Certificates loaded", certificatePayload);
+        setCertificates(certificatePayload);
+        setSelectedCert((currentSelected) => {
+          if (!certificatePayload.length) {
+            return null;
+          }
+
+          if (currentSelected) {
+            const matchedCertificate = certificatePayload.find((certificate) => certificate.id === currentSelected.id);
+            if (matchedCertificate) {
+              return matchedCertificate;
+            }
+          }
+
+          return certificatePayload[0];
+        });
+        setFetchError("");
+      } else {
+        console.error("[CertificatePage] Failed to load certificates", certificatesResult.reason);
+        setCertificates([]);
+        setSelectedCert(null);
+        setFetchError("Unable to load your certificate right now. Please refresh and try again.");
+      }
+
+      if (historyResult.status === "fulfilled") {
+        const historyPayload = unwrapApiData(historyResult.value) || [];
+        console.log("[CertificatePage] Download history loaded", historyPayload);
+        setDownloadHistory(historyPayload);
+      } else {
+        console.error("[CertificatePage] Failed to load download history", historyResult.reason);
+        setDownloadHistory([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch certificate data", error);
+      setFetchError("Unable to load your certificate right now. Please refresh and try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Generate QR code data URL from verification code
-  const generateQRCode = async (cert) => {
+  const generateQRCode = async (certificate) => {
     try {
-      const verificationUrl = `${window.location.origin}/verify/certificate/${cert.certificateNumber}`;
-      const qrDataUrl = await QRCode.toDataURL(verificationUrl, {
-        width: 200,
-        margin: 2,
+      console.log("[CertificatePage] Generating QR code", {
+        certificateId: certificate?.id,
+        certificateNumber: certificate?.certificateNumber
+      });
+      return await QRCode.toDataURL(getVerificationUrl(certificate), {
+        width: 280,
+        margin: 1,
         color: {
-          dark: '#000000',
-          light: '#ffffff'
+          dark: CERTIFICATE_THEME.navy,
+          light: "#ffffff"
         }
       });
-      return qrDataUrl;
-    } catch (err) {
-      console.error('Failed to generate QR code:', err);
+    } catch (error) {
+      console.error("Failed to generate QR code:", error);
       return null;
     }
   };
 
-  // Handle QR code scan - show modal with certificate details
-  const handleShowQrCode = async (cert) => {
-    setSelectedCert(cert);
-    const qrUrl = await generateQRCode(cert);
-    setQrCodeUrl(qrUrl);
-    setShowQrModal(true);
-  };
-
-  const generatePNG = (cert) => {
-    // Create a canvas-based PNG certificate
-    const canvas = document.createElement('canvas');
-    canvas.width = 800;
-    canvas.height = 600;
-    const ctx = canvas.getContext('2d');
-
-    // Background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Header background
-    ctx.fillStyle = '#198754';
-    ctx.fillRect(0, 0, canvas.width, 100);
-
-    // Title
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px Arial';
-    ctx.textAlign = 'center';
-    ctx.fillText('VACCINATION CERTIFICATE', canvas.width / 2, 60);
-
-    // Certificate number
-    ctx.fillStyle = '#333333';
-    ctx.font = '20px Arial';
-    ctx.fillText(`Certificate No: ${cert.certificateNumber || 'N/A'}`, canvas.width / 2, 130);
-
-    // Divider line
-    ctx.strokeStyle = '#198754';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(50, 150);
-    ctx.lineTo(750, 150);
-    ctx.stroke();
-
-    // Certificate content
-    ctx.font = '18px Arial';
-    ctx.textAlign = 'left';
-    
-    const content = [
-      { label: 'Beneficiary Name:', value: cert.userName || 'N/A' },
-      { label: 'Email:', value: cert.userEmail || 'N/A' },
-      { label: 'Vaccine Name:', value: cert.vaccineName || 'N/A' },
-      { label: 'Dose Number:', value: cert.doseNumber ? `Dose ${cert.doseNumber}` : 'N/A' },
-      { label: 'Vaccination Center:', value: cert.centerName || 'N/A' },
-      { label: 'Drive:', value: cert.driveTitle || 'N/A' },
-      { label: 'Date of Vaccination:', value: cert.slotDateTime ? new Date(cert.slotDateTime).toLocaleDateString() : 'N/A' },
-      { label: 'Date of Issue:', value: cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString() : 'N/A' },
-    ];
-
-    if (cert.nextDoseDate) {
-      content.push({ label: 'Next Dose Date:', value: new Date(cert.nextDoseDate).toLocaleDateString() });
+  const waitForPreviewAssets = async (element) => {
+    if (!element) {
+      return;
     }
 
-    content.push({ label: 'Digital Verification Code:', value: cert.digitalVerificationCode || 'N/A' });
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
 
-    let y = 180;
-    content.forEach(item => {
-      ctx.fillStyle = '#666666';
-      ctx.fillText(item.label, 80, y);
-      ctx.fillStyle = '#333333';
-      ctx.font = 'bold 18px Arial';
-      ctx.fillText(item.value, 320, y);
-      ctx.font = '18px Arial';
-      y += 35;
+    const images = Array.from(element.querySelectorAll("img"));
+    await Promise.all(images.map((image) => {
+      if (image.complete && image.naturalWidth > 0) {
+        return Promise.resolve();
+      }
+
+      return new Promise((resolve) => {
+        image.addEventListener("load", resolve, { once: true });
+        image.addEventListener("error", resolve, { once: true });
+      });
+    }));
+
+    await new Promise((resolve) => window.requestAnimationFrame(() => resolve()));
+  };
+
+  const renderCertificateCanvas = async () => {
+    const node = exportPreviewRef.current;
+    if (!node) {
+      throw new Error("Certificate preview is not ready for export.");
+    }
+
+    await waitForPreviewAssets(node);
+
+    return html2canvas(node, {
+      backgroundColor: "#f4f7fa",
+      scale: EXPORT_SCALE,
+      useCORS: true,
+      logging: false,
+      width: node.scrollWidth,
+      height: node.scrollHeight,
+      windowWidth: EXPORT_WIDTH,
+      scrollX: 0,
+      scrollY: 0
     });
-
-    // QR Code placeholder
-    if (cert.qrCode) {
-      ctx.fillStyle = '#999999';
-      ctx.font = '12px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('Scan QR Code to Verify', canvas.width / 2, 520);
-    }
-
-    // Footer
-    ctx.fillStyle = '#198754';
-    ctx.fillRect(0, 550, canvas.width, 50);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '14px Arial';
-    ctx.fillText('This is a government-issued vaccination certificate', canvas.width / 2, 575);
-
-    // Download as PNG
-    const link = document.createElement('a');
-    link.download = `certificate-${cert.certificateNumber}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
   };
 
-  const generatePDF = async (cert) => {
+  const recordDownload = async (certificate, downloadType) => {
     try {
-      const doc = new jsPDF();
-      
-      // Header
-      doc.setFillColor(25, 135, 84);
-      doc.rect(0, 0, 210, 40, 'F');
-      
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(24);
-      doc.setFont('helvetica', 'bold');
-      doc.text('VACCINATION CERTIFICATE', 105, 25, { align: 'center' });
-      
-      // Certificate Number
-      doc.setTextColor(51, 51, 51);
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`Certificate No: ${cert.certificateNumber || 'N/A'}`, 105, 55, { align: 'center' });
-      
-      // Divider line
-      doc.setDrawColor(25, 135, 84);
-      doc.setLineWidth(1);
-      doc.line(20, 60, 190, 60);
-      
-      // Content
-      doc.setFontSize(11);
-      let y = 75;
-      
-      const addField = (label, value, isBold = false) => {
-        doc.setFont('helvetica', isBold ? 'bold' : 'normal');
-        doc.setTextColor(102, 102, 102);
-        doc.text(label, 25, y);
-        doc.setTextColor(51, 51, 51);
-        doc.text(String(value || 'N/A'), 80, y);
-        y += 10;
-      };
-      
-      addField('Beneficiary Name:', cert.userName || 'N/A', true);
-      addField('Email:', cert.userEmail || 'N/A');
-      addField('Vaccine Name:', cert.vaccineName || 'N/A', true);
-      addField('Dose Number:', cert.doseNumber ? `Dose ${cert.doseNumber}` : 'N/A');
-      addField('Vaccination Center:', cert.centerName || 'N/A', true);
-      addField('Drive:', cert.driveTitle || 'N/A');
-      addField('Vaccination Date:', cert.slotDateTime ? new Date(cert.slotDateTime).toLocaleDateString() : 'N/A', true);
-      addField('Date of Issue:', cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString() : 'N/A');
-      
-      if (cert.nextDoseDate) {
-        addField('Next Dose Date:', new Date(cert.nextDoseDate).toLocaleDateString(), true);
+      const response = await certificateAPI.recordDownload(certificate.id, { downloadType });
+      const payload = unwrapApiData(response) || response.data;
+      if (payload) {
+        setDownloadHistory((current) => [payload, ...current].slice(0, 20));
       }
-      
-      y += 5;
-      doc.line(20, y, 190, y);
-      y += 10;
-      
-      // Verification section
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(25, 135, 84);
-      doc.text('VERIFICATION', 105, y, { align: 'center' });
-      y += 10;
-      
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(51, 51, 51);
-      addField('Digital Verification Code:', cert.digitalVerificationCode || 'N/A', true);
-      
-      // Generate QR code
-      try {
-        const qrDataUrl = await QRCode.toDataURL(
-          `${window.location.origin}/verify/certificate/${cert.certificateNumber}`,
-          { width: 80, margin: 1 }
-        );
-        doc.addImage(qrDataUrl, 'PNG', 85, y, 40, 40);
-        y += 45;
-        
-        doc.setFontSize(9);
-        doc.setTextColor(102, 102, 102);
-        doc.text('Scan QR code to verify authenticity', 105, y, { align: 'center' });
-      } catch (qrErr) {
-        console.error('QR generation error:', qrErr);
-      }
-      
-      // Footer
-      const footerY = 270;
-      doc.setFillColor(25, 135, 84);
-      doc.rect(0, footerY, 210, 27, 'F');
-      
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(10);
-      doc.text('This is a government-issued vaccination certificate', 105, footerY + 10, { align: 'center' });
-      doc.setFontSize(8);
-      doc.text(`Verify at: ${window.location.origin}/verify/certificate/${cert.certificateNumber}`, 105, footerY + 18, { align: 'center' });
-      
-      // Save PDF
-      doc.save(`certificate-${cert.certificateNumber}.pdf`);
-    } catch (err) {
-      console.error('Failed to generate PDF:', err);
-      // Fallback to PNG if PDF fails
-      generatePNG(cert);
+    } catch (error) {
+      console.error("Failed to record download history", error);
     }
   };
 
-  const downloadCertificate = async (certId, format) => {
+  const downloadCertificate = async (certificate, format) => {
     try {
-      const cert = certificates.find((item) => item.id === certId);
-      if (!cert) return;
+      console.log("[CertificatePage] Download requested", {
+        certificateId: certificate?.id,
+        certificateNumber: certificate?.certificateNumber,
+        format
+      });
+      await recordDownload(certificate, format === "pdf" ? "PDF" : "IMAGE");
+      const canvas = await renderCertificateCanvas();
+      const imageData = canvas.toDataURL("image/png");
 
-      if (format === 'png') {
-        generatePNG(cert);
-      } else if (format === 'pdf') {
-        await generatePDF(cert);
+      if (format === "png") {
+        const link = document.createElement("a");
+        link.download = buildCertificateFileName(certificate, "png");
+        link.href = imageData;
+        link.click();
+        return;
       }
-    } catch (err) {
-      console.error('Failed to download certificate');
+
+      const doc = new jsPDF({
+        orientation: canvas.width >= canvas.height ? "landscape" : "portrait",
+        unit: "px",
+        format: [canvas.width, canvas.height],
+        compress: true
+      });
+      doc.addImage(imageData, "PNG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
+      doc.save(buildCertificateFileName(certificate, "pdf"));
+    } catch (error) {
+      console.error("Failed to download certificate", error);
     }
   };
 
   if (loading) {
     return (
       <div className="container py-5">
-        <Skeleton height="400px" />
+        <Skeleton height="420px" />
       </div>
     );
   }
@@ -269,99 +222,211 @@ export default function CertificatePage() {
   if (certificates.length === 0) {
     return (
       <div className="container py-5">
-        <EmptyState
-          title="No Certificates Available"
-          description="Complete your vaccination to receive your certificate."
-          actionText="View My Bookings"
-          onAction={() => window.location.href = '/user/bookings'}
-        />
+        {fetchError ? (
+          <EmptyState
+            title="Certificate Unavailable"
+            description={fetchError}
+            actionText="View My Bookings"
+            onAction={() => {
+              window.location.href = "/user/bookings";
+            }}
+          />
+        ) : (
+          <EmptyState
+            title="No Certificates Available"
+            description="Complete your vaccination to receive your certificate."
+            actionText="View My Bookings"
+            onAction={() => {
+              window.location.href = "/user/bookings";
+            }}
+          />
+        )}
       </div>
     );
   }
 
   return (
     <div className="container py-5">
-      <h2 className="mb-4">My Vaccination Certificates</h2>
-      <div className="row">
-        {certificates.map((cert) => (
-          <div key={cert.id} className="col-md-6 mb-4">
-            <div className="card shadow-sm h-100">
-              <div className="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                <h5 className="mb-0">Certificate</h5>
-                <span className="badge bg-light text-success">{cert.certificateNumber}</span>
-              </div>
-              <div className="card-body">
-                <p><strong>Vaccine:</strong> {cert.vaccineName}</p>
-                <p><strong>Dose:</strong> {cert.doseNumber}</p>
-                <p><strong>Issued Date:</strong> {new Date(cert.issuedAt).toLocaleDateString()}</p>
-                {cert.nextDoseDate && (
-                  <p><strong>Next Dose:</strong> {new Date(cert.nextDoseDate).toLocaleDateString()}</p>
-                )}
-                {cert.digitalVerificationCode && (
-                  <p><strong>Verification Code:</strong> <code className="bg-light px-2 py-1 rounded">{cert.digitalVerificationCode}</code></p>
-                )}
-                <div className="mt-2">
-                  <a href={`/verify/certificate?cert=${cert.certificateNumber}`} className="btn btn-outline-success btn-sm">
-                    <i className="bi bi-shield-check me-1"></i> Verify Online
-                  </a>
-                </div>
-                <div className="mt-3">
-                  <div className="btn-group" role="group">
-                    <button 
-                      className="btn btn-primary" 
-                      onClick={() => downloadCertificate(cert.id, 'png')}
-                      title="Download as PNG"
-                    >
-                      <i className="bi bi-image me-1"></i> PNG
-                    </button>
-                    <button 
-                      className="btn btn-success" 
-                      onClick={() => downloadCertificate(cert.id, 'pdf')}
-                      title="Download as PDF"
-                    >
-                      <i className="bi bi-file-earmark-pdf me-1"></i> PDF
-                    </button>
-                    <button 
-                      className="btn btn-info text-white" 
-                      onClick={() => handleShowQrCode(cert)}
-                      title="View QR Code"
-                    >
-                      <i className="bi bi-qr-code me-1"></i> QR
-                    </button>
-                  </div>
-                </div>
-                {cert.qrCode && (
-                  <div className="mt-3 text-center">
-                    <img src={cert.qrCode} alt="QR Code" className="img-fluid" style={{ maxWidth: '150px' }} />
-                    <p className="small text-muted mt-1">Scan to verify</p>
-                  </div>
-                )}
-              </div>
+      <section className="certificate-page__hero card border-0 mb-4">
+        <div className="card-body p-4 p-lg-5">
+          <div className="d-flex flex-column flex-lg-row justify-content-between gap-4 align-items-lg-center">
+            <div>
+              <span className="certificate-page__eyebrow">Digital Certificate Center</span>
+              <h1 className="certificate-page__title">Professional vaccination certificate preview and download</h1>
+              <p className="certificate-page__subtitle mb-0">
+                Review every certificate field before downloading a PDF or image with the same verified data.
+              </p>
             </div>
+            {selectedCert ? (
+              <div className="certificate-page__hero-actions">
+                <button className="btn btn-outline-primary" onClick={() => downloadCertificate(selectedCert, "png")}>
+                  <i className="bi bi-image me-2"></i>Download Image
+                </button>
+                <button className="btn btn-primary" onClick={() => downloadCertificate(selectedCert, "pdf")}>
+                  <i className="bi bi-file-earmark-pdf me-2"></i>Download PDF
+                </button>
+              </div>
+            ) : null}
           </div>
-        ))}
+        </div>
+      </section>
+
+      <div className="row g-4">
+        <div className="col-xl-8">
+          <CertificatePreview certificate={selectedCert} qrCodeUrl={selectedQrCodeUrl} />
+        </div>
+        <div className="col-xl-4">
+          {selectedCert ? (
+            <aside className="certificate-sidecard card border-0 h-100">
+              <div className="card-body p-4">
+                <div className="certificate-sidecard__block">
+                  <span className="certificate-sidecard__label">Selected Certificate</span>
+                  <h3>{selectedCert.certificateNumber}</h3>
+                  <p className="mb-0">{selectedCert.userFullName || selectedCert.userName}</p>
+                </div>
+
+                <div className="certificate-sidecard__grid">
+                  <div>
+                    <span>Dose</span>
+                    <strong>{getDoseLabel(selectedCert)}</strong>
+                  </div>
+                  <div>
+                    <span>Vaccine</span>
+                    <strong>{selectedCert.vaccineName || "N/A"}</strong>
+                  </div>
+                  <div>
+                    <span>Center</span>
+                    <strong>{selectedCert.centerName || "N/A"}</strong>
+                  </div>
+                  <div>
+                    <span>Issued</span>
+                    <strong>{formatCertificateDate(selectedCert.issuedAt)}</strong>
+                  </div>
+                </div>
+
+                <div className="certificate-sidecard__actions">
+                  <a href={getVerificationPath(selectedCert)} className="btn btn-outline-success">
+                    <i className="bi bi-shield-check me-2"></i>Verify Online
+                  </a>
+                  <button className="btn btn-outline-secondary" onClick={() => setShowQrModal(true)}>
+                    <i className="bi bi-qr-code me-2"></i>View QR
+                  </button>
+                </div>
+
+                <div className="certificate-sidecard__verification">
+                  <span>Verification Code</span>
+                  <code>{selectedCert.digitalVerificationCode || "N/A"}</code>
+                  <span>Issued By Authority</span>
+                  <strong>Vaccination Management System</strong>
+                  <span>Verified By</span>
+                  <strong>{selectedCert.verifiedBy || "VaxZone System"}</strong>
+                </div>
+              </div>
+            </aside>
+          ) : null}
+        </div>
       </div>
 
-      {/* QR Code Modal */}
+      {selectedCert ? (
+        <div className="certificate-export-stage" aria-hidden="true">
+          <CertificatePreview
+            ref={exportPreviewRef}
+            certificate={selectedCert}
+            qrCodeUrl={selectedQrCodeUrl}
+            exportMode
+          />
+        </div>
+      ) : null}
+
+      <section className="mt-4">
+        <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <h2 className="h4 mb-0">My Certificates</h2>
+          <p className="text-muted mb-0">Select a certificate to preview and download.</p>
+        </div>
+        <div className="row g-4">
+          {certificates.map((certificate) => (
+            <div key={certificate.id} className="col-md-6 col-xl-4">
+              <button
+                type="button"
+                className={`certificate-list-card card border-0 text-start h-100 ${selectedCert?.id === certificate.id ? "is-active" : ""}`}
+                onClick={() => setSelectedCert(certificate)}
+              >
+                <div className="card-body p-4">
+                  <div className="certificate-list-card__header">
+                    <span className="badge bg-success-subtle text-success">{getDoseLabel(certificate)}</span>
+                    <span className="certificate-list-card__number">{certificate.certificateNumber}</span>
+                  </div>
+                  <h3>{certificate.userFullName || certificate.userName}</h3>
+                  <p>{certificate.vaccineName || "N/A"}</p>
+                  <div className="certificate-list-card__meta">
+                    <span>{certificate.centerName || "N/A"}</span>
+                    <span>{formatCertificateDate(certificate.issuedAt)}</span>
+                  </div>
+                </div>
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-4">
+        <div className="card border-0 shadow-sm">
+          <div className="card-body p-4">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+              <h2 className="h4 mb-0">Download History</h2>
+              <span className="text-muted small">Tracks PDF and image downloads for your certificates.</span>
+            </div>
+            {downloadHistory.length > 0 ? (
+              <div className="table-responsive">
+                <table className="table align-middle">
+                  <thead>
+                    <tr>
+                      <th>Certificate ID</th>
+                      <th>Date</th>
+                      <th>Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {downloadHistory.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.certificateNumber}</td>
+                        <td>{formatCertificateDate(item.timestamp)}</td>
+                        <td>
+                          <span className={`badge ${item.downloadType === "PDF" ? "bg-danger" : "bg-primary"}`}>
+                            {item.downloadType}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-muted mb-0">No downloads recorded yet.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
       <Modal show={showQrModal && Boolean(selectedCert)} onHide={() => setShowQrModal(false)} size="md">
-        <Modal.Header closeButton style={{ background: 'linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%)' }}>
+        <Modal.Header closeButton>
           <Modal.Title>Certificate Verification</Modal.Title>
         </Modal.Header>
         <Modal.Body className="text-center">
-          {selectedCert && (
+          {selectedCert ? (
             <>
-              {qrCodeUrl && (
-                <img src={qrCodeUrl} alt="QR Code" className="img-fluid mb-3" style={{ maxWidth: '200px' }} />
-              )}
-              <h6 className="mb-2">Certificate No: {selectedCert.certificateNumber}</h6>
-              <p className="text-muted small mb-2">{selectedCert.userName}</p>
-              <p className="text-muted small mb-2">{selectedCert.vaccineName} - Dose {selectedCert.doseNumber}</p>
-              <hr />
-              <p className="small text-muted mb-1">Digital Verification Code:</p>
-              <code className="d-block mb-3">{selectedCert.digitalVerificationCode}</code>
-              <p className="small text-muted mb-0">Scan this QR code or enter the verification code at the verification page to confirm the certificate authenticity.</p>
+              {selectedQrCodeUrl ? (
+                <img src={selectedQrCodeUrl} alt="Verification QR code" className="img-fluid mb-3" style={{ maxWidth: "220px" }} />
+              ) : null}
+              <h6 className="mb-2">{selectedCert.certificateNumber}</h6>
+              <p className="text-muted small mb-2">{selectedCert.userFullName || selectedCert.userName}</p>
+              <p className="text-muted small mb-3">
+                {selectedCert.vaccineName} • {getDoseLabel(selectedCert)}
+              </p>
+              <code className="d-block mb-3">{selectedCert.digitalVerificationCode || "N/A"}</code>
+              <p className="small text-muted mb-0">Scan the QR code or visit the verification page to confirm certificate authenticity.</p>
             </>
-          )}
+          ) : null}
         </Modal.Body>
         <Modal.Footer>
           <button type="button" className="app-modal-btn app-modal-btn--secondary" onClick={() => setShowQrModal(false)}>
@@ -372,11 +437,11 @@ export default function CertificatePage() {
               type="button"
               className="app-modal-btn app-modal-btn--primary"
               onClick={() => {
-                downloadCertificate(selectedCert.id, 'pdf');
+                downloadCertificate(selectedCert, "pdf");
                 setShowQrModal(false);
               }}
             >
-              <i className="bi bi-download me-1" /> Download PDF
+              <i className="bi bi-download me-1"></i>Download PDF
             </button>
           ) : null}
         </Modal.Footer>

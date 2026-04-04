@@ -1,24 +1,18 @@
 import axios from "axios";
 import { clearAuth, getAccessToken, getRefreshToken, setAuth } from "../utils/auth";
 
-const DEFAULT_DEV_BACKEND_PORTS = [8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087, 8088, 8089];
+const DEFAULT_API_BASE_URL = "http://localhost:8080/api";
 
-const getConfiguredApiBaseEnv = () => {
-  const baseUrl = typeof import.meta.env.VITE_API_BASE_URL === "string"
-    ? import.meta.env.VITE_API_BASE_URL.trim()
-    : "";
-  const legacyUrl = typeof import.meta.env.VITE_API_URL === "string"
+const getConfiguredApiBaseEnv = () =>
+  typeof import.meta.env.VITE_API_URL === "string"
     ? import.meta.env.VITE_API_URL.trim()
     : "";
-
-  return baseUrl || legacyUrl;
-};
 
 const normalizeApiBaseUrl = (rawValue) => {
   const value = typeof rawValue === "string" ? rawValue.trim() : "";
 
-  if (!value || value.toLowerCase() === "auto") {
-    return "http://localhost:8080/api";
+  if (!value) {
+    return DEFAULT_API_BASE_URL;
   }
 
   const withoutTrailingSlash = value.replace(/\/+$/, "");
@@ -33,102 +27,7 @@ const normalizeApiBaseUrl = (rawValue) => {
   return withoutTrailingSlash.startsWith("/api") ? withoutTrailingSlash : `/api${withoutTrailingSlash}`;
 };
 
-const getDevBackendPorts = () => {
-  const configuredPorts = typeof import.meta.env.VITE_API_PORT_CANDIDATES === "string"
-    ? import.meta.env.VITE_API_PORT_CANDIDATES
-        .split(",")
-        .map((port) => Number.parseInt(port.trim(), 10))
-        .filter((port) => Number.isInteger(port) && port > 0)
-    : [];
-
-  const ports = configuredPorts.length > 0 ? configuredPorts : DEFAULT_DEV_BACKEND_PORTS;
-  return [...ports].sort((a, b) => a - b);
-};
-
-const shouldAutoDetectApiBaseUrl = () => {
-  const value = getConfiguredApiBaseEnv();
-
-  return !value || value.toLowerCase() === "auto";
-};
-
-const resolveApiOrigin = (origin, includePort = true) => {
-  try {
-    const parsed = new URL(origin);
-    if (includePort) {
-      return parsed.origin;
-    }
-
-    return `${parsed.protocol}//${parsed.hostname}`;
-  } catch (error) {
-    return origin;
-  }
-};
-
-const buildCandidateApiBaseUrls = () => {
-  if (typeof window === "undefined") {
-    return [normalizeApiBaseUrl(getConfiguredApiBaseEnv())];
-  }
-
-  const currentOrigin = window.location.origin;
-  const currentHostOrigin = resolveApiOrigin(currentOrigin, false);
-  const candidates = [];
-
-  candidates.push(`${currentOrigin}/api`);
-
-  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
-    getDevBackendPorts().forEach((port) => {
-      candidates.push(`${currentHostOrigin}:${port}/api`);
-    });
-  }
-
-  return [...new Set(candidates)];
-};
-
-const candidateApiBaseUrls = buildCandidateApiBaseUrls();
-let resolvedApiBaseUrl = normalizeApiBaseUrl(getConfiguredApiBaseEnv());
-let apiBaseUrlPromise = null;
-
-const pingApiBaseUrl = async (baseUrl) => {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 1200);
-
-  try {
-    const response = await fetch(`${baseUrl}/health`, {
-      method: "GET",
-      signal: controller.signal
-    });
-
-    return response.status < 500 || response.status === 503;
-  } catch (error) {
-    return false;
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-};
-
-const getApiBaseUrl = async () => {
-  if (!shouldAutoDetectApiBaseUrl() || typeof window === "undefined") {
-    return resolvedApiBaseUrl;
-  }
-
-  if (apiBaseUrlPromise) {
-    return apiBaseUrlPromise;
-  }
-
-  apiBaseUrlPromise = (async () => {
-    for (const baseUrl of candidateApiBaseUrls) {
-      if (await pingApiBaseUrl(baseUrl)) {
-        resolvedApiBaseUrl = baseUrl;
-        return resolvedApiBaseUrl;
-      }
-    }
-
-    resolvedApiBaseUrl = candidateApiBaseUrls[0] || resolvedApiBaseUrl;
-    return resolvedApiBaseUrl;
-  })();
-
-  return apiBaseUrlPromise;
-};
+export const API_BASE_URL = normalizeApiBaseUrl(getConfiguredApiBaseEnv());
 
 export const unwrapApiData = (responseOrPayload) => {
   const payload = responseOrPayload?.data ?? responseOrPayload;
@@ -190,7 +89,7 @@ export const normalizeSearchValue = (value) => {
 };
 
 const apiClient = axios.create({
-  baseURL: resolvedApiBaseUrl,
+  baseURL: "http://localhost:8080/api",
   timeout: 15000
 });
 
@@ -215,11 +114,14 @@ const isPublicEndpoint = (urlPath, method = "get") => {
   if (urlPath.startsWith("/certificates/verify/")) {
     return true;
   }
+  if (urlPath.startsWith("/certificate/verify/")) {
+    return true;
+  }
   return false;
 };
 
 apiClient.interceptors.request.use(async (config) => {
-  config.baseURL = await getApiBaseUrl();
+  config.baseURL = "http://localhost:8080/api";
 
   const token = getAccessToken();
   const urlPath = config.url?.split("?")[0] || "";
@@ -237,21 +139,24 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const status = error.response?.status;
+    const requestUrl = originalRequest?.url?.split("?")[0] || "";
 
     if (!originalRequest) {
       return Promise.reject(error);
     }
 
-    const isRefreshRequest = originalRequest.url?.includes("/auth/refresh");
-    if (error.response?.status === 401 && !originalRequest._retry && !isRefreshRequest) {
+    const isRefreshRequest = requestUrl.includes("/auth/refresh");
+    const isPublicRequest = isPublicEndpoint(requestUrl, originalRequest.method);
+
+    if (status === 401 && !originalRequest._retry && !isRefreshRequest && !isPublicRequest) {
       originalRequest._retry = true;
       const refreshToken = getRefreshToken();
 
       if (refreshToken) {
         try {
-          const refreshBaseUrl = await getApiBaseUrl();
-          const refreshResponse = await axios.post(`${refreshBaseUrl}/auth/refresh`, { refreshToken });
-          const refreshedAuth = refreshResponse.data;
+          const refreshResponse = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
+          const refreshedAuth = unwrapApiData(refreshResponse.data);
           setAuth(refreshedAuth, { remember: Boolean(window.localStorage.getItem("refreshToken")) });
           originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${refreshedAuth.accessToken}`;
@@ -264,6 +169,12 @@ apiClient.interceptors.response.use(
           }
           return Promise.reject(refreshError);
         }
+      }
+
+      clearAuth();
+      if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+        const redirect = `${window.location.pathname}${window.location.search}`;
+        window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
       }
     }
 
@@ -438,8 +349,11 @@ export const certificateAPI = {
   getMyCertificates: () => apiClient.get("/certificates/my-certificates"),
   getCertificateById: (id) => apiClient.get(`/certificates/${id}`),
   verifyCertificate: (certNumber) => apiClient.get(`/certificates/verify/${certNumber}`),
+  verifyCertificateById: (certificateId) => apiClient.get(`/certificate/verify/${certificateId}`),
   generateCertificate: (data) => apiClient.post("/certificates", data),
-  getAllCertificates: () => apiClient.get("/certificates")
+  getAllCertificates: () => apiClient.get("/certificates"),
+  recordDownload: (certificateId, data) => apiClient.post(`/certificates/${certificateId}/downloads`, data),
+  getDownloadHistory: () => apiClient.get("/certificates/download-history")
 };
 
 export const reviewAPI = {

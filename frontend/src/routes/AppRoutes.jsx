@@ -56,6 +56,8 @@ export default function AppRoutes() {
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/verify" element={<VerifyEmailPage />} />
         <Route path="/verify-email" element={<VerifyEmailPage />} />
+        <Route path="/verify-certificate" element={<VerifyCertificatePage />} />
+        <Route path="/verify-certificate/:certId" element={<VerifyCertificatePage />} />
         <Route path="/verify/certificate" element={<VerifyCertificatePage />} />
         <Route path="/verify/certificate/:certNumber" element={<VerifyCertificatePage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
