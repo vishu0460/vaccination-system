@@ -576,21 +576,21 @@ export default function AdminManagement({ onDataChanged }) {
 
                     return (
                       <tr key={admin.id}>
-                        <td>
+                        <td data-label="Name">
                           <div className="fw-semibold">{admin.fullName || 'N/A'}</div>
                           {admin.phoneNumber ? <small className="text-muted">{admin.phoneNumber}</small> : null}
                         </td>
-                        <td>{admin.email}</td>
-                        <td>
+                        <td data-label="Email">{admin.email}</td>
+                        <td data-label="Role">
                           <Badge bg={role === 'SUPER_ADMIN' ? 'dark' : 'primary'}>{role}</Badge>
                         </td>
-                        <td>
+                        <td data-label="Status">
                           <Badge bg={admin.enabled ? 'success' : 'secondary'}>
                             {admin.enabled ? 'Active' : 'Inactive'}
                           </Badge>
                         </td>
-                        <td>{formatDate(admin.createdAt)}</td>
-                        <td className="text-end">
+                        <td data-label="Created Date">{formatDate(admin.createdAt)}</td>
+                        <td data-label="Actions" className="text-end">
                           <div className="admin-management__actions">
                             <Button
                               variant="outline-primary"

@@ -366,7 +366,7 @@ export default function UserBookingsPage() {
         path="/user/bookings"
         noIndex
       />
-      <div className="page-header rounded-3 mb-4 p-4">
+      <div className="page-header user-bookings-header rounded-3 mb-4 p-4">
         <div className="d-flex align-items-center flex-wrap gap-3">
           <div>
             <h2 className="mb-1"><i className="bi bi-calendar-check me-2"></i>My Bookings</h2>
@@ -398,14 +398,14 @@ export default function UserBookingsPage() {
       ) : null}
 
       {profile && (
-        <div className="card mb-4">
-          <div className="card-body d-flex align-items-center gap-3">
+        <div className="card mb-4 user-bookings-profile-card">
+          <div className="card-body d-flex align-items-center gap-3 user-bookings-profile-card__body">
             <div className="bg-primary bg-opacity-10 rounded-circle p-3">
               <i className="bi bi-person-fill fs-4 text-primary"></i>
             </div>
             <div className="flex-grow-1">
               <h5 className="mb-1">{profile.fullName}</h5>
-              <p className="mb-0 text-muted">
+              <p className="mb-0 text-muted user-bookings-profile-card__meta">
                 <i className="bi bi-envelope me-2"></i>{profile.email}
                 <span className="mx-2">|</span>
                 <i className="bi bi-person-badge me-2"></i>Age: {profile.age}
@@ -449,7 +449,7 @@ export default function UserBookingsPage() {
         </div>
       </div>
 
-      <ul className="nav nav-tabs mb-4">
+      <ul className="nav nav-tabs mb-4 user-bookings-tabs">
         <li className="nav-item">
           <button className={`nav-link ${activeTab === "bookings" ? "active" : ""}`} onClick={() => setActiveTab("bookings")}>
             <i className="bi bi-calendar-check me-2"></i>My Bookings
@@ -476,7 +476,7 @@ export default function UserBookingsPage() {
 
       {activeTab === "bookings" && (
         <div className="card">
-          <div className="card-header d-flex justify-content-between align-items-center">
+          <div className="card-header d-flex justify-content-between align-items-center user-bookings-card-header">
             <span><i className="bi bi-calendar-check me-2"></i>All Bookings</span>
             <span className="badge bg-primary">{bookings.length} Total</span>
           </div>
@@ -514,19 +514,21 @@ export default function UserBookingsPage() {
                         <td><small>{booking.centerName || "-"}</small></td>
                         <td>{getStatusBadge(booking.status)}</td>
                         <td>
-                          {(booking.status === "PENDING" || booking.status === "CONFIRMED") && (
-                            <button className="btn btn-outline-danger btn-sm" title="Cancel" onClick={() => setBookingToCancel(booking)}>
-                              <i className="bi bi-x-circle"></i>
+                          <div className="user-bookings-table-actions">
+                            {(booking.status === "PENDING" || booking.status === "CONFIRMED") && (
+                              <button className="btn btn-outline-danger btn-sm" title="Cancel" onClick={() => setBookingToCancel(booking)}>
+                                <i className="bi bi-x-circle"></i>
+                              </button>
+                            )}
+                            <button className="btn btn-outline-primary btn-sm" title="Download Receipt" onClick={() => downloadReceipt(booking)}>
+                              <i className="bi bi-file-earmark-pdf"></i>
                             </button>
-                          )}
-                          <button className="btn btn-outline-primary btn-sm ms-2" title="Download Receipt" onClick={() => downloadReceipt(booking)}>
-                            <i className="bi bi-file-earmark-pdf"></i>
-                          </button>
-                          {booking.status === "COMPLETED" && getCertificateForBooking(booking.id) && (
-                            <button className="btn btn-outline-success btn-sm" title="Download Certificate" onClick={() => window.location.href = `/certificates`}>
-                              <i className="bi bi-download"></i>
-                            </button>
-                          )}
+                            {booking.status === "COMPLETED" && getCertificateForBooking(booking.id) && (
+                              <button className="btn btn-outline-success btn-sm" title="Download Certificate" onClick={() => window.location.href = `/certificates`}>
+                                <i className="bi bi-download"></i>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -581,7 +583,7 @@ export default function UserBookingsPage() {
 
       {activeTab === "slots" && (
         <div className="card">
-          <div className="card-header d-flex justify-content-between align-items-center">
+          <div className="card-header d-flex justify-content-between align-items-center user-bookings-card-header">
             <span><i className="bi bi-clock me-2"></i>Slot Explorer</span>
             <span className="badge bg-success">{availableSlots.length} Bookable</span>
           </div>
@@ -722,7 +724,7 @@ export default function UserBookingsPage() {
                   const copy = getNotificationCopy(notification);
 
                   return (
-                    <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3">
+                    <li key={notification.id} className="list-group-item d-flex justify-content-between align-items-start p-3 user-bookings-notification-item">
                       <div>
                         <div className="fw-semibold">{notification.title || `${notification.type} Notification`}</div>
                         <div className="text-muted small">{copy.message}</div>

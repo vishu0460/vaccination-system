@@ -72,6 +72,10 @@ export default function Navbar() {
   }, [location]);
 
   useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
     if (!isLoggedIn) {
       setNotifications([]);
       setUnreadCountState(0);
@@ -222,7 +226,7 @@ export default function Navbar() {
             <span className="fw-bold app-brand-text">VaxZone</span>
           </Link>
 
-          <div className="d-flex align-items-center gap-2">
+          <div className="app-navbar__controls d-flex align-items-center gap-2">
             {isLoggedIn && role !== "ADMIN" && role !== "SUPER_ADMIN" && (
               <button
                 type="button"
@@ -253,7 +257,7 @@ export default function Navbar() {
             </button>
           </div>
 
-          <div className={`collapse navbar-collapse ${menuOpen ? "show" : ""}`} id="navbarNav">
+          <div className={`collapse navbar-collapse app-navbar__collapse ${menuOpen ? "show" : ""}`} id="navbarNav">
             <ul className="navbar-nav ms-auto align-items-lg-center">
               <li className="nav-item">
                 <Link className={`nav-link ${isActive("/") ? "active" : ""}`} to="/" onClick={() => setMenuOpen(false)}>
@@ -345,7 +349,7 @@ export default function Navbar() {
                 </li>
               ) : (
                 <li className="nav-item ms-lg-3">
-                  <div className="d-flex gap-2">
+                  <div className="app-navbar__auth-actions d-flex gap-2">
                     <Link className="btn btn-outline-primary btn-sm" to="/login" onClick={() => setMenuOpen(false)}>
                       Login
                     </Link>

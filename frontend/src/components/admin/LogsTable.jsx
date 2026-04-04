@@ -98,12 +98,12 @@ export default function LogsTable({
               </tr>
             ) : entries.map((entry, index) => (
               <tr key={entry.id || `${entry.timestamp || 'log'}-${index}`} className="logs-fade-in">
-                <td className="ps-4">
+                <td className="ps-4 logs-table__time-cell">
                   <div className="fw-medium">{formatDateTime(entry.timestamp)}</div>
                   <small className="text-muted">{entry.source || entry.service || 'Backend'}</small>
                 </td>
-                <td>{levelBadge(mode === 'security' ? entry.actionType : entry.level)}</td>
-                <td style={{ minWidth: '320px' }}>
+                <td className="logs-table__level-cell">{levelBadge(mode === 'security' ? entry.actionType : entry.level)}</td>
+                <td className="logs-table__summary-cell" style={{ minWidth: '320px' }}>
                   <div className="fw-medium">{mode === 'security' ? entry.readableMessage : humanizeSystemMessage(entry)}</div>
                   <small className="text-muted d-block mt-1">{mode === 'security' ? entry.rawDetails : entry.message || entry.raw || 'N/A'}</small>
                   {entry.stackTrace ? (
@@ -115,7 +115,7 @@ export default function LogsTable({
                     </details>
                   ) : null}
                 </td>
-                <td>
+                <td className="logs-table__context-cell">
                   {mode === 'security' ? (
                     <>
                       <div>{entry.actorName || 'System'}</div>
@@ -128,7 +128,7 @@ export default function LogsTable({
                     </>
                   )}
                 </td>
-                <td>
+                <td className="logs-table__user-cell">
                   {mode === 'security' ? (
                     <>
                       <div>{entry.userEmail || 'N/A'}</div>
@@ -141,7 +141,7 @@ export default function LogsTable({
                     </>
                   )}
                 </td>
-                <td className="pe-4">
+                <td className="pe-4 logs-table__source-cell">
                   {mode === 'security' ? (
                     <>
                       <div>{entry.resource || 'AUTH'}</div>
