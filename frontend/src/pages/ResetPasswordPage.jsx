@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { authAPI, getErrorMessage, unwrapApiMessage } from "../api/client";
 import { validateConfirmPassword, validatePassword } from "../utils/authValidation";
+import FormContainer from "../components/auth/FormContainer";
 
 export default function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -48,14 +49,23 @@ export default function ResetPasswordPage() {
         <title>Reset Password - VaxZone</title>
       </Helmet>
 
-      <div className="auth-container">
-        <div className="auth-card scale-in">
-          <div className="card-header">
+      <FormContainer
+        eyebrow="Account recovery"
+        title="Reset password"
+        description="Enter the reset token from your email and choose a new password."
+        footer={(
+          <p className="mb-0">
+            Prefer OTP-based recovery? <Link to="/forgot-password">Use forgot password</Link>
+          </p>
+        )}
+      >
+        <div className="auth-card auth-card--reset scale-in">
+          <div className="card-header auth-card__header">
             <i className="bi bi-shield-lock display-4 d-block mb-2"></i>
             <h4 className="mb-0 fw-bold">Reset Password</h4>
             <p className="mb-0 opacity-75">Enter your new password</p>
           </div>
-          <div className="card-body">
+          <div className="card-body auth-card__body">
             {msg && (
               <div className={`alert ${success ? "alert-success" : "alert-danger"}`}>
                 {msg}
@@ -137,17 +147,9 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            <div className="text-center mt-4">
-              <p className="text-muted mb-0">
-                Prefer OTP-based recovery?{" "}
-                <Link to="/forgot-password" className="text-decoration-none fw-bold text-primary">
-                  Use forgot password
-                </Link>
-              </p>
-            </div>
           </div>
         </div>
-      </div>
+      </FormContainer>
     </>
   );
 }

@@ -3,6 +3,7 @@ import { newsAPI, unwrapApiData } from '../api/client';
 import Skeleton from '../components/Skeleton';
 import EmptyState from '../components/EmptyState';
 import SearchInput from '../components/SearchInput';
+import Modal from '../components/ui/Modal';
 import { DEFAULT_VISIBLE_COUNT, getDisplayedItems, matchesSmartSearch, shouldShowViewMore } from '../utils/listSearch';
 
 export default function NewsPage() {
@@ -156,25 +157,20 @@ export default function NewsPage() {
       )}
 
       {selectedNews && (
-        <div className="modal show d-block" tabIndex="-1" onClick={() => setSelectedNews(null)}>
-          <div className="modal-dialog modal-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">{selectedNews.title}</h5>
-                <button type="button" className="btn-close" onClick={() => setSelectedNews(null)}></button>
-              </div>
-              <div className="modal-body">
-                {selectedNews.imageUrl && (
-                  <img src={selectedNews.imageUrl} className="img-fluid mb-3" alt={selectedNews.title} />
-                )}
-                <p>{selectedNews.content}</p>
-                <small className="text-muted">
-                  Published: {selectedNews.createdAt ? new Date(selectedNews.createdAt).toLocaleString() : formatNewsDate(selectedNews)}
-                </small>
-              </div>
-            </div>
-          </div>
-        </div>
+        <Modal show={Boolean(selectedNews)} onHide={() => setSelectedNews(null)} size="lg" centered>
+          <Modal.Header closeButton>
+            <Modal.Title>{selectedNews.title}</Modal.Title>
+          </Modal.Header>
+          <Modal.Body>
+            {selectedNews.imageUrl && (
+              <img src={selectedNews.imageUrl} className="img-fluid mb-3 rounded-4" alt={selectedNews.title} />
+            )}
+            <p>{selectedNews.content}</p>
+            <small className="text-muted">
+              Published: {selectedNews.createdAt ? new Date(selectedNews.createdAt).toLocaleString() : formatNewsDate(selectedNews)}
+            </small>
+          </Modal.Body>
+        </Modal>
       )}
     </div>
   );

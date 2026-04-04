@@ -36,10 +36,10 @@ const socialLinks = [
 export default function Footer() {
   return (
     <footer className="site-footer">
-      <Container>
+      <Container className="site-footer__container">
         <div className="site-footer__top">
-          <Row className="g-4 g-xl-5">
-            <Col xl={3} lg={4} md={6}>
+          <Row className="g-4 g-xl-5 site-footer__top-grid">
+            <Col xl={3} lg={4} md={6} className="site-footer__section site-footer__section--brand">
               <div className="site-footer__brand">
                 <span className="site-footer__eyebrow">Healthcare Platform</span>
                 <h5 className="site-footer__title">VaxZone</h5>
@@ -49,7 +49,7 @@ export default function Footer() {
               </div>
             </Col>
 
-            <Col xl={2} lg={4} md={6}>
+            <Col xl={2} lg={4} md={6} className="site-footer__section">
               <h6 className="site-footer__heading">Quick Links</h6>
               <ul className="site-footer__list list-unstyled">
                 {companyLinks.map((item) => (
@@ -60,7 +60,7 @@ export default function Footer() {
               </ul>
             </Col>
 
-            <Col xl={2} lg={4} md={6}>
+            <Col xl={2} lg={4} md={6} className="site-footer__section">
               <h6 className="site-footer__heading">Services</h6>
               <ul className="site-footer__list list-unstyled">
                 {serviceLinks.map((item) => (
@@ -71,7 +71,7 @@ export default function Footer() {
               </ul>
             </Col>
 
-            <Col xl={2} lg={4} md={6}>
+            <Col xl={2} lg={4} md={6} className="site-footer__section">
               <h6 className="site-footer__heading">Support</h6>
               <ul className="site-footer__list list-unstyled">
                 {supportLinks.map((item) => (
@@ -82,7 +82,7 @@ export default function Footer() {
               </ul>
             </Col>
 
-            <Col xl={3} lg={8} md={12}>
+            <Col xl={3} lg={8} md={12} className="site-footer__section site-footer__section--contact">
               <h6 className="site-footer__heading">Contact & Social</h6>
               <ul className="site-footer__contact list-unstyled">
                 <li><FaPhone /> <a href="tel:+919631376436">+91 96313 76436</a></li>

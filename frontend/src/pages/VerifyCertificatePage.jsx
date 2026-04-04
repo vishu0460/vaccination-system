@@ -186,57 +186,57 @@ export default function VerifyCertificatePage() {
                   <span className="fw-bold">Certificate Verified Successfully</span>
                 </div>
                 <div className="card-body p-4">
-                  <div className="row">
+                  <div className="row g-4 verify-certificate__details">
                     {/* Certificate Details */}
                     <div className="col-md-7">
                       <h5 className="fw-bold mb-3">Certificate Details</h5>
                       
-                      <table className="table table-borderless">
+                      <table className="table table-borderless verify-certificate__table">
                         <tbody>
                           <tr>
-                            <td className="text-muted fw-bold" style={{width: '40%'}}>Certificate No:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Certificate No">Certificate No:</td>
                             <td className="fw-bold">{certificate.certificateNumber}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Beneficiary Name:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Beneficiary Name">Beneficiary Name:</td>
                             <td>{certificate.userName}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Email:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Email">Email:</td>
                             <td>{certificate.userEmail}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Vaccine Name:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Vaccine Name">Vaccine Name:</td>
                             <td>{certificate.vaccineName}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Dose Number:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Dose Number">Dose Number:</td>
                             <td>{certificate.doseNumber ? `Dose ${certificate.doseNumber}` : 'N/A'}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Vaccination Center:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Vaccination Center">Vaccination Center:</td>
                             <td>{certificate.centerName}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Drive:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Drive">Drive:</td>
                             <td>{certificate.driveTitle}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Date of Vaccination:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Date of Vaccination">Date of Vaccination:</td>
                             <td>{certificate.slotDateTime ? new Date(certificate.slotDateTime).toLocaleDateString() : 'N/A'}</td>
                           </tr>
                           <tr>
-                            <td className="text-muted fw-bold">Date of Issue:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Date of Issue">Date of Issue:</td>
                             <td>{certificate.issuedAt ? new Date(certificate.issuedAt).toLocaleDateString() : 'N/A'}</td>
                           </tr>
                           {certificate.nextDoseDate && (
                             <tr>
-                              <td className="text-muted fw-bold">Next Dose Date:</td>
+                              <td className="text-muted fw-bold verify-certificate__label" data-label="Next Dose Date">Next Dose Date:</td>
                               <td>{new Date(certificate.nextDoseDate).toLocaleDateString()}</td>
                             </tr>
                           )}
                           <tr>
-                            <td className="text-muted fw-bold">Digital Verification Code:</td>
+                            <td className="text-muted fw-bold verify-certificate__label" data-label="Digital Verification Code">Digital Verification Code:</td>
                             <td>
                               <code className="bg-light px-2 py-1 rounded">{certificate.digitalVerificationCode}</code>
                               <button 
@@ -254,7 +254,7 @@ export default function VerifyCertificatePage() {
                     
                     {/* QR Code */}
                     <div className="col-md-5 text-center">
-                      <div className="bg-light p-4 rounded">
+                      <div className="bg-light p-4 rounded verify-certificate__qr-panel">
                         {qrCodeUrl && (
                           <img src={qrCodeUrl} alt="Verification QR Code" className="img-fluid mb-3" style={{maxWidth: '150px'}} />
                         )}

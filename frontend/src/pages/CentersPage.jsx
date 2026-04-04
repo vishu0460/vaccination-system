@@ -188,7 +188,7 @@ export default function CentersPage() {
           </div>
         ) : filteredCenters.length > 0 ? (
           <>
-            <div className="d-flex justify-content-between align-items-center mb-4">
+            <div className="d-flex justify-content-between align-items-center mb-4 centers-page__toolbar">
               <p className="text-muted mb-0">
                 Showing <strong>{filteredCenters.length}</strong> center{filteredCenters.length !== 1 ? "s" : ""}
                 {city ? <span> in <strong>{city}</strong></span> : null}
@@ -265,7 +265,7 @@ export default function CentersPage() {
             <i className="bi bi-building"></i>
             <h5>No Centers Found</h5>
             <p>Try a different city or check back later.</p>
-            <div className="d-flex gap-2 justify-content-center">
+            <div className="d-flex gap-2 justify-content-center centers-page__empty-actions">
               <button className="btn btn-primary" onClick={resetSearch}>
                 View All Centers
               </button>

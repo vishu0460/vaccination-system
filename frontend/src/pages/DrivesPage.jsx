@@ -502,7 +502,7 @@ export default function DrivesPage() {
 
       <div className="container pb-5">
         {eligibilityNotice ? (
-          <div className="alert alert-warning d-flex justify-content-between align-items-start gap-3" role="alert">
+          <div className="alert alert-warning d-flex justify-content-between align-items-start gap-3 drives-page__alert" role="alert">
             <span>{eligibilityNotice}</span>
             <button type="button" className="btn-close" aria-label="Close" onClick={() => setEligibilityNotice("")}></button>
           </div>
@@ -670,7 +670,7 @@ export default function DrivesPage() {
           </div>
         ) : filteredDrives.length > 0 ? (
           <>
-            <div className="d-flex justify-content-between align-items-center mb-4">
+            <div className="d-flex justify-content-between align-items-center mb-4 drives-page__toolbar">
               <p className="text-muted mb-0">
                 Showing <strong>{filteredDrives.length}</strong> drive{filteredDrives.length !== 1 ? "s" : ""}
               </p>
@@ -693,7 +693,7 @@ export default function DrivesPage() {
             <div className={viewMode === "grid" ? "row g-4" : "d-flex flex-column gap-3"}>
               {displayedDrives.map((drive, index) => (
                 <div key={drive.id} className={`${viewMode === "grid" ? "col-md-6 col-lg-4" : ""} fade-in stagger-${(index % 6) + 1}`}>
-                  <div className={`drive-card h-100 ${viewMode === "list" ? "flex-row" : ""} ${drive.isEligible === false ? "drive-card--ineligible" : ""}`}>
+                  <div className={`drive-card h-100 ${viewMode === "list" ? "drive-card--list" : ""} ${drive.isEligible === false ? "drive-card--ineligible" : ""}`}>
                     {viewMode === "grid" ? (
                       <div className="card-header d-flex justify-content-between align-items-center">
                         <h5 className="mb-0 fs-6">{drive.name}</h5>
@@ -708,7 +708,7 @@ export default function DrivesPage() {
                         )}
                       </div>
                     ) : null}
-                    <div className={`card-body ${viewMode === "list" ? "d-flex flex-row align-items-center gap-4" : ""}`}>
+                    <div className={`card-body ${viewMode === "list" ? "d-flex flex-row align-items-center gap-4 drive-card__body--list" : ""}`}>
                       {viewMode === "list" ? (
                         <div className="text-center p-3 bg-primary bg-opacity-10 rounded">
                           <i className="bi bi-calendar-event display-6 text-primary"></i>
@@ -716,7 +716,7 @@ export default function DrivesPage() {
                       ) : null}
                       <div className="flex-grow-1">
                         {viewMode === "list" ? (
-                          <div className="d-flex justify-content-between align-items-start mb-2">
+                          <div className="d-flex justify-content-between align-items-start mb-2 drive-card__list-header">
                             <h5 className="fw-bold mb-0">{drive.name}</h5>
                             {drive.isEligible === false ? (
                               <span className="badge bg-secondary-subtle text-secondary-emphasis">{drive.eligibilityLabel}</span>
@@ -920,26 +920,28 @@ export default function DrivesPage() {
                       </td>
                       <td>{slot.availableCapacity}</td>
                       <td className="text-end">
-                        {isSlotBookable(slot, now) ? (
-                          <Button
-                            onClick={() => submitBooking(slot)}
-                            disabled={bookingSubmittingId === slot.id}
-                          >
-                            {bookingSubmittingId === slot.id ? "Booking..." : "Book Now"}
-                          </Button>
-                        ) : isAtCapacity(slot) ? (
-                          <Button
-                            variant="outline-warning"
-                            onClick={() => joinWaitlist(slot)}
-                            disabled={waitlistSubmittingId === slot.id}
-                          >
-                            {waitlistSubmittingId === slot.id ? "Joining..." : "Join Waitlist"}
-                          </Button>
-                        ) : (
-                          <Button disabled>Expired</Button>
-                        )}
-                        {slot.demandLevel === "HIGH_DEMAND" && <div className="text-danger small mt-1">🔥 High Demand</div>}
-                        {slot.almostFull && slot.demandLevel !== "HIGH_DEMAND" && <div className="text-warning small mt-1">Almost Full</div>}
+                        <div className="drives-page__slot-actions">
+                          {isSlotBookable(slot, now) ? (
+                            <Button
+                              onClick={() => submitBooking(slot)}
+                              disabled={bookingSubmittingId === slot.id}
+                            >
+                              {bookingSubmittingId === slot.id ? "Booking..." : "Book Now"}
+                            </Button>
+                          ) : isAtCapacity(slot) ? (
+                            <Button
+                              variant="outline-warning"
+                              onClick={() => joinWaitlist(slot)}
+                              disabled={waitlistSubmittingId === slot.id}
+                            >
+                              {waitlistSubmittingId === slot.id ? "Joining..." : "Join Waitlist"}
+                            </Button>
+                          ) : (
+                            <Button disabled>Expired</Button>
+                          )}
+                          {slot.demandLevel === "HIGH_DEMAND" && <div className="text-danger small mt-1">🔥 High Demand</div>}
+                          {slot.almostFull && slot.demandLevel !== "HIGH_DEMAND" && <div className="text-warning small mt-1">Almost Full</div>}
+                        </div>
                       </td>
                     </tr>
                   ))}
